@@ -14,17 +14,17 @@ export default function CollapsibleSection({
 }: CollapsibleSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="mb-4">
+    <div className="mb-4 text-gray-100">
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="w-full flex justify-between items-center px-4 py-2 rounded-md bg-white/20 hover:bg-white/30 backdrop-blur-md text-left"
+        className="w-full flex justify-between items-center px-4 py-2 rounded-md bg-gray-800/60 hover:bg-gray-800/80 backdrop-blur-md text-left"
       >
         <span className="font-semibold">{title}</span>
         <span className="text-xl leading-none">{open ? "–" : "+"}</span>
       </button>
       {open && (
-        <div className="mt-2 px-4 py-2 rounded-md bg-white/10 backdrop-blur-md text-sm">
+        <div className="mt-2 px-4 py-2 rounded-md bg-gray-800/40 backdrop-blur-md text-sm">
           {children}
         </div>
       )}
