@@ -2,8 +2,8 @@ import CollapsibleSection from "../components/CollapsibleSection";
 
 export default function Home() {
   return (
-    <div className="flex h-screen w-screen bg-neutral-900 from-slate-200 to-slate-400">
-      <aside className="w-72 flex flex-col p-4 border-r border-white/20 bg-neutral-900 backdrop-blur-lg">
+    <div className="flex h-screen w-screen bg-neutral-950 bg-[radial-gradient(at_top_left,_rgba(255,0,150,0.2),_transparent),_radial-gradient(at_bottom_right,_rgba(0,200,255,0.2),_transparent)]">
+      <aside className="w-1/2 flex flex-col p-4 border-r border-white/20 bg-neutral-950 backdrop-blur-lg">
         <div>
           <CollapsibleSection title="Course Information">
             <p className="text-sm">Overview of the current course.</p>
@@ -14,8 +14,8 @@ export default function Home() {
               <li>Basics</li>
               <li>Advanced</li>
             </ul>
-            <div className="mt-4 w-full bg-white/20 h-2 rounded-full">
-              <div className="bg-blue-500 h-2 rounded-full w-1/3" />
+            <div className="mt-4 w-full bg-neutral-700/50 h-2 rounded-full">
+              <div className="bg-neutral-900 bg-gradient-to-r from-pink-500/30 via-emerald-500/30 to-sky-500/30 h-2 rounded-full w-1/3" />
             </div>
           </CollapsibleSection>
         </div>
@@ -25,9 +25,9 @@ export default function Home() {
           </CollapsibleSection>
         </div>
       </aside>
-      <main className="flex-1 p-4">
+      <main className="w-1/2 p-4">
         <textarea
-          className="w-full h-full font-mono text-sm p-4 rounded-md border border-white/20 bg-neutral-900 backdrop-blur-md"
+          className="w-full h-full font-mono text-sm p-4 rounded-lg border border-white/20 bg-neutral-950 backdrop-blur-md"
           placeholder="Write your code here..."
         />
       </main>
