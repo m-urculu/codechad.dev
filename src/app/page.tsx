@@ -1,4 +1,5 @@
 import CollapsibleSection from "../components/CollapsibleSection";
+import CodeEditor from "../components/CodeEditor";
 
 export default function Home() {
   return (
@@ -26,10 +27,7 @@ export default function Home() {
         </div>
       </aside>
       <main className="w-1/2 p-4">
-        <textarea
-          className="w-full h-full font-mono text-sm p-4 rounded-lg border border-white/20 bg-neutral-950 backdrop-blur-md"
-          placeholder="Write your code here..."
-        />
+        <CodeEditor />
       </main>
     </div>
   );
