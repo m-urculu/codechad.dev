@@ -1,5 +1,37 @@
 @import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap");
 @import "tailwindcss";
+/* Gemini is typing... left-to-right glowing font animation */
+.gemini-glow {
+  position: relative;
+  background: none;
+  color: #fff;
+  background-image: linear-gradient(90deg, #fff 0%, #000000 40%, #fff 100%);
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gemini-glow-anim 2s linear infinite;
+}
+
+@keyframes gemini-glow-anim {
+  0% {
+    background-position: 200% 0;
+    filter: drop-shadow(0 0 0px #ffffff);
+  }
+  40% {
+    background-position: 100% 0;
+    filter: drop-shadow(0 0 8px #ffffff);
+  }
+  60% {
+    background-position: 0% 0;
+    filter: drop-shadow(0 0 8px #ffffff);
+  }
+  100% {
+    background-position: 0% 0;
+    filter: drop-shadow(0 0 0px #ffffff);
+  }
+}
+
 /* Hide all native scrollbars globally */
 * {
   scrollbar-width: none !important;
