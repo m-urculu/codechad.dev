@@ -6,12 +6,12 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
 marked.setOptions({ breaks: true });
 
-function preprocessForMarkdown(text: string) {
-  // If the text looks like Markdown, return as is
-  if (/[*_`#\-\[\]>]|\d+\./.test(text)) return text;
-  // Otherwise, add two spaces at end of each line for Markdown line breaks
-  return text.split("\n").map(line => line + "  ").join("\n");
-}
+// function preprocessForMarkdown(text: string) {
+//   // If the text looks like Markdown, return as is
+//   if (/[*_`#\-\[\]>]|\d+\./.test(text)) return text;
+//   // Otherwise, add two spaces at end of each line for Markdown line breaks
+//   return text.split("\n").map(line => line + "  ").join("\n");
+// }
 
 type Message = {
   id: number;
