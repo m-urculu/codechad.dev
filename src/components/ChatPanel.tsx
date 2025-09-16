@@ -60,7 +60,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
         role: 'bot',
       };
       setMessages((msgs) => [...msgs, botMsg]);
-    } catch (err) {
+    } catch {
       setMessages((msgs) => [
         ...msgs,
         { id: Date.now() + 2, text: "Error contacting Gemini API.", role: 'bot' }
@@ -137,7 +137,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
                         dangerouslySetInnerHTML: {
                           __html: (() => {
                             // Remove trailing <br> and empty lines from the original text before parsing
-                            let cleanText = msg.text.replace(/[ \t\n\r]+$/g, "");
+                            const cleanText = msg.text.replace(/[ \t\n\r]+$/g, "");
                             // Parse Markdown
                             let html = marked.parser(marked.lexer(cleanText));
                             // Remove trailing <br> tags and empty lines from the HTML output
