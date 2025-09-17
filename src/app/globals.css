@@ -1,5 +1,12 @@
 @import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap");
 @import "tailwindcss";
+
+/* Remove all borders and outlines from buttons on focus/active/visited */
+button:focus, button:focus-visible, button:active {
+  outline: none !important;
+  border: none !important;
+  box-shadow: none !important;
+}
 /* Gemini is typing... left-to-right glowing font animation */
 .gemini-glow {
   position: relative;

@@ -1,17 +1,29 @@
+
 "use client";
+
+// React and hooks
 import { useRef, useState, useEffect, KeyboardEvent, FormEvent } from "react";
+
+// Markdown and syntax highlighting
 import { marked } from "marked";
+import hljs from 'highlight.js/lib/core';
+import javascript from 'highlight.js/lib/languages/javascript';
+import typescript from 'highlight.js/lib/languages/typescript';
+import python from 'highlight.js/lib/languages/python';
+import xml from 'highlight.js/lib/languages/xml'; // html is registered as xml in highlight.js
+import 'highlight.js/styles/atom-one-dark.css';
+
+// Register highlight.js languages
+hljs.registerLanguage('javascript', javascript);
+hljs.registerLanguage('typescript', typescript);
+hljs.registerLanguage('python', python);
+hljs.registerLanguage('html', xml);
+
+// Local UI components
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 
-marked.setOptions({ breaks: true });
-
-// function preprocessForMarkdown(text: string) {
-//   // If the text looks like Markdown, return as is
-//   if (/[*_`#\-\[\]>]|\d+\./.test(text)) return text;
-//   // Otherwise, add two spaces at end of each line for Markdown line breaks
-//   return text.split("\n").map(line => line + "  ").join("\n");
-// }
+marked.setOptions({ breaks: false });
 
 type Message = {
   id: number;
@@ -26,7 +38,13 @@ type ChatPanelProps = {
 };
 
 export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: 0,
+      text: "What job you're looking to land or what skills do you want to learn?",
+      role: 'bot',
+    },
+  ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const GEMINI_MAX_CHARS = 8192;
@@ -70,6 +88,39 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
     }
   }
 
+  async function handleSearch(e?: FormEvent | KeyboardEvent) {
+    e?.preventDefault();
+    if (input.trim() === "" || loading) return;
+    const userMsg: Message = { id: Date.now(), text: input, role: 'user' };
+    setMessages((msgs) => [...msgs, userMsg]);
+    setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+    setLoading(true);
+    try {
+      const res = await fetch("/api/gemini/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: input })
+      });
+      const data = await res.json();
+      const botMsg: Message = {
+        id: Date.now() + 1,
+        text: data.result || "(No response)",
+        role: 'bot',
+      };
+      setMessages((msgs) => [...msgs, botMsg]);
+    } catch {
+      setMessages((msgs) => [
+        ...msgs,
+        { id: Date.now() + 2, text: "Error contacting Gemini Search API.", role: 'bot' }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       handleSend(e);
@@ -92,6 +143,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
           onClick={() => setCollapsed((c) => !c)}
           aria-label={collapsed ? 'Expand editor' : 'Collapse editor'}
         >
+          {/* Chat bubble icon */}
           <svg
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
@@ -99,31 +151,15 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
             stroke="currentColor"
             strokeWidth={2}
             className="w-5 h-5"
-            style={{ transform: `rotate(180deg)${collapsed ? ' rotate(180deg)' : ''}`, transition: 'transform 0.2s' }}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 12c0 4.418-4.03 8-9 8-1.326 0-2.583-.26-3.7-.73L3 21l1.09-3.27C3.39 16.13 3 14.61 3 13c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
         </button>
       </div>
       {!collapsed && (
-        <div className="flex flex-col h-full w-full rounded-[20px] border border-white/10 bg-neutral-900 backdrop-blur-md font-sans">
+  <div className="flex flex-col h-full w-full rounded-[20px] border border-white/10 bg-neutral-900 backdrop-blur-md font-sans overflow-x-auto">
           <ScrollArea className="flex-1 overflow-y-auto pt-4 px-4 space-y-2 font-mono font-normal leading-normal">
-            <style>{`
-              a { color: #06c !important; }
-              pre, code {
-                background: #18181b !important;
-                color: #e0e0e0 !important;
-                border-radius: 6px;
-                padding: 0.5em 0.75em;
-                font-family: 'Fira Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
-                font-size: 0.95em;
-                white-space: pre-wrap;
-                word-break: break-all;
-                overflow-x: auto;
-                display: block;
-                margin: 0.5em 0;
-              }
-            `}</style>
+            {/* highlight.js theme handles code styling */}
             <div className="space-y-5">
               {messages.length === 0 ? (
                 <div className="text-neutral-500 text-center mt-8 font-mono font-normal leading-normal">No messages yet. Start the conversation below!
@@ -132,31 +168,57 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
                 messages.map((msg) => (
                   <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div
-                      className={`bg-white/5 rounded-[12px] px-4 py-2 text-sm border border-white/10 max-w-[80%] font-mono font-normal leading-normal ${msg.role === 'user' ? 'text-white text-right' : 'text-neutral-200 text-left whitespace-pre-line'}`}
-                      {...(msg.role === 'bot' ? {
-                        dangerouslySetInnerHTML: {
-                          __html: (() => {
-                            // Remove trailing <br> and empty lines from the original text before parsing
-                            const cleanText = msg.text.replace(/[ \t\n\r]+$/g, "");
-                            // Parse Markdown
-                            let html = marked.parser(marked.lexer(cleanText));
-                            // Remove trailing <br> tags and empty lines from the HTML output
-                            html = html.replace(/(<br\s*\/?>(\s*)?)+$/gi, "");
-                            html = html.replace(/(\n|\r)+$/g, "");
-                            html = html.replace(/(<p>\s*<\/p>)+$/gi, "");
-                            return html;
-                          })()
-                        }
-                      } : {})}
-                    >
-                      {msg.role === 'user' ? msg.text : null}
+                      className={`bg-white/5 rounded-[12px] px-4 py-2 text-sm border border-white/10 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal ${msg.role === 'user' ? 'text-white text-right' : 'text-neutral-200 text-left mb-5'}`}>
+                      {msg.role === 'user' ? msg.text : (
+                        <span>
+                          {msg.text.split(/(```[\s\S]*?```)/g).map((part, i) => {
+                            if (part.startsWith('```') && part.endsWith('```')) {
+                              // Extract language and code
+                              const codeBlock = part.slice(3, -3);
+                              const firstLineBreak = codeBlock.indexOf('\n');
+                              let lang = '';
+                              let code = codeBlock;
+                              if (firstLineBreak !== -1) {
+                                lang = codeBlock.slice(0, firstLineBreak).trim();
+                                code = codeBlock.slice(firstLineBreak + 1);
+                              }
+                              let highlighted;
+                              if (lang && hljs.getLanguage(lang)) {
+                                highlighted = hljs.highlight(code, { language: lang }).value;
+                              } else {
+                                highlighted = hljs.highlightAuto(code).value;
+                              }
+                              return (
+                                <pre
+                                  key={i}
+                                  className="theme-atom-one-dark shadow-3xl text-sm relative max-w-full order-1 lg:order-2 my-50"
+                                  style={{ padding: 0, margin: 0 }}
+                                >
+                                  <span className="hljs my-5 p-4 block min-h-full">
+                                    <code className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: highlighted }} />
+                                  </span>
+                                  <small className="bg-black/30 absolute top-0 right-0 uppercase font-bold text-xs rounded-bl-md px-2 py-1">
+                                    <span className="sr-only">Language:</span>{lang ? lang.charAt(0).toUpperCase() + lang.slice(1) : 'Code'}
+                                  </small>
+                                </pre>
+                              );
+                            } else {
+                              // Use marked to render all Gemini Markdown as intended
+                              let html = marked(part.trim());
+                              return (
+                                <div className="flex flex-col gap-5" key={i} dangerouslySetInnerHTML={{ __html: html }} />
+                              );
+                            }
+                          })}
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))
               )}
               {loading && (
                 <div className="flex justify-start">
-                  <div className="bg-white/5 rounded-[12px] px-4 py-2 mb-0 text-sm border border-white/10 max-w-[80%] font-mono font-normal leading-normal text-white-200 text-left opacity-70 gemini-glow">
+                  <div className="bg-white/5 rounded-[12px] px-4 py-2 text-sm border border-white/10 max-w-[80%] font-mono font-normal leading-normal text-white-200 text-left opacity-70 gemini-glow">
                     Thinking...
                   </div>
                 </div>
@@ -186,6 +248,18 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={handleSearch}
+              className="cursor-pointer px-4 py-2 rounded-full bg-blue-400 hover:bg-blue-300 text-neutral-900 font-mono font-normal leading-normal border border-white/10 transition-colors duration-150 flex items-center justify-center"
+              aria-label="Search"
+              disabled={loading}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <circle cx="11" cy="11" r="7" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </button>
           </form>

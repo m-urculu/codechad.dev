@@ -6,7 +6,7 @@ import { useState } from "react";
 
 export default function EditorPanels() {
   const [chatCollapsed, setChatCollapsed] = useState(false);
-  const [codeCollapsed, setCodeCollapsed] = useState(false);
+  const [codeCollapsed, setCodeCollapsed] = useState(true);
 
   // Determine flex classes based on collapse state
   const bothExpanded = !chatCollapsed && !codeCollapsed;

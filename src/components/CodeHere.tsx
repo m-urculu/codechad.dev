@@ -91,6 +91,7 @@ export default function CodeHere({ collapsed, setCollapsed }: CodeHereProps) {
           onClick={() => setCollapsed((c) => !c)}
           aria-label={collapsed ? 'Expand editor' : 'Collapse editor'}
         >
+          {/* Coding icon replaces arrow */}
           <svg
             xmlns="http://www.w3.org/2000/svg"
             fill="none"
@@ -98,9 +99,9 @@ export default function CodeHere({ collapsed, setCollapsed }: CodeHereProps) {
             stroke="currentColor"
             strokeWidth={2}
             className="w-5 h-5"
-            style={{ transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+            style={{ transition: 'transform 0.2s' }}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16 18l6-6-6-6M8 6l-6 6 6 6" />
           </svg>
         </button>
       </div>

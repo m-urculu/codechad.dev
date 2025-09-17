@@ -4,6 +4,8 @@
 import { callGemini } from '@/lib/gemini';
 import { NextResponse } from 'next/server';
 
+
+// Gemini chat function
 export async function POST(request: Request) {
   try {
     const { prompt } = await request.json();

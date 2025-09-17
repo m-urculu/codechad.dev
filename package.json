@@ -9,10 +9,16 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@google/genai": "^1.20.0",
     "@monaco-editor/react": "^4.7.0",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-scroll-area": "^1.2.10",
+    "@supabase/supabase-js": "^2.57.4",
+    "add": "^2.0.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dropdown-menu": "^0.1.1",
+    "highlight.js": "^11.11.1",
     "lucide-react": "^0.544.0",
     "marked": "^16.2.1",
     "monaco-editor": "^0.53.0",
@@ -21,7 +27,7 @@
     "react": "19.1.0",
     "react-custom-scrollbars-2": "^4.5.0",
     "react-dom": "19.1.0",
-    "shadcn": "^3.2.1",
+    "shadcn": "^3.3.0",
     "sidebar": "^1.0.2",
     "tailwind-merge": "^3.3.1"
   },
