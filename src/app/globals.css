@@ -1,6 +1,11 @@
 @import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap");
 @import "tailwindcss";
 
+/* Custom highlight.js transparent background */
+.hljs, .hljs code, pre.theme-atom-one-dark, pre.theme-atom-one-dark code {
+  background: transparent !important;
+  box-shadow: none !important;
+}
 /* Remove all borders and outlines from buttons on focus/active/visited */
 button:focus, button:focus-visible, button:active {
   outline: none !important;

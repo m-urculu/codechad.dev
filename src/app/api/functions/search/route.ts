@@ -1,12 +1,12 @@
 // src/app/api/gemini/search/route.ts
 // API Route: /api/gemini/search - Endpoint to Call Gemini API
 
-
 import { NextResponse } from 'next/server';
 
 // Gemini search function using Gemini API
 
 import { GoogleGenAI } from "@google/genai";
+import { insertChatMessage } from "@/app/api/supabase/chat-message";
 
 // Gemini search function using GoogleGenAI with grounding (real search)
 async function geminiSearch(query: string) {
@@ -34,17 +34,29 @@ async function geminiSearch(query: string) {
 // POST /api/gemini/search
 export async function POST(request: Request) {
   try {
-    const { query } = await request.json();
+    const { query, user_id } = await request.json();
     if (!query || typeof query !== 'string') {
       return NextResponse.json({ error: 'Missing or invalid query' }, { status: 400 });
     }
     const result = await geminiSearch(query);
-    console.log('Gemini Search Response:', result);
-    if (!result) {
-      return NextResponse.json({ error: 'Failed to get response from Gemini.' }, { status: 500 });
+    // Remove all leading 'Assistant:' if present and ensure string
+    let cleanResult = result;
+    if (typeof cleanResult === 'string') {
+      cleanResult = cleanResult.replace(/^(Assistant:\s*)+/i, '');
     }
-    return NextResponse.json({ result });
-  } catch (e) {
-    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+    if (cleanResult == null) cleanResult = '';
+    
+    // Store assistant message
+    if (user_id) {
+      await insertChatMessage({ user_id, role: 'assistant', content: cleanResult });
+    }
+    return NextResponse.json({ result: cleanResult });
+  } catch (e: any) {
+    console.error('Search function error:', e);
+    // Handle Gemini API overload (503)
+    if (e && e.message && typeof e.message === 'string' && e.message.includes('model is overloaded')) {
+      return NextResponse.json({ error: 'The search service is temporarily unavailable due to high load. Please try again in a few moments.' }, { status: 503 });
+    }
+    return NextResponse.json({ error: 'Internal server error', details: String(e) }, { status: 500 });
   }
 }

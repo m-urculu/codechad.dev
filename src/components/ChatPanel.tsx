@@ -1,4 +1,3 @@
-
 "use client";
 
 // React and hooks
@@ -12,6 +11,7 @@ import typescript from 'highlight.js/lib/languages/typescript';
 import python from 'highlight.js/lib/languages/python';
 import xml from 'highlight.js/lib/languages/xml'; // html is registered as xml in highlight.js
 import 'highlight.js/styles/atom-one-dark.css';
+// import TextType from "@/components/Text/TextType";
 
 // Register highlight.js languages
 hljs.registerLanguage('javascript', javascript);
@@ -22,6 +22,7 @@ hljs.registerLanguage('html', xml);
 // Local UI components
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+import { createClient, User } from '@supabase/supabase-js';
 
 marked.setOptions({ breaks: false });
 
@@ -37,6 +38,11 @@ type ChatPanelProps = {
   setCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
+  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
+);
+
 export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -47,6 +53,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const GEMINI_MAX_CHARS = 8192;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -54,6 +61,15 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    // Get user id from Supabase
+    const getUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setUserId(data.user?.id ?? null);
+    };
+    getUser();
+  }, []);
 
   async function handleSend(e?: FormEvent | KeyboardEvent) {
     e?.preventDefault();
@@ -66,55 +82,23 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
     }
     setLoading(true);
     try {
-      const res = await fetch("/api/gemini", {
+      const res = await fetch("/api/sys-manager", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: input })
+        body: JSON.stringify({ function: 'chat', user_input: input, user_id: userId })
       });
       const data = await res.json();
+      // Accept both {response} and {result} for chat, or show error if present
       const botMsg: Message = {
         id: Date.now() + 1,
-        text: data.response || "(No response)",
+        text: data.error ? (data.error + (data.details ? `\n${data.details}` : '')) : (data.response || data.result || "(No response)"),
         role: 'bot',
       };
       setMessages((msgs) => [...msgs, botMsg]);
     } catch {
       setMessages((msgs) => [
         ...msgs,
-        { id: Date.now() + 2, text: "Error contacting Gemini API.", role: 'bot' }
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleSearch(e?: FormEvent | KeyboardEvent) {
-    e?.preventDefault();
-    if (input.trim() === "" || loading) return;
-    const userMsg: Message = { id: Date.now(), text: input, role: 'user' };
-    setMessages((msgs) => [...msgs, userMsg]);
-    setInput("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
-    setLoading(true);
-    try {
-      const res = await fetch("/api/gemini/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: input })
-      });
-      const data = await res.json();
-      const botMsg: Message = {
-        id: Date.now() + 1,
-        text: data.result || "(No response)",
-        role: 'bot',
-      };
-      setMessages((msgs) => [...msgs, botMsg]);
-    } catch {
-      setMessages((msgs) => [
-        ...msgs,
-        { id: Date.now() + 2, text: "Error contacting Gemini Search API.", role: 'bot' }
+        { id: Date.now() + 2, text: "Error contacting system manager API.", role: 'bot' }
       ]);
     } finally {
       setLoading(false);
@@ -136,10 +120,10 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
   }
 
   return (
-    <div className="flex flex-1 min-w-0 p-4 gap-4 border border-white/10 min-w-0">
+    <div className="flex flex-1 min-w-0 p-4 gap-4 border border-white/50 min-w-0">
       <div className="flex items-start bg-transparent">
         <button
-          className="bg-neutral-800 hover:bg-neutral-700 text-white rounded-full p-2 shadow border border-white/10 transition-colors cursor-pointer"
+          className="bg-neutral-800 hover:bg-neutral-700 text-white rounded-full p-2 shadow border border-white/50 transition-colors cursor-pointer"
           onClick={() => setCollapsed((c) => !c)}
           aria-label={collapsed ? 'Expand editor' : 'Collapse editor'}
         >
@@ -157,7 +141,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
         </button>
       </div>
       {!collapsed && (
-  <div className="flex flex-col h-full w-full rounded-[20px] border border-white/10 bg-neutral-900 backdrop-blur-md font-sans overflow-x-auto">
+  <div className="flex flex-col h-full w-full rounded-[20px] border border-white/50 backdrop-blur-md font-sans overflow-x-auto">
           <ScrollArea className="flex-1 overflow-y-auto pt-4 px-4 space-y-2 font-mono font-normal leading-normal">
             {/* highlight.js theme handles code styling */}
             <div className="space-y-5">
@@ -168,7 +152,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
                 messages.map((msg) => (
                   <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div
-                      className={`bg-white/5 rounded-[12px] px-4 py-2 text-sm border border-white/10 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal ${msg.role === 'user' ? 'text-white text-right' : 'text-neutral-200 text-left mb-5'}`}>
+                      className={`bg-black/70 rounded-[12px] px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal ${msg.role === 'user' ? 'text-white text-right' : 'text-neutral-200 text-left mb-5'}`}>
                       {msg.role === 'user' ? msg.text : (
                         <span>
                           {msg.text.split(/(```[\s\S]*?```)/g).map((part, i) => {
@@ -218,7 +202,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
               )}
               {loading && (
                 <div className="flex justify-start">
-                  <div className="bg-white/5 rounded-[12px] px-4 py-2 text-sm border border-white/10 max-w-[80%] font-mono font-normal leading-normal text-white-200 text-left opacity-70 gemini-glow">
+                  <div className="bg-white/5 rounded-[12px] px-4 py-2 text-sm border border-white/50 max-w-[80%] font-mono font-normal leading-normal text-white-200 text-left opacity-70 gemini-glow">
                     Thinking...
                   </div>
                 </div>
@@ -228,12 +212,12 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
             <ScrollBar orientation="vertical" />
           </ScrollArea>
           <form
-            className="flex items-center gap-2 p-4 border-t border-white/10 bg-neutral-900 rounded-b-[20px]"
+            className="flex items-center gap-2 p-4 border-t border-white/50 rounded-b-[20px]"
             onSubmit={handleSend}
           >
             <Textarea
               ref={textareaRef}
-              className="flex-1 min-h-[40px] max-h-40 resize-none rounded-[25px] px-4 py-2 bg-neutral-800 text-white placeholder:text-neutral-400 placeholder:font-mono placeholder:font-normal placeholder:leading-normal border border-white/10 focus:border-neutral-500 focus:outline-none font-mono font-normal leading-normal overflow-y-auto overflow-x-auto"
+              className="flex-1 min-h-[40px] max-h-40 resize-none rounded-[25px] px-4 py-2 bg-neutral-800 text-white placeholder:text-neutral-400 placeholder:font-mono placeholder:font-normal placeholder:leading-normal border border-white/50 focus:border-neutral-500 focus:outline-none font-mono font-normal leading-normal overflow-y-auto overflow-x-auto"
               placeholder="Type a message..."
               value={input}
               onChange={handleInput}
@@ -243,23 +227,11 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
             />
             <button
               type="submit"
-              className="cursor-pointer px-4 py-2 rounded-full bg-neutral-400 hover:bg-neutral-300 text-neutral-900 font-mono font-normal leading-normal border border-white/10 transition-colors duration-150 flex items-center justify-center"
+              className="cursor-pointer px-4 py-2 rounded-full bg-neutral-400 hover:bg-neutral-300 text-neutral-900 font-mono font-normal leading-normal border border-white/50 transition-colors duration-150 flex items-center justify-center"
               aria-label="Send"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M13 6l6 6-6 6" />
-              </svg>
-            </button>
-            <button
-              type="button"
-              onClick={handleSearch}
-              className="cursor-pointer px-4 py-2 rounded-full bg-blue-400 hover:bg-blue-300 text-neutral-900 font-mono font-normal leading-normal border border-white/10 transition-colors duration-150 flex items-center justify-center"
-              aria-label="Search"
-              disabled={loading}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                <circle cx="11" cy="11" r="7" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
             </button>
           </form>

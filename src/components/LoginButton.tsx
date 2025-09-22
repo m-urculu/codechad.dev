@@ -27,8 +27,20 @@ export function LoginButton() {
     };
     getUser();
     // Listen for auth changes
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
+      if (session?.user) {
+        // Call API route to register user in user_step_fulfillment
+        try {
+          await fetch('/api/user-steps/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ user_id: session.user.id })
+          });
+        } catch (err) {
+          // Optionally handle/log error
+        }
+      }
     });
     return () => {
       listener.subscription.unsubscribe();

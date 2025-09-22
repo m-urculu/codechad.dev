@@ -1,8 +1,7 @@
 "use client";
 
 import Editor from "@monaco-editor/react";
-
-import { useState } from "react";
+// import { useState } from "react";
 
 type CodeHereProps = {
   collapsed: boolean;
@@ -11,12 +10,12 @@ type CodeHereProps = {
 
 export default function CodeHere({ collapsed, setCollapsed }: CodeHereProps) {
   return (
-    <div className="flex flex-1 min-w-0 p-4 gap-4 border border-white/10">
+    <div className="flex flex-1 min-w-0 p-4 gap-4 border border-white/50">
       {/* Main editor panel, collapsible */}
       {!collapsed && (
         <div className="h-full w-full min-w-0">
-          <div className="h-full font-mono font-normal leading-normal bg-neutral-900 rounded-[20px] border border-white/10 backdrop-blur-md flex flex-col gap-0 overflow-hidden">
-            <div className="absolute m-1 z-10 flex items-center gap-2 bg-neutral-900 bg-opacity-80 rounded-full px-2 py-1 shadow text-yellow-300 text-xs font-semibold select-none">
+          <div className="h-full font-mono font-normal leading-normal rounded-[20px] border border-white/10 backdrop-blur-md flex flex-col gap-0 overflow-hidden">
+            <div className="absolute m-1 z-10 flex items-center gap-2 bg-opacity-80 rounded-full px-2 py-1 shadow text-yellow-300 text-xs font-semibold select-none">
               <svg width="18" height="18" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <rect width="32" height="32" rx="6" fill="#F7DF1E"/>
                 <path d="M19.5 23.5c.6 1.1 1.4 1.9 2.9 1.9 1.2 0 2-.6 2-1.5 0-1-0.8-1.3-2.2-1.9l-.8-.3c-2.3-.9-3.8-2-3.8-4.3 0-2.1 1.6-3.7 4.1-3.7 1.8 0 3.1.6 4 2.2l-2.2 1.4c-.5-.9-1-1.2-1.8-1.2-.8 0-1.3.5-1.3 1.2 0 .8.5 1.1 1.7 1.6l.8.3c2.7 1.1 4.2 2.1 4.2 4.5 0 2.6-2 4-4.6 4-2.6 0-4.2-1.2-5-2.7l2.3-1.3zm-9.2.2c.4.7.8 1.3 1.7 1.3.9 0 1.5-.3 1.5-1.7v-7.2h2.7v7.3c0 2.8-1.6 4-4 4-2.1 0-3.3-1.1-3.9-2.4l2.3-1.3z" fill="#23272e"/>
