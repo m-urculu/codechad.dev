@@ -9,7 +9,11 @@ export async function POST(req: Request) {
     }
     await registerUserStepFulfillment(user_id);
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message || 'Unknown error' }, { status: 500 });
+  } catch (error: unknown) {
+    let message = 'Unknown error';
+    if (typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message: unknown }).message === 'string') {
+      message = (error as { message: string }).message;
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

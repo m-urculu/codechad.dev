@@ -22,7 +22,7 @@ hljs.registerLanguage('html', xml);
 // Local UI components
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { createClient, User } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
 marked.setOptions({ breaks: false });
 
@@ -188,7 +188,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
                               );
                             } else {
                               // Use marked to render all Gemini Markdown as intended
-                              let html = marked(part.trim());
+                              const html = marked(part.trim());
                               return (
                                 <div className="flex flex-col gap-5" key={i} dangerouslySetInnerHTML={{ __html: html }} />
                               );
