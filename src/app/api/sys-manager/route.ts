@@ -16,7 +16,7 @@ const functionMap: Record<string, (request: Request) => Promise<Response>> = {
 
 
 // Helper to fetch user step fulfillment from Supabase
-async function getUserStepFulfillment(user_id) {
+async function getUserStepFulfillment(user_id: string) {
   const supabase = createClient(process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!, process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!);
   const { data, error } = await supabase
     .from('user_step_fulfillment')
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
       });
     }
     // Retrieve previous messages for the user
-    let previousMessages: any[] = [];
+  let previousMessages: unknown[] = [];
     if (user_id) {
       const { data, error } = await getUserChatMessages(user_id, 20);
       if (error) {
@@ -82,8 +82,8 @@ export async function POST(request: Request) {
 
     // 2. Parse Gemini's response for function and message
 
-    let parsed;
-    let safeGeminiResponse = geminiResponse == null ? '' : geminiResponse;
+  let parsed;
+  const safeGeminiResponse = geminiResponse == null ? '' : geminiResponse;
     try {
       parsed = JSON.parse(safeGeminiResponse);
     } catch {

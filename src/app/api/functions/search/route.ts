@@ -26,8 +26,17 @@ async function geminiSearch(query: string) {
   // The response object may differ depending on the SDK version
   // Try to extract the text in a robust way
   if (response && response.text) return response.text;
-  if (response && response.candidates && response.candidates[0]?.content?.parts[0]?.text)
+  if (
+    response &&
+    Array.isArray(response.candidates) &&
+    response.candidates.length > 0 &&
+    response.candidates[0]?.content?.parts &&
+    Array.isArray(response.candidates[0].content.parts) &&
+    response.candidates[0].content.parts.length > 0 &&
+    typeof response.candidates[0].content.parts[0]?.text === 'string'
+  ) {
     return response.candidates[0].content.parts[0].text;
+  }
   return JSON.stringify(response);
 }
 
@@ -51,10 +60,14 @@ export async function POST(request: Request) {
       await insertChatMessage({ user_id, role: 'assistant', content: cleanResult });
     }
     return NextResponse.json({ result: cleanResult });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('Search function error:', e);
     // Handle Gemini API overload (503)
-    if (e && e.message && typeof e.message === 'string' && e.message.includes('model is overloaded')) {
+    let message = '';
+    if (typeof e === 'object' && e !== null && 'message' in e && typeof (e as { message: unknown }).message === 'string') {
+      message = (e as { message: string }).message;
+    }
+    if (message.includes('model is overloaded')) {
       return NextResponse.json({ error: 'The search service is temporarily unavailable due to high load. Please try again in a few moments.' }, { status: 503 });
     }
     return NextResponse.json({ error: 'Internal server error', details: String(e) }, { status: 500 });
