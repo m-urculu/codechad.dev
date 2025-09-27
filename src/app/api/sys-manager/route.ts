@@ -70,11 +70,11 @@ export async function POST(request: Request) {
     }
 
     // Build SYSTEM_INSTRUCTIONS dynamically
-    let SYSTEM_INSTRUCTIONS = `You are a system manager. Given a user message, decide which function to call: 'chat' for general conversation, 'search' for information lookup`;
+    let SYSTEM_INSTRUCTIONS = `You are a system manager. Given a user message, decide which ONE function to call: 'chat' for general conversation, 'search' for information lookup`;
     if (nextStep) {
       SYSTEM_INSTRUCTIONS += `, or '${nextStep}' for the next step in the user's journey`;
     }
-    SYSTEM_INSTRUCTIONS += `.\nRespond in JSON: { "function": "chat|search${nextStep ? '|' + nextStep : ''}", "message": "<user message to pass>" }`;
+    SYSTEM_INSTRUCTIONS += `.\nRespond in JSON: { "function": "chat|search${nextStep ? '|' + nextStep : ''}", "message": "<user message to pass>" }. Only call ONE function per response.`;
 
     // 1. Ask Gemini which function to call
     const geminiPrompt = `${SYSTEM_INSTRUCTIONS}\nPrevious messages: ${JSON.stringify(previousMessages)}\nUser: ${user_input}`;

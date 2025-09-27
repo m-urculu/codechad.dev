@@ -123,7 +123,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
     <div className="flex flex-1 min-w-0 p-4 gap-4 border border-white/50 min-w-0">
       <div className="flex items-start bg-transparent">
         <button
-          className="bg-neutral-800 hover:bg-neutral-700 text-white rounded-full p-2 shadow border border-white/50 transition-colors cursor-pointer"
+          className="bg-black hover:bg-neutral-700 text-white p-2 shadow border border-white/50 transition-colors cursor-pointer"
           onClick={() => setCollapsed((c) => !c)}
           aria-label={collapsed ? 'Expand editor' : 'Collapse editor'}
         >
@@ -141,8 +141,8 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
         </button>
       </div>
       {!collapsed && (
-  <div className="flex flex-col h-full w-full rounded-[20px] border border-white/50 backdrop-blur-md font-sans overflow-x-auto">
-          <ScrollArea className="flex-1 overflow-y-auto pt-4 px-4 space-y-2 font-mono font-normal leading-normal">
+  <div className="flex flex-col h-full w-full border border-white/50 backdrop-blur-md font-sans overflow-x-auto">
+          <ScrollArea className="flex-1 overflow-y-auto px-6 space-y-2 font-mono font-normal leading-normal">
             {/* highlight.js theme handles code styling */}
             <div className="space-y-5">
               {messages.length === 0 ? (
@@ -150,9 +150,9 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
                 </div>
               ) : (
                 messages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div key={msg.id} className={`flex mt-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div
-                      className={`bg-black/70 rounded-[12px] px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal ${msg.role === 'user' ? 'text-white text-right' : 'text-neutral-200 text-left mb-5'}`}>
+                      className={`bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal ${msg.role === 'user' ? 'text-white text-right' : 'text-neutral-200 text-left'}`}>
                       {msg.role === 'user' ? msg.text : (
                         <span>
                           {msg.text.split(/(```[\s\S]*?```)/g).map((part, i) => {
@@ -181,7 +181,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
                                   <span className="hljs my-5 p-4 block min-h-full">
                                     <code className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: highlighted }} />
                                   </span>
-                                  <small className="bg-black/30 absolute top-0 right-0 uppercase font-bold text-xs rounded-bl-md px-2 py-1">
+                                  <small className="bg-black/30 absolute top-0 right-0 uppercase font-bold text-xs px-2 py-1">
                                     <span className="sr-only">Language:</span>{lang ? lang.charAt(0).toUpperCase() + lang.slice(1) : 'Code'}
                                   </small>
                                 </pre>
@@ -202,7 +202,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
               )}
               {loading && (
                 <div className="flex justify-start">
-                  <div className="bg-white/5 rounded-[12px] px-4 py-2 text-sm border border-white/50 max-w-[80%] font-mono font-normal leading-normal text-white-200 text-left opacity-70 gemini-glow">
+                  <div className="bg-white/5 px-4 py-2 text-sm border border-white/50 max-w-[80%] font-mono font-normal leading-normal text-white-200 text-left opacity-70 gemini-glow">
                     Thinking...
                   </div>
                 </div>
@@ -212,12 +212,12 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
             <ScrollBar orientation="vertical" />
           </ScrollArea>
           <form
-            className="flex items-center gap-2 p-4 border-t border-white/50 rounded-b-[20px]"
+            className="flex items-center gap-2 p-4 border-t border-white/50"
             onSubmit={handleSend}
           >
             <Textarea
               ref={textareaRef}
-              className="flex-1 min-h-[40px] max-h-40 resize-none rounded-[25px] px-4 py-2 bg-neutral-800 text-white placeholder:text-neutral-400 placeholder:font-mono placeholder:font-normal placeholder:leading-normal border border-white/50 focus:border-neutral-500 focus:outline-none font-mono font-normal leading-normal overflow-y-auto overflow-x-auto"
+              className="flex-1 min-h-[40px] max-h-40 resize-none px-4 py-2 bg-black text-white placeholder:text-neutral-400 placeholder:font-mono placeholder:font-normal placeholder:leading-normal border border-white/50 focus:border-neutral-500 focus:outline-none font-mono font-normal leading-normal rounded-none overflow-y-auto overflow-x-auto"
               placeholder="Type a message..."
               value={input}
               onChange={handleInput}
@@ -227,7 +227,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
             />
             <button
               type="submit"
-              className="cursor-pointer px-4 py-2 rounded-full bg-neutral-400 hover:bg-neutral-300 text-neutral-900 font-mono font-normal leading-normal border border-white/50 transition-colors duration-150 flex items-center justify-center"
+              className="cursor-pointer px-4 py-2 bg-neutral-400 hover:bg-neutral-300 text-neutral-900 font-mono font-normal leading-normal border border-white/50 transition-colors duration-150 flex items-center justify-center"
               aria-label="Send"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">

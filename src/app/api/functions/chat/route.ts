@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     let preamble = '';
     if (userSteps) {
       if (userSteps.define_roadmaps_done === false) {
-        preamble = 'Before continuing, please ask the user to define their job or skills goals within the digital-first market. Check if the skills are well-defined otherwise re-ask for clarification.\n';
+        preamble = 'Before continuing, please ask the user to define their job or skills goals within the software development market. Here are some common archetypes you can choose from: Backend Developer, Frontend Developer, Full Stack Developer, DevOps Engineer, Data Scientist, AI Engineer, Mobile Developer, Game Developer, Software Architect, Product Manager, Technical Writer, QA Engineer, UX Designer, Blockchain Developer, Cyber Security Specialist. If none fit, describe your own. Check if the skills are well-defined otherwise re-ask for clarification.\n';
       } else if (userSteps.define_project_done === false) {
         preamble = 'Before continuing, please ask the user to define their project.\n';
       }

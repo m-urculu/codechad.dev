@@ -56,7 +56,7 @@ export function LoginButton() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="flex items-center justify-center rounded-full overflow-hidden bg-neutral-800 p-0 mx-1 cursor-pointer"
+            className="flex items-center justify-center overflow-hidden bg-black p-0 mx-1 cursor-pointer"
             style={{ width: 38, height: 38, border: 'none' }}
           >
             {user.user_metadata?.avatar_url && !imgError ? (
@@ -65,9 +65,10 @@ export function LoginButton() {
                 alt="Profile"
                 className="object-cover"
                 style={{ width: 38, height: 38, border: 'none' }}
+                onError={() => setImgError(true)}
               />
             ) : (
-              <span className="text-white text-[16px] font-mono font-bold uppercase">
+              <span className="text-white text-[16px] font-normal uppercase">
                 {user.user_metadata?.name?.[0] || user.email?.[0] || 'U'}
               </span>
             )}
@@ -75,10 +76,10 @@ export function LoginButton() {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
-          className="bg-neutral-900 border border-white/10 text-white font-mono min-w-[8rem] p-1 rounded-full"
+          className="bg-neutral-900 border border-white/10 text-white font-mono min-w-[8rem] p-1"
         >
           <DropdownMenuItem
-            className="rounded-full px-3 py-2 hover:bg-neutral-800 focus:bg-neutral-800 text-white font-mono cursor-pointer flex items-center gap-2"
+            className="px-3 py-2 hover:bg-black focus:bg-black text-white font-mono cursor-pointer flex items-center gap-2"
             onClick={async () => {
               setLoading(true); // Prevent drawing login button after logout
               await supabase.auth.signOut();
@@ -95,7 +96,7 @@ export function LoginButton() {
 
   return (
     <button
-      className="px-4 py-2 rounded-full text-white font-mono font-normal text-sm shadow-md hover:from-blue-500 hover:to-purple-600 transition-colors cursor-pointer border border-white/10 bg-neutral-800 hover:bg-neutral-700"
+      className="px-4 py-2 text-white font-mono font-normal text-sm shadow-md hover:from-blue-500 hover:to-purple-600 transition-colors cursor-pointer border border-white/10 bg-black hover:bg-neutral-700"
       style={{ fontFamily: "var(--font-mono)" }}
       onClick={() => window.location.href = "/api/auth/google"}
     >
