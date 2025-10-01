@@ -56,7 +56,7 @@ export function LoginButton() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="flex items-center justify-center overflow-hidden bg-black p-0 mx-1 cursor-pointer"
+            className="flex items-center justify-center overflow-hidden bg-black p-0 cursor-pointer"
             style={{ width: 38, height: 38, border: 'none' }}
           >
             {user.user_metadata?.avatar_url && !imgError ? (

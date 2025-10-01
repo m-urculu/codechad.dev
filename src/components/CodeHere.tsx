@@ -86,7 +86,7 @@ export default function CodeHere({ collapsed, setCollapsed }: CodeHereProps) {
       )}
       <div className="flex items-start bg-transparent ml-auto">
         <button
-          className="bg-black hover:bg-neutral-700 text-white p-2 shadow border border-white/10 transition-colors cursor-pointer"
+          className="bg-black hover:bg-neutral-700 text-white p-2 shadow border border-white/50 transition-colors cursor-pointer"
           onClick={() => setCollapsed((c) => !c)}
           aria-label={collapsed ? 'Expand editor' : 'Collapse editor'}
         >

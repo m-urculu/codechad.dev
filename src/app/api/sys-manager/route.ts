@@ -117,6 +117,11 @@ export async function POST(request: Request) {
       // Forward error and status from downstream function
       return NextResponse.json(handlerData, { status: handlerResponse.status });
     }
+    // For define_roadmaps, pass through the full roadmap JSON and summary for the frontend
+    if (fn === 'define_roadmaps') {
+      // Pass all handlerData fields, including roadmap, roadmapSummary, userMessage, etc.
+      return NextResponse.json(handlerData);
+    }
     return NextResponse.json(handlerData);
   } catch (error) {
     console.error('[sys-manager] Error:', error);

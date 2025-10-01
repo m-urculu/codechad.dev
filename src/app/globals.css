@@ -1,6 +1,20 @@
-@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap");
 @import "tailwindcss";
 
+/* Make all links open in a new tab */
+a {
+  color: #668ee4;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+a:hover {
+  color: #668ee4;
+  text-decoration: underline;
+}
+a:not([target]) {
+  target-name: _blank;
+  rel: noopener noreferrer;
+}
 /* Custom highlight.js transparent background */
 .hljs, .hljs code, pre.theme-atom-one-dark, pre.theme-atom-one-dark code {
   background: transparent !important;
@@ -53,16 +67,15 @@ button:focus, button:focus-visible, button:active {
 }
 
 
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@theme inline {
+  --leading: 0.1;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: "Roboto", sans-serif;
-  --font-mono: monospace;
+  --font-sans: "Space Grotesk", sans-serif;
+  --font-mono: "Space Grotesk", sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -71,9 +84,9 @@ button:focus, button:focus-visible, button:active {
     --foreground: #ededed;
   }
 }
-
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  line-height: var(--leading);
 }

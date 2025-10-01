@@ -63,12 +63,34 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
   }, [messages]);
 
   useEffect(() => {
-    // Get user id from Supabase
-    const getUser = async () => {
+    // Get user id from Supabase and load chat history
+    const getUserAndHistory = async () => {
       const { data } = await supabase.auth.getUser();
-      setUserId(data.user?.id ?? null);
+      const uid = data.user?.id ?? null;
+      setUserId(uid);
+      if (uid) {
+        try {
+          const res = await fetch("/api/functions/chat/history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_id: uid, limit: 50 })
+          });
+          const result = await res.json();
+          if (Array.isArray(result.messages) && result.messages.length > 0) {
+            setMessages(
+              result.messages.map((msg, idx) => ({
+                id: idx + 1,
+                text: msg.content,
+                role: msg.role === "assistant" ? "bot" : "user"
+              }))
+            );
+          }
+        } catch {
+          // Optionally handle error
+        }
+      }
     };
-    getUser();
+    getUserAndHistory();
   }, []);
 
   async function handleSend(e?: FormEvent | KeyboardEvent) {
@@ -142,7 +164,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
       </div>
       {!collapsed && (
   <div className="flex flex-col h-full w-full border border-white/50 backdrop-blur-md font-sans overflow-x-auto">
-          <ScrollArea className="flex-1 overflow-y-auto px-6 space-y-2 font-mono font-normal leading-normal">
+          <ScrollArea className="flex-1 overflow-y-auto overflow-hidden px-6 space-y-2 font-mono font-normal leading-normal">
             {/* highlight.js theme handles code styling */}
             <div className="space-y-5">
               {messages.length === 0 ? (
@@ -150,7 +172,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
                 </div>
               ) : (
                 messages.map((msg) => (
-                  <div key={msg.id} className={`flex mt-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div key={msg.id} className={`flex my-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div
                       className={`bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal ${msg.role === 'user' ? 'text-white text-right' : 'text-neutral-200 text-left'}`}>
                       {msg.role === 'user' ? msg.text : (
