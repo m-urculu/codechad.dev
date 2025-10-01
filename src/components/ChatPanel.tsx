@@ -78,7 +78,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
           const result = await res.json();
           if (Array.isArray(result.messages) && result.messages.length > 0) {
             setMessages(
-              result.messages.map((msg, idx) => ({
+              result.messages.map((msg: { content: string; role: string }, idx: number) => ({
                 id: idx + 1,
                 text: msg.content,
                 role: msg.role === "assistant" ? "bot" : "user"
