@@ -262,22 +262,22 @@ function DitheredWaves({
 }
 
 export default function Dither({
-  waveSpeed = 0.05,
-  waveFrequency = 3,
-  waveAmplitude = 0.3,
+  waveSpeed = 0.03, // slightly slower
+  waveFrequency = 2, // less complex
+  waveAmplitude = 0.2, // less intense
   waveColor = [0.5, 0.5, 0.5],
-  colorNum = 4,
-  pixelSize = 2,
+  colorNum = 3, // fewer colors
+  pixelSize = 1, // larger pixels, less work
   disableAnimation = false,
-  enableMouseInteraction = true,
-  mouseRadius = 1
+  enableMouseInteraction = false, // disables mouse interaction for perf
+  mouseRadius = 0.2 // smaller mouse effect
 }) {
   return (
     <Canvas
       className="dither-container"
       camera={{ position: [0, 0, 6] }}
-      dpr={1}
-      gl={{ antialias: true, preserveDrawingBuffer: true }}
+      dpr={0.5} // lower device pixel ratio
+      gl={{ antialias: false, preserveDrawingBuffer: false }}
     >
       <DitheredWaves
         waveSpeed={waveSpeed}

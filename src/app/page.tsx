@@ -1,11 +1,11 @@
 import EditorPanels from "@/components/EditorPanels";
 import NavBar from "@/components/NavBar";
-// import Background from "@/components/Background/Background";
+import Background from "@/components/Background/Background";
 
 export default function Home() {
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden">
-      {/* <Background /> */}
+      <Background />
       <NavBar />
       <EditorPanels />
     </div>
