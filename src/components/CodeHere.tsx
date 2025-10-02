@@ -1,6 +1,7 @@
 "use client";
 
-import Editor from "@monaco-editor/react";
+import dynamic from "next/dynamic";
+const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 // import { useState } from "react";
 
 type CodeHereProps = {
@@ -24,7 +25,7 @@ export default function CodeHere({ collapsed, setCollapsed }: CodeHereProps) {
             </div>
             <div className="flex-1 flex flex-col overflow-hidden pt-9 relative">
               {/* Language Icon */}
-              <Editor
+              <MonacoEditor
                 height="100%"
                 defaultLanguage="javascript"
                 defaultValue={"// Write your code here..."}
@@ -45,7 +46,6 @@ export default function CodeHere({ collapsed, setCollapsed }: CodeHereProps) {
                   },
                   overviewRulerLanes: 0,
                   renderLineHighlight: "all",
-                  // renderIndentGuides: true, // REMOVE this line if present
                   renderWhitespace: "boundary",
                   tabSize: 2,
                   cursorBlinking: "smooth",

@@ -1,7 +1,7 @@
 "use client";
 
 // React and hooks
-import { useRef, useState, useEffect, KeyboardEvent, FormEvent } from "react";
+import { useRef, useState, useEffect, KeyboardEvent, FormEvent, memo } from "react";
 
 // Markdown and syntax highlighting
 import { marked } from "marked";
@@ -141,6 +141,67 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
     }
   }
 
+  // Memoized message bubble for performance
+  const MessageBubble = memo(function MessageBubble({ msg }: { msg: Message }) {
+    if (msg.role === 'user') {
+      return (
+        <div className={`flex my-4 justify-end`}>
+          <div className="bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal text-white text-right">
+            {msg.text}
+          </div>
+        </div>
+      );
+    }
+    // Memoize marked and highlight.js output for bot messages
+    const parts = msg.text.split(/(```[\s\S]*?```)/g);
+    const rendered = parts.map((part, i) => {
+      if (part.startsWith('```') && part.endsWith('```')) {
+        // Extract language and code
+        const codeBlock = part.slice(3, -3);
+        const firstLineBreak = codeBlock.indexOf('\n');
+        let lang = '';
+        let code = codeBlock;
+        if (firstLineBreak !== -1) {
+          lang = codeBlock.slice(0, firstLineBreak).trim();
+          code = codeBlock.slice(firstLineBreak + 1);
+        }
+        let highlighted;
+        if (lang && hljs.getLanguage(lang)) {
+          highlighted = hljs.highlight(code, { language: lang }).value;
+        } else {
+          highlighted = hljs.highlightAuto(code).value;
+        }
+        return (
+          <pre
+            key={i}
+            className="theme-atom-one-dark shadow-3xl text-sm relative max-w-full order-1 lg:order-2 my-50"
+            style={{ padding: 0, margin: 0 }}
+          >
+            <span className="hljs my-5 p-4 block min-h-full">
+              <code className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: highlighted }} />
+            </span>
+            <small className="bg-black/30 absolute top-0 right-0 uppercase font-bold text-xs px-2 py-1">
+              <span className="sr-only">Language:</span>{lang ? lang.charAt(0).toUpperCase() + lang.slice(1) : 'Code'}
+            </small>
+          </pre>
+        );
+      } else {
+        // Use marked to render all Gemini Markdown as intended
+        const html = marked(part.trim());
+        return (
+          <div className="flex flex-col gap-5" key={i} dangerouslySetInnerHTML={{ __html: html }} />
+        );
+      }
+    });
+    return (
+      <div className={`flex my-4 justify-start`}>
+        <div className="bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal text-neutral-200 text-left">
+          <span>{rendered}</span>
+        </div>
+      </div>
+    );
+  });
+
   return (
     <div className="flex flex-1 min-w-0 p-4 gap-4 border border-white/50 min-w-0">
       <div className="flex items-start bg-transparent">
@@ -163,7 +224,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
         </button>
       </div>
       {!collapsed && (
-  <div className="flex flex-col h-full w-full border border-white/50 backdrop-blur-md font-sans overflow-x-auto">
+        <div className="flex flex-col h-full w-full border border-white/50 backdrop-blur-md font-sans overflow-x-auto">
           <ScrollArea className="flex-1 overflow-y-auto overflow-hidden px-6 space-y-2 font-mono font-normal leading-normal">
             {/* highlight.js theme handles code styling */}
             <div className="space-y-5">
@@ -172,54 +233,7 @@ export default function ChatPanel({ collapsed, setCollapsed }: ChatPanelProps) {
                 </div>
               ) : (
                 messages.map((msg) => (
-                  <div key={msg.id} className={`flex my-4 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div
-                      className={`bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal ${msg.role === 'user' ? 'text-white text-right' : 'text-neutral-200 text-left'}`}>
-                      {msg.role === 'user' ? msg.text : (
-                        <span>
-                          {msg.text.split(/(```[\s\S]*?```)/g).map((part, i) => {
-                            if (part.startsWith('```') && part.endsWith('```')) {
-                              // Extract language and code
-                              const codeBlock = part.slice(3, -3);
-                              const firstLineBreak = codeBlock.indexOf('\n');
-                              let lang = '';
-                              let code = codeBlock;
-                              if (firstLineBreak !== -1) {
-                                lang = codeBlock.slice(0, firstLineBreak).trim();
-                                code = codeBlock.slice(firstLineBreak + 1);
-                              }
-                              let highlighted;
-                              if (lang && hljs.getLanguage(lang)) {
-                                highlighted = hljs.highlight(code, { language: lang }).value;
-                              } else {
-                                highlighted = hljs.highlightAuto(code).value;
-                              }
-                              return (
-                                <pre
-                                  key={i}
-                                  className="theme-atom-one-dark shadow-3xl text-sm relative max-w-full order-1 lg:order-2 my-50"
-                                  style={{ padding: 0, margin: 0 }}
-                                >
-                                  <span className="hljs my-5 p-4 block min-h-full">
-                                    <code className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: highlighted }} />
-                                  </span>
-                                  <small className="bg-black/30 absolute top-0 right-0 uppercase font-bold text-xs px-2 py-1">
-                                    <span className="sr-only">Language:</span>{lang ? lang.charAt(0).toUpperCase() + lang.slice(1) : 'Code'}
-                                  </small>
-                                </pre>
-                              );
-                            } else {
-                              // Use marked to render all Gemini Markdown as intended
-                              const html = marked(part.trim());
-                              return (
-                                <div className="flex flex-col gap-5" key={i} dangerouslySetInnerHTML={{ __html: html }} />
-                              );
-                            }
-                          })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <MessageBubble key={msg.id} msg={msg} />
                 ))
               )}
               {loading && (
