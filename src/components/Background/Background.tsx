@@ -24,7 +24,7 @@ export default function Background() {
         colorNum={20}
         waveAmplitude={0.4}
         waveFrequency={3}
-        waveSpeed={0.005}
+        waveSpeed={0.05}
       />
     </div>
     //   <Galaxy

@@ -1,0 +1,39 @@
+// POST /api/roadmap/expand — L2/L3 lazy expansion of one node.
+// Body: { skill, level?, goal?, kind, title, parentId, path }  ->  { children }
+
+import { NextResponse } from "next/server";
+import { expandNode, type NodeKind } from "@/lib/agents/snowflake";
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const { skill, level, goal, kind, title, parentId, path } = body as {
+      skill?: string;
+      level?: string;
+      goal?: string;
+      kind?: NodeKind;
+      title?: string;
+      parentId?: string;
+      path?: string[];
+    };
+
+    if (!skill || !title || !parentId || (kind !== "topic" && kind !== "subtopic")) {
+      return NextResponse.json({ error: "skill, title, parentId and a valid kind are required" }, { status: 400 });
+    }
+
+    const children = await expandNode({
+      skill,
+      level,
+      goal,
+      kind,
+      title,
+      parentId,
+      path: Array.isArray(path) ? path : [title],
+    });
+
+    return NextResponse.json({ children });
+  } catch (error) {
+    console.error("[roadmap/expand] error:", error);
+    return NextResponse.json({ error: "Roadmap expand error", details: String(error) }, { status: 500 });
+  }
+}

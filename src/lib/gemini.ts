@@ -5,7 +5,7 @@ import fetch from 'node-fetch';
 
 async function getGeminiResponse(prompt: string): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
-  const modelName = 'gemini-2.0-flash'; // Specify the model
+  const modelName = 'gemini-2.5-flash'; // gemini-2.0-flash is retired (404)
 
   if (!apiKey) {
     console.error('GEMINI_API_KEY environment variable not set.');
