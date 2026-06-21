@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { createClient } from '@supabase/supabase-js';
 import { LEVELS, getModuleMeta } from "@/lib/modules";
+import { getRuntime } from "@/lib/runtimes/registry";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
 import { Check, Circle } from "lucide-react";
@@ -40,10 +41,16 @@ type Message = {
 type ChatPanelProps = {
   moduleId?: string | null;
   onRoadmap?: (roadmap: Roadmap) => void;
-  lessonRequest?: { node: RoadmapNode; nonce: number } | null;
+  lessonRequest?: { node: RoadmapNode; outline?: string; nonce: number } | null;
   submitRequest?: { code: string; output: string; nonce: number } | null;
   onLoadCode?: (code: string, html?: string) => void;
   onLessonComplete?: (pointId: string) => void;
+  boot?: "loading" | "fresh" | "resumed";
+  hasRoadmap?: boolean;
+  savedLevel?: string;
+  savedGoal?: string;
+  initialProgress?: Record<string, { built?: BuiltLesson; passed: string[] }> | null;
+  onProgressChange?: (cache: Record<string, { built: BuiltLesson; passed: string[] }>) => void;
 };
 
 // Cold-start calibration: Level -> Goal -> generate first lesson.
@@ -52,6 +59,7 @@ type Calib = { step: CalibStep; level?: string; goal?: string };
 
 // Active lesson with its fixed objectives + which are satisfied (the progress meter).
 type ActiveLesson = { pointId: string; title: string; objectives: Objective[]; passed: string[] };
+type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[] };
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
@@ -65,6 +73,12 @@ export default function ChatPanel({
   submitRequest,
   onLoadCode,
   onLessonComplete,
+  boot = "fresh",
+  hasRoadmap = false,
+  savedLevel,
+  savedGoal,
+  initialProgress,
+  onProgressChange,
 }: ChatPanelProps) {
   const meta = getModuleMeta(moduleId);
   const [messages, setMessages] = useState<Message[]>([
@@ -83,6 +97,21 @@ export default function ChatPanel({
   useEffect(() => {
     lessonRef.current = lesson;
   }, [lesson]);
+  // Per-node lesson cache: keeps each point's built lesson + objective progress so
+  // switching between points retains progress (and skips re-generation). In-memory for
+  // now; Supabase persistence layers on top once the project is reachable.
+  const lessonCache = useRef<Record<string, { built: BuiltLesson; passed: string[] }>>({});
+
+  // Seed the cache from saved (Supabase) progress so resumed lessons restore.
+  useEffect(() => {
+    if (!initialProgress) return;
+    const seeded: Record<string, { built: BuiltLesson; passed: string[] }> = {};
+    for (const [id, v] of Object.entries(initialProgress)) {
+      if (v.built) seeded[id] = { built: v.built, passed: v.passed ?? [] };
+    }
+    lessonCache.current = { ...lessonCache.current, ...seeded };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialProgress]);
   const GEMINI_MAX_CHARS = 8192;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -123,20 +152,89 @@ export default function ChatPanel({
     getUserAndHistory();
   }, [moduleId]);
 
+  // Boot the conversation: restore the saved chat (logged-in) or start fresh.
+  const chatBootKey = useRef<string | null>(null);
+  const chatRestored = useRef(false);
   useEffect(() => {
-    // Module selected from a badge -> start the 2-tap cold-start.
-    if (!meta) return;
-    setCalib({ step: "level" });
-    setMessages([
-      {
-        id: 0,
-        role: "bot",
-        text: `Let's learn **${meta.title}**. To tailor it to you — how would you describe your level?`,
-      },
-    ]);
-    // meta is derived from moduleId; keying on moduleId is sufficient.
+    if (!meta || boot === "loading") return;
+    const key = `${moduleId}|${userId ?? "anon"}`;
+    if (chatBootKey.current === key) return;
+    chatBootKey.current = key;
+    (async () => {
+      // 1) Saved conversation? Restore it verbatim (messages + calibration).
+      if (userId) {
+        try {
+          const res = await fetch(`/api/chat/state?user_id=${userId}&module=${encodeURIComponent(moduleId ?? "")}`);
+          const { state } = await res.json();
+          if (state?.messages?.length) {
+            setMessages(
+              state.messages.map((m: { role: string; text: string }, i: number) => ({
+                id: i + 1,
+                role: m.role === "user" ? "user" : "bot",
+                text: m.text,
+              }))
+            );
+            setCalib({
+              step: (state.calib?.step as CalibStep) ?? "done",
+              level: state.calib?.level ?? savedLevel,
+              goal: state.calib?.goal ?? savedGoal,
+            });
+            chatRestored.current = true;
+            return;
+          }
+        } catch {
+          /* fall through to fresh */
+        }
+      }
+      // 2) Roadmap resumed but no saved chat -> welcome back.
+      if (boot === "resumed") {
+        setCalib({ step: "done", level: savedLevel, goal: savedGoal });
+        setMessages([
+          {
+            id: 0,
+            role: "bot",
+            text: `Welcome back to **${meta.title}**. Your roadmap and progress are restored — open the Roadmap tab to pick up where you left off, or ask me anything.`,
+          },
+        ]);
+        return;
+      }
+      // 3) Fresh start -> 2-tap cold-start.
+      setCalib({ step: "level" });
+      setMessages([
+        {
+          id: 0,
+          role: "bot",
+          text: `Let's learn **${meta.title}**. To tailor it to you — how would you describe your level?`,
+        },
+      ]);
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleId]);
+  }, [moduleId, boot, userId]);
+
+  // Persist the conversation (debounced) whenever it changes — logged-in only.
+  const chatSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!userId || !moduleId || messages.length === 0) return;
+    // Don't save the initial single greeting unless the user has engaged or we restored.
+    if (!chatRestored.current && messages.length < 2) return;
+    if (chatSaveTimer.current) clearTimeout(chatSaveTimer.current);
+    chatSaveTimer.current = setTimeout(() => {
+      fetch("/api/chat/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          module: moduleId,
+          messages: messages.map((m) => ({ role: m.role, text: m.text })),
+          calib: { step: calib.step, level: calib.level, goal: calib.goal },
+        }),
+      }).catch(() => {});
+    }, 800);
+    return () => {
+      if (chatSaveTimer.current) clearTimeout(chatSaveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, calib, userId, moduleId]);
 
   // Run the agent pipeline (chat manager) and return its reply + optional roadmap.
   async function callAgent(
@@ -155,6 +253,9 @@ export default function ChatPanel({
           topic: meta?.title,
           level: ctx?.level ?? calib.level,
           goal: ctx?.goal ?? calib.goal,
+          moduleId: moduleId ?? undefined,
+          hasRoadmap,
+          activeLesson: lessonRef.current?.title,
           history,
           user_id: userId,
         }),
@@ -179,7 +280,7 @@ export default function ChatPanel({
       const res = await fetch("/api/roadmap/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ skill: meta.title, level, goal }),
+        body: JSON.stringify({ skill: meta.title, level, goal, moduleId: moduleId ?? undefined }),
       });
       const data = await res.json();
       if (data.roadmap) {
@@ -247,6 +348,17 @@ export default function ChatPanel({
     const node = lessonRequest.node;
     (async () => {
       if (loading) return;
+      // Resume a previously-opened lesson: restore its objectives + progress, no rebuild.
+      const cached = lessonCache.current[node.id];
+      if (cached) {
+        setLesson({ pointId: node.id, title: node.title, objectives: cached.built.objectives, passed: cached.passed });
+        onLoadCode?.(cached.built.starterCode, cached.built.html);
+        pushMessage(
+          "bot",
+          `Resuming **${node.title}** — ${cached.passed.length}/${cached.built.objectives.length} objectives done so far.`
+        );
+        return;
+      }
       setLoading(true);
       try {
         // L4: grounded lesson — intro + starter code + FIXED objectives.
@@ -257,13 +369,20 @@ export default function ChatPanel({
             skill: meta?.title || node.title,
             level: calib.level,
             goal: calib.goal,
+            moduleId: moduleId ?? undefined,
             pointTitle: node.title,
             pointSummary: node.summary || node.description,
+            treeOutline: lessonRequest.outline,
           }),
         });
         const data = await res.json();
         if (data.lesson) {
           const l = data.lesson as { intro: string; starterCode: string; html?: string; objectives: Objective[] };
+          lessonCache.current[node.id] = {
+            built: { intro: l.intro, starterCode: l.starterCode, html: l.html || "", objectives: l.objectives },
+            passed: [],
+          };
+          onProgressChange?.(lessonCache.current);
           setLesson({ pointId: node.id, title: node.title, objectives: l.objectives, passed: [] });
           onLoadCode?.(l.starterCode, l.html);
           pushMessage("bot", l.intro || `Let's work on ${node.title}.`);
@@ -302,12 +421,15 @@ export default function ChatPanel({
               code,
               output,
               alreadyPassed: active.passed,
+              language: getRuntime(moduleId).langName,
             }),
           });
           const data = await res.json();
           const results: { id: string; passed: boolean }[] = Array.isArray(data.results) ? data.results : [];
           const passed = Array.from(new Set([...active.passed, ...results.filter((r) => r.passed).map((r) => r.id)]));
           setLesson({ ...active, passed });
+          if (lessonCache.current[active.pointId]) lessonCache.current[active.pointId].passed = passed; // retain progress
+          onProgressChange?.(lessonCache.current);
           if (data.message) pushMessage("bot", data.message);
           if (active.objectives.every((o) => passed.includes(o.id))) {
             onLessonComplete?.(active.pointId);

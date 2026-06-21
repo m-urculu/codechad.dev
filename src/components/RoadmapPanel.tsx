@@ -11,7 +11,6 @@ type RoadmapPanelProps = {
   doneNodeIds: string[];
   onExpand: (node: RoadmapNode, path: string[]) => Promise<void>;
   onActivateLesson: (node: RoadmapNode) => void;
-  onToggleDone: (id: string) => void;
 };
 
 export default function RoadmapPanel({
@@ -20,7 +19,6 @@ export default function RoadmapPanel({
   doneNodeIds,
   onExpand,
   onActivateLesson,
-  onToggleDone,
 }: RoadmapPanelProps) {
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
@@ -112,21 +110,15 @@ export default function RoadmapPanel({
                   className="flex cursor-pointer items-center gap-1.5 border border-white/50 bg-white/10 px-2.5 py-1 text-[11px] font-mono text-white transition-colors hover:bg-white/20"
                 >
                   <Play className="h-3 w-3" />
-                  Start lesson
+                  {done ? "Review lesson" : "Start lesson"}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onToggleDone(node.id)}
-                  className={[
-                    "flex cursor-pointer items-center gap-1.5 border px-2.5 py-1 text-[11px] font-mono transition-colors",
-                    done
-                      ? "border-emerald-400/60 bg-emerald-400/10 text-emerald-300 hover:bg-emerald-400/20"
-                      : "border-white/40 bg-transparent text-white/70 hover:bg-white/10",
-                  ].join(" ")}
-                >
-                  <Check className="h-3 w-3" />
-                  {done ? "Done" : "Mark done"}
-                </button>
+                {/* Completion is EARNED by passing all objectives — never toggled by hand. */}
+                {done && (
+                  <span className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-300">
+                    <Check className="h-3 w-3" />
+                    Completed
+                  </span>
+                )}
               </div>
             )}
 

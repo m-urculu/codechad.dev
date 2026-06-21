@@ -93,13 +93,20 @@ export async function generateOverview(input: {
   skill: string;
   level?: string;
   goal?: string;
+  runtimeNotes?: string;
 }): Promise<Roadmap | null> {
-  const { skill, level, goal } = input;
+  const { skill, level, goal, runtimeNotes } = input;
   const prompt =
     `Using REAL, current official documentation and widely-accepted best practices, ` +
     `design a learning roadmap OVERVIEW for "${skill}".\n` +
     `Learner level: ${level ?? "unknown"}. Goal: ${goal ?? "general mastery"}.\n` +
+    (runtimeNotes
+      ? `CONTEXT — the learner studies entirely INSIDE a browser learning app with a built-in editor and runtime (${runtimeNotes}). ` +
+        `NEVER include topics about installing the language, setting up environments/editors/IDEs, or running scripts from a terminal — the environment already exists. ` +
+        `Skip topics that cannot be practiced in that sandbox (real file I/O, OS integration, networking, C APIs) unless they are core to the skill and can be simulated.\n`
+      : "") +
     `Calibrate the number of topics to what is genuinely needed (typically 6-10), fundamentals first.\n` +
+    `Topics MUST be MUTUALLY EXCLUSIVE: every concept appears in exactly ONE topic. No umbrella topics that restate other topics, no two topics covering the same ground (e.g. don't list "Variables and Data Types" AND "Data Types and Operators").\n` +
     `Return ONLY JSON: {"title": string, "summary": string, "topics": [{"title": string, "summary": string, "description": string}]}.`;
 
   const { text, sources } = await groundedText(prompt);
@@ -118,6 +125,9 @@ export async function generateOverview(input: {
 }
 
 // L2/L3: expand one node into its children (sub-topics, then learning points).
+// `treeOutline` = the WHOLE module tree generated so far ("◀ CURRENT" marks this node) —
+// global context so children never duplicate content that exists anywhere, and the
+// progression (earlier = already learned, later = deferred) is respected.
 export async function expandNode(input: {
   skill: string;
   level?: string;
@@ -126,9 +136,26 @@ export async function expandNode(input: {
   title: string;
   parentId: string;
   path: string[]; // ancestor titles -> this node
+  treeOutline?: string;
+  runtimeNotes?: string;
 }): Promise<RoadmapNode[]> {
-  const { skill, level, goal, kind, title, parentId, path } = input;
+  const { skill, level, goal, kind, title, parentId, path, treeOutline, runtimeNotes } = input;
   const trail = path.join(" > ");
+
+  const common =
+    `Learner level: ${level ?? "unknown"}. Goal: ${goal ?? "general mastery"}.\n` +
+    (treeOutline
+      ? `FULL ROADMAP SO FAR ("◀ CURRENT" marks the node you are expanding, "✓done" marks completed):\n${treeOutline.slice(0, 8000)}\n` +
+        `Use this context strictly: (a) children must NOT duplicate content that appears ANYWHERE else in the roadmap, ` +
+        `(b) treat everything BEFORE the current node as already learned — build on it, never recap it, ` +
+        `(c) leave material that belongs to LATER nodes to those nodes.\n`
+      : "") +
+    `STRICT DECOMPOSITION: children must break down ONLY the content of "${title}" itself. ` +
+    `NO prerequisite/review/"getting started" children, NO installation or environment-setup items, ` +
+    `NO recaps of other parts of the roadmap.\n` +
+    (runtimeNotes
+      ? `The learner practices inside a browser sandbox (${runtimeNotes}) — exclude children that can't be practiced or simulated there.\n`
+      : "");
 
   let prompt: string;
   let childKind: NodeKind;
@@ -137,8 +164,9 @@ export async function expandNode(input: {
     childKind = "subtopic";
     prompt =
       `Using REAL official documentation and best practices for "${skill}", ` +
-      `list the FOUNDATIONAL sub-topics required to learn the topic "${title}" (path: ${trail}).\n` +
-      `Learner level: ${level ?? "unknown"}. Goal: ${goal ?? "general mastery"}. Calibrate the count to what's needed.\n` +
+      `decompose the topic "${title}" (path: ${trail}) into its foundational sub-topics.\n` +
+      common +
+      `Typically 4-8 sub-topics — only what this topic genuinely contains.\n` +
       `Return ONLY JSON: {"children": [{"title": string, "summary": string, "description": string}]}.`;
   } else {
     // subtopic -> ordered learning points
@@ -147,7 +175,8 @@ export async function expandNode(input: {
       `For the sub-topic "${title}" within "${skill}" (path: ${trail}), ` +
       `list the ORDERED learning POINTS needed to fully master it — each a concrete, teachable unit ` +
       `(a specific skill, concept, or function), grounded in official documentation/best practices.\n` +
-      `Learner level: ${level ?? "unknown"}. Goal: ${goal ?? "general mastery"}.\n` +
+      common +
+      `Typically 4-8 points — only what this sub-topic genuinely contains.\n` +
       `Return ONLY JSON: {"children": [{"title": string, "summary": string}]}.`;
   }
 
@@ -155,5 +184,5 @@ export async function expandNode(input: {
   const data = extractJSON(text);
   const arr: any[] = Array.isArray(data?.children) ? data.children : [];
   const tag = childKind === "subtopic" ? "s" : "p";
-  return arr.slice(0, 14).map((c, i) => mkNode(`${parentId}-${tag}${i}`, childKind, c));
+  return arr.slice(0, 10).map((c, i) => mkNode(`${parentId}-${tag}${i}`, childKind, c));
 }

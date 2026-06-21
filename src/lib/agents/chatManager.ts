@@ -16,6 +16,9 @@ type ManagerInput = {
   topic?: string;
   level?: string;
   goal?: string;
+  moduleId?: string;
+  hasRoadmap?: boolean;
+  activeLesson?: string;
   history?: ChatMsg[];
 };
 
@@ -27,11 +30,11 @@ function historyToText(history: ChatMsg[] = []): string {
 }
 
 export async function runChatManager(input: ManagerInput): Promise<ManagerResult> {
-  const { message, topic, level, goal, history = [] } = input;
+  const { message, topic, level, goal, moduleId, hasRoadmap, activeLesson, history = [] } = input;
   const historyText = historyToText(history);
   const reply = await geminiText(
     `${historyText ? historyText + "\n" : ""}User: ${message}`,
-    tutorSystem({ topic, level, goal })
+    tutorSystem({ topic, level, goal, moduleId, hasRoadmap, activeLesson })
   );
   return { action: "tutor", response: reply };
 }

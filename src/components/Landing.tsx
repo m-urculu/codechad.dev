@@ -9,16 +9,13 @@ import {
   SiRuby,
   SiPhp,
   SiLua,
-  SiDotnet,
   SiPostgresql,
   SiSqlite,
   SiDuckdb,
-  SiNodedotjs,
   SiReact,
   SiVuedotjs,
   SiWebassembly,
   SiThreedotjs,
-  SiGnubash,
   SiHuggingface,
 } from "react-icons/si";
 
@@ -44,7 +41,6 @@ const SECTIONS: Section[] = [
       { id: "ruby", title: "Ruby", blurb: "Real CRuby via ruby.wasm", Icon: SiRuby, color: "#CC342D" },
       { id: "php", title: "PHP", blurb: "Real PHP via php-wasm", Icon: SiPhp, color: "#777BB4" },
       { id: "lua", title: "Lua", blurb: "Lua VM via fengari", Icon: SiLua, color: "#8895d9" },
-      { id: "csharp", title: "C# / .NET", blurb: "Real runtime via Blazor WASM", Icon: SiDotnet, color: "#512BD4" },
     ],
   },
   {
@@ -58,16 +54,14 @@ const SECTIONS: Section[] = [
   {
     label: "Web & Runtimes",
     modules: [
-      { id: "node", title: "Node.js", blurb: "WebContainers: npm + dev server", Icon: SiNodedotjs, color: "#5FA04E" },
       { id: "react", title: "React", blurb: "Build apps with live preview", Icon: SiReact, color: "#61DAFB" },
       { id: "vue", title: "Vue", blurb: "Build apps with live preview", Icon: SiVuedotjs, color: "#42B883" },
       { id: "wasm", title: "WebAssembly", blurb: "Run C / C++ / Rust / Go output", Icon: SiWebassembly, color: "#654FF0" },
     ],
   },
   {
-    label: "Systems & AI",
+    label: "Graphics & AI",
     modules: [
-      { id: "linux", title: "Linux / Bash", blurb: "Emulated Linux shell (v86)", Icon: SiGnubash, color: "#4EAA25" },
       { id: "graphics", title: "Three.js · WebGPU", blurb: "GPU compute & 3D visuals", Icon: SiThreedotjs, color: "#ffffff" },
       { id: "ml", title: "AI / ML", blurb: "Run real models via transformers.js", Icon: SiHuggingface, color: "#FFD21E" },
     ],
@@ -94,7 +88,10 @@ function ModuleCard({ m, onSelect }: { m: Module; onSelect: (id: string) => void
         <div className="text-sm font-bold text-white">{m.title}</div>
         <div className="mt-0.5 text-xs leading-snug text-white/75">{m.blurb}</div>
       </div>
-      <span className="absolute right-3 top-3 h-1.5 w-1.5 rounded-full bg-emerald-400/80 shadow-[0_0_8px] shadow-emerald-400/60" />
+      <span
+        title="Runs live in your browser"
+        className="absolute right-3 top-3 h-1.5 w-1.5 rounded-full bg-emerald-400/80 shadow-[0_0_8px] shadow-emerald-400/60"
+      />
     </button>
   );
 }
@@ -136,7 +133,7 @@ export default function Landing({ onSelect }: { onSelect: (id: string) => void }
 
         {/* Footnote */}
         <p className="mt-10 text-center text-[11px] text-white/45">
-          Rust · Go · Kubernetes · cloud tracks are coming via a server runner.
+          C# · Node.js · Linux · Rust · Go · cloud tracks are coming as heavier runtimes land.
         </p>
       </div>
     </div>

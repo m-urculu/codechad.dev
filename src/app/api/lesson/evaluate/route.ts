@@ -7,12 +7,13 @@ import { evaluateSubmission, type Objective } from "@/lib/agents/lesson";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { pointTitle, objectives, code, output, alreadyPassed } = body as {
+    const { pointTitle, objectives, code, output, alreadyPassed, language } = body as {
       pointTitle?: string;
       objectives?: Objective[];
       code?: string;
       output?: string;
       alreadyPassed?: string[];
+      language?: string;
     };
     if (!pointTitle || !Array.isArray(objectives) || objectives.length === 0) {
       return NextResponse.json({ error: "pointTitle and objectives are required" }, { status: 400 });
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
       code: code ?? "",
       output: output ?? "",
       alreadyPassed: Array.isArray(alreadyPassed) ? alreadyPassed : [],
+      language,
     });
     return NextResponse.json(evaluation);
   } catch (error) {
