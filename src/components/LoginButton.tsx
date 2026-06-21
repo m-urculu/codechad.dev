@@ -1,5 +1,6 @@
 "use client";
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -37,7 +38,7 @@ export function LoginButton() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_id: session.user.id })
           });
-        } catch (err) {
+        } catch {
           // Optionally handle/log error
         }
       }
@@ -60,9 +61,11 @@ export function LoginButton() {
             style={{ width: 38, height: 38, border: 'none' }}
           >
             {user.user_metadata?.avatar_url && !imgError ? (
-              <img
+              <Image
                 src={user.user_metadata.avatar_url}
                 alt="Profile"
+                width={38}
+                height={38}
                 className="object-cover"
                 style={{ width: 38, height: 38, border: 'none' }}
                 onError={() => setImgError(true)}

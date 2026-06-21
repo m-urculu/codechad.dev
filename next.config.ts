@@ -1,9 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  swcMinify: true,
-  // swcMinify enables JS minification for better performance
-  // Next.js 13+ outputs modern JS by default
+  images: {
+    remotePatterns: [
+      // Google account avatars (Supabase OAuth)
+      { protocol: "https", hostname: "lh3.googleusercontent.com" },
+    ],
+  },
 };
 
 export default nextConfig;

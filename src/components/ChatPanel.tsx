@@ -110,7 +110,6 @@ export default function ChatPanel({
       if (v.built) seeded[id] = { built: v.built, passed: v.passed ?? [] };
     }
     lessonCache.current = { ...lessonCache.current, ...seeded };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialProgress]);
   const GEMINI_MAX_CHARS = 8192;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -233,7 +232,6 @@ export default function ChatPanel({
     return () => {
       if (chatSaveTimer.current) clearTimeout(chatSaveTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, calib, userId, moduleId]);
 
   // Run the agent pipeline (chat manager) and return its reply + optional roadmap.
