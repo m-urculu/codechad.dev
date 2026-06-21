@@ -14,8 +14,10 @@ import type { OutLine } from "./javascript";
 export type WebRunHandle = { cancel: () => void };
 
 // Console-capture + error shim injected into the iframe (before the user's JS).
+// __fmt/__post are attached to window because the shim runs in its own <script>
+// while the runner (classic / babel / module script) runs in another.
 const SHIM = `
-function __fmt(v){
+window.__fmt = function __fmt(v){
   try {
     if (typeof v === 'string') return v;
     if (v === null) return 'null';
@@ -26,8 +28,9 @@ function __fmt(v){
     if (typeof v === 'object') return JSON.stringify(v);
     return String(v);
   } catch(e){ return String(v); }
-}
-function __post(kind, text){ parent.postMessage({ __cp: true, kind: kind, text: text }, '*'); }
+};
+window.__post = function __post(kind, text){ parent.postMessage({ __cp: true, kind: kind, text: text }, '*'); };
+var __fmt = window.__fmt, __post = window.__post;
 ['log','info','warn','error','debug'].forEach(function(k){
   var orig = console[k] ? console[k].bind(console) : function(){};
   console[k] = function(){ __post(k==='debug'?'log':k, Array.prototype.map.call(arguments, __fmt).join(' ')); orig.apply(console, arguments); };
@@ -36,24 +39,55 @@ window.onerror = function(m, s, l, c, err){ __post('error', (err && err.stack) |
 window.addEventListener('unhandledrejection', function(e){ __post('error', 'Uncaught (in promise) ' + __fmt(e.reason)); });
 `;
 
+export type WebLibs = "react" | "vue" | "three";
+
+// CDN assets per library preset (pinned majors).
+const LIB_HEAD: Record<WebLibs, string> = {
+  react:
+    `<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"><\/script>` +
+    `<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"><\/script>` +
+    `<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js"><\/script>`,
+  vue: `<script src="https://cdn.jsdelivr.net/npm/vue@3.5.13/dist/vue.global.prod.js"><\/script>`,
+  three: `<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"}}<\/script>`,
+};
+
 export function runWeb(opts: {
   iframe: HTMLIFrameElement;
   html: string;
   js: string;
+  libs?: WebLibs;
   onLine: (line: OutLine) => void;
   onDone?: () => void;
 }): WebRunHandle {
-  const { iframe, html, js, onLine, onDone } = opts;
+  const { iframe, html, js, libs, onLine, onDone } = opts;
 
   // Don't let `</script>` in user/lesson code terminate our injected script.
   const safeJs = js.replace(/<\/script>/gi, "<\\/script>");
-  const runner = `try {\n${safeJs}\n} catch(e){ __post('error', (e && (e.stack||e.message)) || String(e)); }\n__post('done','');`;
+
+  // The runner script differs by preset:
+  // - react: Babel transpiles JSX in a text/babel script (errors surface via console/onerror)
+  // - three: an ES module that imports three and exposes THREE before the user code
+  // - default: classic script with try/catch
+  let runner: string;
+  if (libs === "react") {
+    runner = `<script type="text/babel" data-presets="env,react">\n${safeJs}\n<\/script>`;
+  } else if (libs === "three") {
+    runner =
+      `<script type="module">import * as THREE from "three"; window.THREE = THREE;\n` +
+      `try {\n${safeJs}\n} catch(e){ __post('error', (e && (e.stack||e.message)) || String(e)); }\n<\/script>`;
+  } else {
+    runner = `<script>try {\n${safeJs}\n} catch(e){ __post('error', (e && (e.stack||e.message)) || String(e)); }\n<\/script>`;
+  }
 
   const srcdoc =
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<style>html,body{font-family:system-ui,sans-serif;color:#111;background:#fff;margin:0;padding:12px}</style>` +
+    `<script>(function(){\n${SHIM}\n})();<\/script>` +
+    (libs ? LIB_HEAD[libs] : "") +
     `</head><body>\n${html}\n` +
-    `<script>(function(){\n${SHIM}\n${runner}\n})();<\/script>` +
+    runner +
+    // 'done' fires on window load (after deferred/module/babel scripts have executed).
+    `<script>window.addEventListener('load', function(){ setTimeout(function(){ __post('done',''); }, 150); });<\/script>` +
     `</body></html>`;
 
   const handler = (e: MessageEvent) => {

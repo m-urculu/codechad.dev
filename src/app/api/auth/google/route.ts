@@ -6,10 +6,13 @@ const supabase = createClient(
 );
 
 export async function GET(request: Request) {
+  // After Google + Supabase finish, send the user back to the app itself
+  // (Supabase's own /auth/v1/callback is handled internally by signInWithOAuth).
+  const origin = new URL(request.url).origin;
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      redirectTo: 'https://pdbccmdzofcqlhtoatxe.supabase.co/auth/v1/callback',
+      redirectTo: origin,
     },
   });
 

@@ -6,11 +6,11 @@ import { buildLesson } from "@/lib/agents/lesson";
 
 export async function POST(request: Request) {
   try {
-    const { skill, level, goal, pointTitle, pointSummary } = await request.json();
+    const { skill, level, goal, pointTitle, pointSummary, moduleId, treeOutline } = await request.json();
     if (!skill || !pointTitle) {
       return NextResponse.json({ error: "skill and pointTitle are required" }, { status: 400 });
     }
-    const lesson = await buildLesson({ skill, level, goal, pointTitle, pointSummary });
+    const lesson = await buildLesson({ skill, level, goal, pointTitle, pointSummary, moduleId, treeOutline });
     if (!lesson) {
       return NextResponse.json({ error: "Could not build the lesson. Please try again." }, { status: 502 });
     }

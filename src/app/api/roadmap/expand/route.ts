@@ -3,11 +3,12 @@
 
 import { NextResponse } from "next/server";
 import { expandNode, type NodeKind } from "@/lib/agents/snowflake";
+import { getRuntime } from "@/lib/runtimes/registry";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { skill, level, goal, kind, title, parentId, path } = body as {
+    const { skill, level, goal, kind, title, parentId, path, treeOutline, moduleId } = body as {
       skill?: string;
       level?: string;
       goal?: string;
@@ -15,6 +16,8 @@ export async function POST(request: Request) {
       title?: string;
       parentId?: string;
       path?: string[];
+      treeOutline?: string;
+      moduleId?: string;
     };
 
     if (!skill || !title || !parentId || (kind !== "topic" && kind !== "subtopic")) {
@@ -29,6 +32,8 @@ export async function POST(request: Request) {
       title,
       parentId,
       path: Array.isArray(path) ? path : [title],
+      treeOutline: typeof treeOutline === "string" ? treeOutline : undefined,
+      runtimeNotes: moduleId ? getRuntime(moduleId).runNotes : undefined,
     });
 
     return NextResponse.json({ children });

@@ -107,7 +107,11 @@ export function runJavaScript(
   worker.onmessage = (e: MessageEvent) => {
     const m = (e.data || {}) as { kind?: string; text?: string };
     if (m.kind === "done") {
-      finish();
+      // Grace period before terminating: user code may have un-awaited promise
+      // callbacks (e.g. WebAssembly.instantiate(...).then(...)) whose console
+      // output would otherwise die with the worker.
+      if (timer) clearTimeout(timer);
+      setTimeout(finish, 300);
       return;
     }
     onLine({ kind: (m.kind as OutKind) || "log", text: m.text ?? "" });

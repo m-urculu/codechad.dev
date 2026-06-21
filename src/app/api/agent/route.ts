@@ -10,11 +10,14 @@ import { insertChatMessage } from "@/app/api/supabase/chat-message";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { message, topic, level, goal, history, user_id } = body as {
+    const { message, topic, level, goal, moduleId, hasRoadmap, activeLesson, history, user_id } = body as {
       message?: string;
       topic?: string;
       level?: string;
       goal?: string;
+      moduleId?: string;
+      hasRoadmap?: boolean;
+      activeLesson?: string;
       history?: ChatMsg[];
       user_id?: string | null;
     };
@@ -27,7 +30,7 @@ export async function POST(request: Request) {
       await insertChatMessage({ user_id, role: "user", content: message }).catch(() => {});
     }
 
-    const result = await runChatManager({ message, topic, level, goal, history });
+    const result = await runChatManager({ message, topic, level, goal, moduleId, hasRoadmap, activeLesson, history });
 
     if (user_id && result.response) {
       await insertChatMessage({ user_id, role: "assistant", content: result.response }).catch(() => {});

@@ -2,13 +2,12 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
-import { runJavaScript, type OutLine, type RunHandle } from "@/lib/runtimes/javascript";
+import type { OutLine } from "@/lib/runtimes/javascript";
 import { runWeb, type WebRunHandle } from "@/lib/runtimes/web";
+import { getRuntime } from "@/lib/runtimes/registry";
+import type { RunHandle } from "@/lib/runtimes/exec";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
-
-const DEFAULT_CODE = `// Try it — edit and press Run
-console.log("Hello, CodePath!");`;
 
 type LoadCode = { code: string; html?: string; nonce: number } | null;
 
@@ -21,15 +20,19 @@ const LINE_COLOR: Record<OutLine["kind"], string> = {
 };
 
 export default function CodeHere({
+  moduleId,
   onSubmit,
   loadCode,
 }: {
+  moduleId?: string | null;
   onSubmit?: (code: string, output: string) => void;
   loadCode?: LoadCode;
 }) {
-  const codeRef = useRef<string>(DEFAULT_CODE);
-  const htmlRef = useRef<string>(""); // lesson DOM scaffold (empty = pure-logic)
-  const runRef = useRef<RunHandle | null>(null);
+  const spec = getRuntime(moduleId);
+
+  const codeRef = useRef<string>(spec.defaultCode);
+  const htmlRef = useRef<string>(spec.defaultHtml ?? "");
+  const engineRef = useRef<RunHandle | null>(null);
   const webRef = useRef<WebRunHandle | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const editorRef = useRef<any>(null);
@@ -38,15 +41,27 @@ export default function CodeHere({
 
   const [output, setOutput] = useState<OutLine[]>([]);
   const [running, setRunning] = useState(false);
-  const [hasDom, setHasDom] = useState(false);
+  const [hasDom, setHasDom] = useState(spec.engine === "iframe-web");
   const [tab, setTab] = useState<"console" | "preview">("console");
+
+  // Reset editor + scaffold when the module changes.
+  useEffect(() => {
+    codeRef.current = spec.defaultCode;
+    htmlRef.current = spec.defaultHtml ?? "";
+    setHasDom(spec.engine === "iframe-web" || (spec.allowDom && !!spec.defaultHtml));
+    setTab("console");
+    setOutput([]);
+    if (editorRef.current) editorRef.current.setValue(spec.defaultCode);
+    else pendingRef.current = spec.defaultCode;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleId]);
 
   // Preload starter code (and DOM scaffold) when a lesson loads.
   useEffect(() => {
     if (!loadCode) return;
     codeRef.current = loadCode.code;
-    htmlRef.current = loadCode.html ?? "";
-    setHasDom(!!loadCode.html);
+    htmlRef.current = loadCode.html || spec.defaultHtml || "";
+    setHasDom(spec.engine === "iframe-web" || (spec.allowDom && !!htmlRef.current));
     if (editorRef.current) editorRef.current.setValue(loadCode.code);
     else pendingRef.current = loadCode.code;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -54,32 +69,50 @@ export default function CodeHere({
 
   const addLine = (l: OutLine) => setOutput((o) => [...o, l]);
 
+  function cancelAll() {
+    engineRef.current?.cancel();
+    engineRef.current = null;
+    webRef.current?.cancel();
+    webRef.current = null;
+  }
+
   async function run() {
     if (running) return;
+    if (!spec.runnable) {
+      setOutput([{ kind: "system", text: `Run isn't available for ${spec.title} yet — write your code and press Submit for tutor review.` }]);
+      return;
+    }
+    cancelAll();
     setOutput([]);
     setRunning(true);
-    if (htmlRef.current && iframeRef.current) {
-      // DOM lesson -> run in the iframe (real document) and show the Preview.
+    const useIframe = spec.engine === "iframe-web" || (spec.allowDom && !!htmlRef.current);
+    if (useIframe && iframeRef.current) {
       setTab("preview");
       webRef.current = runWeb({
         iframe: iframeRef.current,
         html: htmlRef.current,
         js: codeRef.current,
+        libs: spec.iframeLibs,
         onLine: addLine,
         onDone: () => setRunning(false),
       });
     } else {
-      const handle = runJavaScript(codeRef.current, addLine);
-      runRef.current = handle;
-      await handle.promise;
-      runRef.current = null;
-      setRunning(false);
+      try {
+        const { startRun } = await import("@/lib/runtimes/exec");
+        const handle = await startRun(spec, codeRef.current, addLine);
+        engineRef.current = handle;
+        await handle.done;
+      } catch (e) {
+        addLine({ kind: "error", text: "Runtime failed to start: " + String(e) });
+      } finally {
+        engineRef.current = null;
+        setRunning(false);
+      }
     }
   }
 
   function stop() {
-    runRef.current?.cancel();
-    webRef.current?.cancel();
+    cancelAll();
     setRunning(false);
     addLine({ kind: "system", text: "— stopped —" });
   }
@@ -92,19 +125,18 @@ export default function CodeHere({
     <div className="flex flex-1 min-w-0">
       <div className="h-full w-full min-w-0">
         <div className="h-full font-mono font-normal leading-normal border border-white/50 backdrop-blur-md flex flex-col gap-0 overflow-hidden">
-          <div className="absolute m-1 z-10 flex items-center gap-2 bg-opacity-80 px-2 py-1 shadow text-yellow-300 text-xs font-semibold select-none">
-            <svg width="18" height="18" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="32" height="32" rx="6" fill="#F7DF1E" />
-              <path d="M19.5 23.5c.6 1.1 1.4 1.9 2.9 1.9 1.2 0 2-.6 2-1.5 0-1-0.8-1.3-2.2-1.9l-.8-.3c-2.3-.9-3.8-2-3.8-4.3 0-2.1 1.6-3.7 4.1-3.7 1.8 0 3.1.6 4 2.2l-2.2 1.4c-.5-.9-1-1.2-1.8-1.2-.8 0-1.3.5-1.3 1.2 0 .8.5 1.1 1.7 1.6l.8.3c2.7 1.1 4.2 2.1 4.2 4.5 0 2.6-2 4-4.6 4-2.6 0-4.2-1.2-5-2.7l2.3-1.3zm-9.2.2c.4.7.8 1.3 1.7 1.3.9 0 1.5-.3 1.5-1.7v-7.2h2.7v7.3c0 2.8-1.6 4-4 4-2.1 0-3.3-1.1-3.9-2.4l2.3-1.3z" fill="#23272e" />
-            </svg>
-            JavaScript
+          {/* Module badge */}
+          <div className="absolute m-1 z-10 flex items-center gap-2 bg-opacity-80 px-2 py-1 shadow text-xs font-semibold select-none text-white">
+            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: spec.badgeColor }} />
+            {spec.title}
+            {!spec.runnable && <span className="font-thin text-white/50">(guided — no runtime yet)</span>}
           </div>
 
           <div className="flex-1 flex flex-col overflow-hidden pt-9 relative">
             <MonacoEditor
               height="100%"
-              defaultLanguage="javascript"
-              defaultValue={DEFAULT_CODE}
+              language={spec.monacoLang}
+              defaultValue={spec.defaultCode}
               onMount={(editor) => {
                 editorRef.current = editor;
                 if (pendingRef.current != null) {
@@ -140,8 +172,10 @@ export default function CodeHere({
             <div className="flex items-center justify-start gap-3 py-1 ml-4">
               <button
                 onClick={running ? stop : run}
+                disabled={!spec.runnable}
+                title={spec.runnable ? "Run your code" : "No runtime for this module yet — use Submit"}
                 className={[
-                  "px-2 py-1 font-semibold text-xs font-thin transition-colors cursor-pointer flex items-center gap-2",
+                  "px-2 py-1 font-semibold text-xs font-thin transition-colors cursor-pointer flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed",
                   running ? "bg-red-400 hover:bg-red-300 text-neutral-900" : "bg-neutral-600 hover:bg-neutral-300 text-neutral-900",
                 ].join(" ")}
               >
@@ -207,7 +241,9 @@ export default function CodeHere({
             <div className={`${tab === "console" ? "flex" : "hidden"} flex-1 min-h-0 flex-col`}>
               <div className="h-full p-4 bg-black/80 border border-white/10 text-xs font-mono overflow-auto custom-scrollbar shadow-inner">
                 {output.length === 0 && !running ? (
-                  <span className="opacity-60 text-green-400">Console output will appear here…</span>
+                  <span className="opacity-60 text-green-400">
+                    {spec.runnable ? "Console output will appear here…" : `No runtime for ${spec.title} yet — Submit sends your code to the tutor.`}
+                  </span>
                 ) : (
                   output.map((l, i) => (
                     <div key={i} className={`whitespace-pre-wrap break-words ${LINE_COLOR[l.kind]}`}>
@@ -219,7 +255,7 @@ export default function CodeHere({
               </div>
             </div>
 
-            {/* Preview pane (mounted whenever the lesson has DOM, hidden when not active) */}
+            {/* Preview pane */}
             {hasDom && (
               <div className={`${tab === "preview" ? "flex" : "hidden"} flex-1 min-h-0 flex-col border border-white/10`}>
                 <iframe ref={iframeRef} sandbox="allow-scripts" title="Preview" className="h-full w-full bg-white" />
