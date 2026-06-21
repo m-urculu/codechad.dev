@@ -16,7 +16,8 @@ export default function Home() {
     let gl;
     try {
       const canvas = document.createElement("canvas");
-      gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
+      gl = (canvas.getContext("webgl") ||
+        canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
       if (!gl) {
         setGpuOk(false);
         return;
