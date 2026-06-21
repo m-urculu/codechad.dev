@@ -9,21 +9,21 @@ import { loadChatState, saveChatState } from "@/app/api/supabase/chat-state";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const user_id = searchParams.get("user_id");
-  const module = searchParams.get("module");
-  if (!user_id || !module) {
+  const moduleId = searchParams.get("module");
+  if (!user_id || !moduleId) {
     return NextResponse.json({ error: "user_id and module are required" }, { status: 400 });
   }
-  const state = await loadChatState(user_id, module);
+  const state = await loadChatState(user_id, moduleId);
   return NextResponse.json({ state });
 }
 
 export async function POST(request: Request) {
   try {
-    const { user_id, module, messages, calib } = await request.json();
-    if (!user_id || !module || !Array.isArray(messages)) {
+    const { user_id, module: moduleId, messages, calib } = await request.json();
+    if (!user_id || !moduleId || !Array.isArray(messages)) {
       return NextResponse.json({ error: "user_id, module and messages are required" }, { status: 400 });
     }
-    const ok = await saveChatState(user_id, module, { messages, calib: calib ?? {} });
+    const ok = await saveChatState(user_id, moduleId, { messages, calib: calib ?? {} });
     return NextResponse.json({ ok });
   } catch (error) {
     console.error("[chat/state] error:", error);

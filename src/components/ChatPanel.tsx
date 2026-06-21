@@ -511,7 +511,7 @@ export default function ChatPanel({
         );
       } else {
         // Use marked to render all Gemini Markdown as intended
-        const html = marked(part.trim());
+        const html = marked.parse(part.trim(), { async: false });
         return (
           <div className="flex flex-col gap-5" key={i} dangerouslySetInnerHTML={{ __html: html }} />
         );
