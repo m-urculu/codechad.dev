@@ -13,11 +13,7 @@
 
 ## What it looks like
 
-**Pick a technology.** Everything on the grid runs fully in the browser — languages via WASM engines, databases as in-memory engines, web frameworks in live-preview iframes.
-
-![Landing page — module grid](docs/screenshots/landing.png)
-
-**Get a personalized curriculum.** Answer two questions (level + goal) and the AI generates a grounded roadmap for that technology — topics expand on demand into sub-topics and concrete learning points, with continuous progress bars at every layer.
+**Pick a technology, get a personalized curriculum.** Everything on the grid runs fully in the browser — languages via WASM engines, databases as in-memory engines, web frameworks in live-preview iframes. Answer two questions (level + goal) and the AI generates a grounded roadmap — topics expand on demand into sub-topics and concrete learning points, with continuous progress bars at every layer.
 
 ![Main menu, calibration and roadmap generation](docs/screenshots/onboarding.webp)
 
