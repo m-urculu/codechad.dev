@@ -93,6 +93,7 @@ export default function RoadmapPanel({
       <div>
         <button
           type="button"
+          data-node-kind={node.kind}
           onClick={() => toggle(node, here)}
           style={{ paddingLeft: 8 + depth * 16 }}
           className={[

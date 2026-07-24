@@ -41,6 +41,14 @@ export async function runDuckDb(code: string, onLine: OnLine, loadNote?: string)
     onLine({ kind: "error", text: "Failed to load the DuckDB engine: " + String(e) });
     return;
   }
+  // Fresh in-memory catalog for every Run: lessons assume the DB starts empty, and a
+  // re-run of a CREATE TABLE script must not collide with the previous run's tables.
+  // (DROP SCHEMA main is not allowed in DuckDB — reopening the DB is the real reset.)
+  try {
+    await db.open({ path: ":memory:" });
+  } catch {
+    /* keep the existing catalog if reopen isn't supported */
+  }
   const conn = await db.connect();
   try {
     // Run statements one by one (split on ; at line ends) so DDL + queries all execute.
@@ -62,13 +70,5 @@ export async function runDuckDb(code: string, onLine: OnLine, loadNote?: string)
     onLine({ kind: "error", text: e?.message || String(e) });
   } finally {
     await conn.close();
-    // Fresh catalog for the next Run (drop everything created this run).
-    try {
-      const c2 = await db.connect();
-      await c2.query("DROP SCHEMA IF EXISTS main CASCADE; CREATE SCHEMA main;");
-      await c2.close();
-    } catch {
-      /* best effort */
-    }
   }
 }

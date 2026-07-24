@@ -1,0 +1,84 @@
+<!doctype html>
+<!-- Sandbox page for the AI/ML module (transformers.js). Loaded into a hidden
+     same-origin iframe by src/lib/runtimes/engineMl.ts. Being a real document (not
+     srcdoc) gives it a proper URL context so storage APIs — the Cache API that
+     transformers.js uses for model weights — behave exactly like the main page.
+     Learner code runs here so its errors and un-awaited promise rejections belong to
+     THIS window, not the app's (where Next's dev overlay would report them). -->
+<html>
+<head>
+<meta charset="utf-8" />
+<script>
+(function () {
+  var CDN = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.2/+esm";
+
+  function fmt(v) {
+    try {
+      if (typeof v === "string") return v;
+      if (typeof v === "undefined") return "undefined";
+      if (v instanceof Error) return v.message || String(v);
+      if (typeof v === "function") return "[Function " + (v.name || "anonymous") + "]";
+      return JSON.stringify(v, null, 1);
+    } catch (e) {
+      return String(v);
+    }
+  }
+  function post(kind, text) {
+    parent.postMessage({ __ml: true, kind: kind, text: text }, "*");
+  }
+  ["log", "info", "warn", "error"].forEach(function (k) {
+    console[k] = function () {
+      post(k, Array.prototype.map.call(arguments, fmt).join(" "));
+    };
+  });
+  window.onerror = function (m, s, l, c, err) {
+    post("error", (err && err.message) || String(m));
+    return false;
+  };
+  window.addEventListener("unhandledrejection", function (e) {
+    e.preventDefault();
+    post("error", (e.reason && e.reason.message) || fmt(e.reason));
+  });
+
+  // Model downloads are silent by default — report milestones and readiness so the
+  // learner never stares at a dead console.
+  var seen = {};
+  function progress(p) {
+    if (!p || !p.status) return;
+    if (p.status === "progress" && p.file && p.total > 1e6) {
+      var pct = Math.min(100, Math.floor((p.progress || 0) / 25) * 25);
+      var key = p.file + ":" + pct;
+      if (pct > 0 && !seen[key]) {
+        seen[key] = 1;
+        post("system", "Downloading " + p.file.split("/").pop() + " — " + pct + "% of " + Math.round(p.total / 1e6) + " MB");
+      }
+    } else if (p.status === "ready") {
+      post("system", "Model ready — " + (p.model || "") + " (" + (p.task || "") + ")");
+    }
+  }
+
+  window.addEventListener("message", async function (e) {
+    var d = e.data;
+    if (!d || !d.__mlExec || typeof d.code !== "string") return;
+    try {
+      var raw = await import(CDN);
+      var pipeline = function (task, model, opts) {
+        post("system", 'Loading ' + (model || "default") + ' model for "' + task + '"… (downloads on first use, then cached)');
+        return raw.pipeline(task, model, Object.assign({ progress_callback: progress }, opts || {}));
+      };
+      var transformers = Object.assign(Object.create(null), raw, { pipeline: pipeline });
+      var AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+      var fn = new AsyncFunction("transformers", "pipeline", "console", d.code);
+      await fn(transformers, pipeline, window.console);
+    } catch (err) {
+      post("error", (err && err.message) || String(err));
+    }
+    post("done", "");
+  });
+
+  post("ready", "");
+})();
+</script>
+</head>
+<body></body>
+</html>

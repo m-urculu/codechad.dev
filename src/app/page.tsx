@@ -39,7 +39,9 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden">
+    // Static dark base so the UI stays readable (white text everywhere) even when the
+    // WebGL background is disabled for software renderers — it sits underneath it.
+    <div className="flex flex-col h-screen w-screen overflow-hidden bg-[radial-gradient(ellipse_at_top,#0b1224_0%,#050810_65%)]">
       {gpuOk && <Background />}
       <NavBar onHome={() => setView("landing")} />
       <div className="relative flex-1 min-h-0">
