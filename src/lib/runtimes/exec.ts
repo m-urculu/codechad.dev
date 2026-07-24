@@ -119,8 +119,8 @@ export async function startRun(spec: RuntimeSpec, code: string, onLine: OnLine):
       return { done: runPhp(code, onLine, spec.loadNote), cancel: () => {} };
     }
     case "ml": {
-      const { runMl } = await import("./engineMl");
-      return { done: runMl(code, onLine, spec.loadNote), cancel: () => {} };
+      const { startMl } = await import("./engineMl");
+      return startMl(code, onLine, spec.loadNote);
     }
     default: {
       onLine({ kind: "system", text: "Run isn't available for this module yet — press Submit to get tutor feedback on your code." });

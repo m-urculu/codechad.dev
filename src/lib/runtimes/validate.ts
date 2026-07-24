@@ -56,6 +56,9 @@ export async function findRuntimeErrors(
         handle.done,
         new Promise<void>((r) => setTimeout(r, SAFETY_MS)),
       ]);
+      // Kill the probe's runtime on timeout — an ML probe that outlives the race would
+      // otherwise keep downloading model weights in a leaked hidden iframe.
+      handle.cancel();
     }
   } catch (e) {
     errors.push(String(e));
