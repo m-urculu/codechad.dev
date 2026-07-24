@@ -12,6 +12,7 @@ import { groundedText, extractJSON } from "./snowflake";
 import { geminiJSON } from "./llm";
 import { gradeSubmission } from "./grade";
 import { getRuntime, type RuntimeSpec, type ForbidLang } from "@/lib/runtimes/registry";
+import { getDocSource } from "@/lib/docs";
 
 // A deterministic, programmatic check for one objective. Grading runs these — the LLM
 // is only used afterward for guidance, never to decide pass/fail.
@@ -166,9 +167,17 @@ function mkLesson(data: RawLesson, sources: string[], spec: RuntimeSpec): Lesson
 
 function buildPrompt(
   spec: RuntimeSpec,
-  input: { skill: string; level?: string; goal?: string; pointTitle: string; pointSummary?: string; treeOutline?: string }
+  input: { skill: string; level?: string; goal?: string; pointTitle: string; pointSummary?: string; moduleId?: string; treeOutline?: string }
 ): string {
-  const { skill, level, goal, pointTitle, pointSummary, treeOutline } = input;
+  const { skill, level, goal, pointTitle, pointSummary, moduleId, treeOutline } = input;
+
+  // Only modules whose docs are embeddable (DevDocs) get inline doc links; the external-
+  // doc modules stay plain prose. The label steers the model toward canonical entry names.
+  const docSrc = getDocSource(moduleId);
+  const docLinks =
+    docSrc?.kind === "devdocs"
+      ? `DOC LINKS: In "intro", wherever you mention a specific API / method / function / built-in / concept the learner MUST use to complete THIS exercise, hyperlink it inline using markdown [visible text](<doc:CANONICAL_NAME>) — ALWAYS wrap the target in angle brackets <...> (required so names with spaces work). CANONICAL_NAME is its official ${docSrc.label} documentation name (e.g. the exact method or symbol name — "Array.prototype.map", "print", "SELECT", "Arrow function expressions"). Link ONLY the few references genuinely needed to solve the task, inline in the sentence where they appear — never a separate list, never decorative links. Example: "use the [\`map()\`](<doc:Array.prototype.map>) method to transform each item".\n`
+      : "";
 
   const head =
     `Using REAL, current official documentation and best practices for "${skill}", ` +
@@ -188,7 +197,9 @@ function buildPrompt(
     `  • {"type":"stdout_equals","value":"<exact full run output>"} — when the objective is fully defined by what the program prints.\n` +
     `  • {"type":"stdout_includes","value":"<substring the output must contain>"} — when only part of the output matters.\n` +
     `  • {"type":"code_matches","value":"<JS regexp source>"} — for "use X" / structural objectives, or interaction that doesn't print on a plain run (e.g. a click handler): match the required construct in the learner's code, e.g. "addEventListener\\\\(\\\\s*['\\"]click['\\"]".\n` +
-    `CRITICAL: your own "solution" MUST pass every check (stdout checks match the solution's real output; code_matches matches the solution's code). Checks are validated by running the solution — if they don't pass it, they are wrong.\n\n`;
+    `CRITICAL: your own "solution" MUST pass every check (stdout checks match the solution's real output; code_matches matches the solution's code). Checks are validated by running the solution — if they don't pass it, they are wrong.\n` +
+    docLinks +
+    `\n`;
 
   if (!spec.runnable) {
     return (
