@@ -2,6 +2,7 @@
 
 import React from "react";
 import { LoginButton } from "./LoginButton";
+import { version } from "../../package.json";
 
 export default function NavBar({ onHome }: { onHome?: () => void }) {
   return (
@@ -18,7 +19,8 @@ export default function NavBar({ onHome }: { onHome?: () => void }) {
           {/* eslint-disable-next-line @next/next/no-img-element -- static SVG, no optimization needed */}
           <img src="/logo.svg" alt="" className="h-8 w-8 drop-shadow" />
           <span className="flex items-baseline space-x-[10px]">
-            <span>CodePath.AI</span><span className="text-sm font-thin">(alpha)</span>
+            <span>CodePath.AI</span>
+            <span className="text-sm font-thin">v{version} alpha</span>
           </span>
         </button>
       </div>
