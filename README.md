@@ -54,4 +54,5 @@ Next.js (App Router, Turbopack) · React · Tailwind · Monaco editor · Supabas
 
 ---
 
-<p align="center"><i>alpha — built as a hands-on exploration of AI-driven, execution-grounded learning.</i></p>
+<p align="center"><i>alpha — built as a hands-on exploration of AI-driven, execution-grounded learning.</i><br/>
+Released under the <a href="LICENSE">MIT License</a>.</p>
