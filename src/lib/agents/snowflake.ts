@@ -6,6 +6,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { GoogleGenAI } from "@google/genai";
+import { GEMINI_MODEL } from "./models";
 
 export type NodeKind = "topic" | "subtopic" | "point";
 
@@ -29,18 +30,33 @@ export type Roadmap = {
   topics: RoadmapNode[];
 };
 
-const MODEL = "gemini-2.5-flash";
+const MODEL = GEMINI_MODEL;
 
 // Grounded text generation (Google Search tool). Returns text + source URLs.
 export async function groundedText(prompt: string): Promise<{ text: string; sources: string[] }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return { text: "", sources: [] };
   const ai = new GoogleGenAI({ apiKey });
-  const res: any = await ai.models.generateContent({
-    model: MODEL,
-    contents: prompt,
-    config: { tools: [{ googleSearch: {} }] },
-  });
+  let res: any;
+  try {
+    res = await ai.models.generateContent({
+      model: MODEL,
+      contents: prompt,
+      config: { tools: [{ googleSearch: {} }] },
+    });
+  } catch (err: any) {
+    // Google Search grounding has no quota on the free tier (429 RESOURCE_EXHAUSTED).
+    // Fall back to an ungrounded call so generation still works (no source URLs).
+    const isQuota =
+      err?.status === 429 ||
+      err?.code === 429 ||
+      /RESOURCE_EXHAUSTED|\b429\b/.test(String(err?.message ?? ""));
+    if (isQuota) {
+      res = await ai.models.generateContent({ model: MODEL, contents: prompt });
+    } else {
+      throw err;
+    }
+  }
   const text: string =
     res?.text ??
     res?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? "").join("") ??

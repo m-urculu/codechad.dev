@@ -2,10 +2,11 @@
 // Library: Gemini API Interaction Module
 
 import fetch from 'node-fetch';
+import { GEMINI_MODEL } from '@/lib/agents/models';
 
 async function getGeminiResponse(prompt: string): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
-  const modelName = 'gemini-2.5-flash'; // gemini-2.0-flash is retired (404)
+  const modelName = GEMINI_MODEL; // fallback-friendly default (see agents/models.ts)
 
   if (!apiKey) {
     console.error('GEMINI_API_KEY environment variable not set.');

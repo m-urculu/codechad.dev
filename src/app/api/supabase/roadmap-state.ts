@@ -44,6 +44,60 @@ export async function loadRoadmapState(user_id: string, skill: string): Promise<
   }
 }
 
+// Summary of one stored roadmap for the "Continue learning" list on the main page.
+export type RoadmapSummary = {
+  skill: string;
+  level?: string;
+  goal?: string;
+  updatedAt: string;
+  doneCount: number;   // lesson points marked done
+  totalCount: number;  // lesson points currently in the (lazily-expanded) tree
+};
+
+// Count "point" (lesson leaf) nodes anywhere in a stored Roadmap tree.
+function countPoints(tree: unknown): number {
+  let n = 0;
+  const walk = (nodes: Array<{ kind?: string; children?: unknown }>) => {
+    for (const node of nodes ?? []) {
+      if (node?.kind === "point") n++;
+      if (Array.isArray(node?.children)) walk(node.children as typeof nodes);
+    }
+  };
+  const topics = (tree as { topics?: unknown })?.topics;
+  if (Array.isArray(topics)) walk(topics as Array<{ kind?: string; children?: unknown }>);
+  return n;
+}
+
+// All roadmaps for a user, newest first, with computed progress counts.
+export async function listRoadmapStates(user_id: string): Promise<RoadmapSummary[]> {
+  try {
+    const { data, error } = await supabase
+      .from("user_roadmap_state")
+      .select("skill, level, goal, tree, progress, updated_at")
+      .eq("user_id", user_id)
+      .order("updated_at", { ascending: false });
+    if (error) {
+      console.error("[roadmap-state] list error:", error.message);
+      return [];
+    }
+    return (data ?? []).map((r) => {
+      const progress = (r.progress ?? {}) as Record<string, { done?: boolean }>;
+      const doneCount = Object.values(progress).filter((p) => p?.done).length;
+      return {
+        skill: r.skill as string,
+        level: (r.level as string) ?? undefined,
+        goal: (r.goal as string) ?? undefined,
+        updatedAt: r.updated_at as string,
+        doneCount,
+        totalCount: countPoints(r.tree),
+      };
+    });
+  } catch (e) {
+    console.error("[roadmap-state] list exception:", e);
+    return [];
+  }
+}
+
 export async function saveRoadmapState(
   user_id: string,
   skill: string,

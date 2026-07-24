@@ -16,7 +16,7 @@ const supabase = createClient(
 );
 
 type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[] };
-type ProgressEntry = { built?: BuiltLesson; passed: string[]; done: boolean };
+type ProgressEntry = { built?: BuiltLesson; passed: string[]; done: boolean; code?: string };
 type Progress = Record<string, ProgressEntry>;
 export type BootState = "loading" | "fresh" | "resumed";
 
@@ -35,6 +35,28 @@ function treeOutline(roadmap: Roadmap, markId?: string, progress?: Progress): st
   };
   walk(roadmap.topics, 0);
   return lines.join("\n");
+}
+
+// Pre-order flatten of all lesson leaves ("point" nodes) in roadmap order.
+function flattenPoints(roadmap: Roadmap | null): RoadmapNode[] {
+  const out: RoadmapNode[] = [];
+  const walk = (nodes: RoadmapNode[]) => {
+    for (const n of nodes) {
+      if (n.kind === "point") out.push(n);
+      if (n.children) walk(n.children);
+    }
+  };
+  if (roadmap) walk(roadmap.topics);
+  return out;
+}
+
+// The lesson point immediately after `pointId` in roadmap order, or null if it's
+// the last currently-loaded point (a later topic may not be expanded yet).
+function nextPointAfter(roadmap: Roadmap | null, pointId: string | null): RoadmapNode | null {
+  if (!pointId) return null;
+  const points = flattenPoints(roadmap);
+  const i = points.findIndex((n) => n.id === pointId);
+  return i >= 0 && i + 1 < points.length ? points[i + 1] : null;
 }
 
 // Immutably replace a node's children anywhere in the tree.
@@ -57,6 +79,7 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
   const [progress, setProgress] = useState<Progress>({});
   const [lessonRequest, setLessonRequest] = useState<{ node: RoadmapNode; outline?: string; nonce: number } | null>(null);
   const [submitRequest, setSubmitRequest] = useState<{ code: string; output: string; nonce: number } | null>(null);
+  const [codeChange, setCodeChange] = useState<{ code: string; nonce: number } | null>(null);
   const [loadCode, setLoadCode] = useState<{ code: string; html?: string; nonce: number } | null>(null);
 
   // Persistence boot state + loaded values handed to the chat.
@@ -64,7 +87,7 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
   const [boot, setBoot] = useState<BootState>("loading");
   const [savedLevel, setSavedLevel] = useState<string | undefined>();
   const [savedGoal, setSavedGoal] = useState<string | undefined>();
-  const [initialProgress, setInitialProgress] = useState<Record<string, { built?: BuiltLesson; passed: string[] }> | null>(null);
+  const [initialProgress, setInitialProgress] = useState<Record<string, { built?: BuiltLesson; passed: string[]; code?: string }> | null>(null);
 
   const doneNodeIds = Object.keys(progress).filter((id) => progress[id]?.done);
 
@@ -90,7 +113,7 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
           setRoadmap(state.tree);
           setProgress(prog);
           setInitialProgress(
-            Object.fromEntries(Object.entries(prog).map(([k, v]) => [k, { built: v.built, passed: v.passed ?? [] }]))
+            Object.fromEntries(Object.entries(prog).map(([k, v]) => [k, { built: v.built, passed: v.passed ?? [], code: v.code }]))
           );
           setSavedLevel(state.level);
           setSavedGoal(state.goal);
@@ -168,14 +191,18 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
 
   function handleLessonComplete(pointId: string) {
     setProgress((p) => ({ ...p, [pointId]: { ...(p[pointId] ?? { passed: [] }), done: true } }));
+    // Auto-advance: open the next lesson point in roadmap order (no-op if it's the
+    // last loaded point). ChatPanel posts the hard-coded transition message.
+    const next = nextPointAfter(roadmap, pointId);
+    if (next) handleActivateLesson(next);
   }
 
   // Merge the chat's per-node lesson cache into progress (preserving earned "done").
-  function handleProgressChange(cache: Record<string, { built?: BuiltLesson; passed: string[] }>) {
+  function handleProgressChange(cache: Record<string, { built?: BuiltLesson; passed: string[]; code?: string }>) {
     setProgress((prev) => {
       const next: Progress = { ...prev };
       for (const [id, v] of Object.entries(cache)) {
-        next[id] = { built: v.built, passed: v.passed, done: prev[id]?.done ?? false };
+        next[id] = { built: v.built, passed: v.passed, done: prev[id]?.done ?? false, code: v.code };
       }
       return next;
     });
@@ -184,6 +211,11 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
   function handleSubmitCode(code: string, output: string) {
     setLeftView("chat");
     setSubmitRequest({ code, output, nonce: Date.now() });
+  }
+
+  // Learner edited the code — forward it to ChatPanel to store against the active lesson.
+  function handleCodeChange(code: string) {
+    setCodeChange({ code, nonce: Date.now() });
   }
 
   function handleLoadCode(code: string, html?: string) {
@@ -221,7 +253,9 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
             initialProgress={initialProgress}
             onRoadmap={handleRoadmap}
             lessonRequest={lessonRequest}
+            nextLessonTitle={nextPointAfter(roadmap, activeNodeId)?.title ?? null}
             submitRequest={submitRequest}
+            codeChange={codeChange}
             onLoadCode={handleLoadCode}
             onLessonComplete={handleLessonComplete}
             onProgressChange={handleProgressChange}
@@ -237,7 +271,7 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
           />
         </div>
         <div className={codeOpen ? "flex flex-1 min-w-0" : "hidden"}>
-          <CodeHere moduleId={moduleId} onSubmit={handleSubmitCode} loadCode={loadCode} />
+          <CodeHere moduleId={moduleId} onSubmit={handleSubmitCode} onCodeChange={handleCodeChange} loadCode={loadCode} />
         </div>
       </div>
 

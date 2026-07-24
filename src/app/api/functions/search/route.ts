@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 
 import { GoogleGenAI } from "@google/genai";
 import { insertChatMessage } from "@/app/api/supabase/chat-message";
+import { GEMINI_MODEL } from "@/lib/agents/models";
 
 // Gemini search function using GoogleGenAI with grounding (real search)
 async function geminiSearch(query: string) {
@@ -17,12 +18,24 @@ async function geminiSearch(query: string) {
   const ai = new GoogleGenAI({ apiKey });
   const groundingTool = { googleSearch: {} };
   const config = { tools: [groundingTool] };
-  const model = "gemini-2.5-flash";
-  const response = await ai.models.generateContent({
-    model,
-    contents: query,
-    config,
-  });
+  const model = GEMINI_MODEL;
+  let response: any;
+  try {
+    response = await ai.models.generateContent({
+      model,
+      contents: query,
+      config,
+    });
+  } catch (err: any) {
+    // Google Search grounding has no quota on the free tier (429 RESOURCE_EXHAUSTED).
+    // Fall back to an ungrounded call so search still returns an answer.
+    const isQuota =
+      err?.status === 429 ||
+      err?.code === 429 ||
+      /RESOURCE_EXHAUSTED|\b429\b/.test(String(err?.message ?? ""));
+    if (!isQuota) throw err;
+    response = await ai.models.generateContent({ model, contents: query });
+  }
   // The response object may differ depending on the SDK version
   // Try to extract the text in a robust way
   if (response && response.text) return response.text;

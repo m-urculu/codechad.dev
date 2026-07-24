@@ -22,15 +22,21 @@ const LINE_COLOR: Record<OutLine["kind"], string> = {
 export default function CodeHere({
   moduleId,
   onSubmit,
+  onCodeChange,
   loadCode,
 }: {
   moduleId?: string | null;
   onSubmit?: (code: string, output: string) => void;
+  onCodeChange?: (code: string) => void;
   loadCode?: LoadCode;
 }) {
   const spec = getRuntime(moduleId);
 
   const codeRef = useRef<string>(spec.defaultCode);
+  // Suppress the onChange that Monaco fires when WE set the value programmatically
+  // (module switch / lesson load), so a load isn't mistaken for a learner edit.
+  const suppressChangeRef = useRef(false);
+  const codeChangeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const htmlRef = useRef<string>(spec.defaultHtml ?? "");
   const engineRef = useRef<RunHandle | null>(null);
   const webRef = useRef<WebRunHandle | null>(null);
@@ -49,8 +55,11 @@ export default function CodeHere({
     codeRef.current = spec.defaultCode;
     htmlRef.current = spec.defaultHtml ?? "";
     setHasDom(spec.engine === "iframe-web" || (spec.allowDom && !!spec.defaultHtml));
-    setTab("console");
+    // Preview-centric modules (React/Vue/Three.js) open on Preview; everything else
+    // on Console. After that, Run respects whatever tab the learner has selected.
+    setTab(spec.engine === "iframe-web" ? "preview" : "console");
     setOutput([]);
+    suppressChangeRef.current = true;
     if (editorRef.current) editorRef.current.setValue(spec.defaultCode);
     else pendingRef.current = spec.defaultCode;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -59,9 +68,16 @@ export default function CodeHere({
   // Preload starter code (and DOM scaffold) when a lesson loads.
   useEffect(() => {
     if (!loadCode) return;
+    // Stop anything still running and clear the console/preview from the previous
+    // lesson — otherwise a prior run's output (e.g. an error) persists into the new
+    // lesson after auto-advance or resume.
+    cancelAll();
+    setRunning(false);
+    setOutput([]);
     codeRef.current = loadCode.code;
     htmlRef.current = loadCode.html || spec.defaultHtml || "";
     setHasDom(spec.engine === "iframe-web" || (spec.allowDom && !!htmlRef.current));
+    suppressChangeRef.current = true;
     if (editorRef.current) editorRef.current.setValue(loadCode.code);
     else pendingRef.current = loadCode.code;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -76,39 +92,58 @@ export default function CodeHere({
     webRef.current = null;
   }
 
+  // Execute the current code, streaming lines to the console AND into a local
+  // buffer. Awaits completion (including main-thread WASM + iframe engines) and
+  // returns the captured output as text. Shared by Run and Submit so Submit can
+  // validate freshly-produced output rather than stale/empty prior output.
+  async function execute(): Promise<string> {
+    cancelAll();
+    setOutput([]);
+    setRunning(true);
+    const buffer: OutLine[] = [];
+    const collect = (l: OutLine) => {
+      buffer.push(l);
+      addLine(l);
+    };
+    const useIframe = spec.engine === "iframe-web" || (spec.allowDom && !!htmlRef.current);
+    if (useIframe && iframeRef.current) {
+      // Don't yank the learner to Preview — respect the tab they've selected.
+      await new Promise<void>((resolve) => {
+        webRef.current = runWeb({
+          iframe: iframeRef.current!,
+          html: htmlRef.current,
+          js: codeRef.current,
+          libs: spec.iframeLibs,
+          onLine: collect,
+          onDone: () => {
+            setRunning(false);
+            resolve();
+          },
+        });
+      });
+    } else {
+      try {
+        const { startRun } = await import("@/lib/runtimes/exec");
+        const handle = await startRun(spec, codeRef.current, collect);
+        engineRef.current = handle;
+        await handle.done;
+      } catch (e) {
+        collect({ kind: "error", text: "Runtime failed to start: " + String(e) });
+      } finally {
+        engineRef.current = null;
+        setRunning(false);
+      }
+    }
+    return buffer.map((l) => l.text).join("\n");
+  }
+
   async function run() {
     if (running) return;
     if (!spec.runnable) {
       setOutput([{ kind: "system", text: `Run isn't available for ${spec.title} yet — write your code and press Submit for tutor review.` }]);
       return;
     }
-    cancelAll();
-    setOutput([]);
-    setRunning(true);
-    const useIframe = spec.engine === "iframe-web" || (spec.allowDom && !!htmlRef.current);
-    if (useIframe && iframeRef.current) {
-      setTab("preview");
-      webRef.current = runWeb({
-        iframe: iframeRef.current,
-        html: htmlRef.current,
-        js: codeRef.current,
-        libs: spec.iframeLibs,
-        onLine: addLine,
-        onDone: () => setRunning(false),
-      });
-    } else {
-      try {
-        const { startRun } = await import("@/lib/runtimes/exec");
-        const handle = await startRun(spec, codeRef.current, addLine);
-        engineRef.current = handle;
-        await handle.done;
-      } catch (e) {
-        addLine({ kind: "error", text: "Runtime failed to start: " + String(e) });
-      } finally {
-        engineRef.current = null;
-        setRunning(false);
-      }
-    }
+    await execute();
   }
 
   function stop() {
@@ -117,7 +152,16 @@ export default function CodeHere({
     addLine({ kind: "system", text: "— stopped —" });
   }
 
-  function submit() {
+  async function submit() {
+    if (running) return;
+    // For runnable modules, run the code first so the tutor validates the code's
+    // ACTUAL output (including runtime errors), not stale output from a prior Run
+    // or nothing at all if the learner never pressed Run.
+    if (spec.runnable) {
+      const out = await execute();
+      onSubmit?.(codeRef.current, out);
+      return;
+    }
     onSubmit?.(codeRef.current, output.map((l) => l.text).join("\n"));
   }
 
@@ -140,12 +184,21 @@ export default function CodeHere({
               onMount={(editor) => {
                 editorRef.current = editor;
                 if (pendingRef.current != null) {
+                  suppressChangeRef.current = true;
                   editor.setValue(pendingRef.current);
                   pendingRef.current = null;
                 }
               }}
               onChange={(val) => {
                 codeRef.current = val ?? "";
+                // Ignore the change fired by our own programmatic setValue.
+                if (suppressChangeRef.current) {
+                  suppressChangeRef.current = false;
+                  return;
+                }
+                // Report learner edits (debounced) so progress persists.
+                if (codeChangeTimer.current) clearTimeout(codeChangeTimer.current);
+                codeChangeTimer.current = setTimeout(() => onCodeChange?.(codeRef.current), 600);
               }}
               theme="vs-dark"
               options={{

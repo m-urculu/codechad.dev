@@ -1,6 +1,8 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+import { RUNTIMES } from "@/lib/runtimes/registry";
 import type { IconType } from "react-icons";
 import {
   SiJavascript,
@@ -68,6 +70,109 @@ const SECTIONS: Section[] = [
   },
 ];
 
+// ---- Continue learning (stored roadmaps) --------------------------------
+
+type RoadmapSummary = {
+  skill: string;
+  level?: string;
+  goal?: string;
+  updatedAt: string;
+  doneCount: number;
+  totalCount: number;
+};
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
+  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
+);
+
+// A stored roadmap's `skill` is the module's registry title — map it back to the
+// module id so clicking resumes the right workspace.
+function moduleIdForSkill(skill: string): string | undefined {
+  return Object.values(RUNTIMES).find((r) => r.title === skill)?.id;
+}
+
+function relativeTime(iso: string): string {
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return "";
+  const s = Math.max(0, Math.round((Date.now() - then) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  return d === 1 ? "yesterday" : `${d}d ago`;
+}
+
+// Loads the signed-in user's stored roadmaps; re-fetches on auth changes.
+function useStoredRoadmaps(): RoadmapSummary[] {
+  const [roadmaps, setRoadmaps] = useState<RoadmapSummary[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load(userId: string | null) {
+      if (!userId) {
+        if (!cancelled) setRoadmaps([]);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/roadmap/list?user_id=${encodeURIComponent(userId)}`);
+        const data = await res.json();
+        if (!cancelled) setRoadmaps(Array.isArray(data.roadmaps) ? data.roadmaps : []);
+      } catch {
+        if (!cancelled) setRoadmaps([]);
+      }
+    }
+    supabase.auth.getUser().then(({ data }) => load(data.user?.id ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      load(session?.user?.id ?? null);
+    });
+    return () => {
+      cancelled = true;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  return roadmaps;
+}
+
+function RoadmapCard({ r, onSelect }: { r: RoadmapSummary; onSelect: (id: string) => void }) {
+  const id = moduleIdForSkill(r.skill);
+  const pct = r.totalCount > 0 ? Math.round((r.doneCount / r.totalCount) * 100) : 0;
+  const meta = [r.level, r.goal].filter(Boolean).join(" · ");
+  return (
+    <button
+      type="button"
+      disabled={!id}
+      onClick={() => id && onSelect(id)}
+      className="group relative flex cursor-pointer flex-col items-start gap-3 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] px-5 py-4.5 text-left leading-relaxed
+                 shadow-lg shadow-black/40 backdrop-blur-xl
+                 transition-all duration-200 hover:-translate-y-1 hover:border-emerald-300/40 hover:bg-emerald-400/[0.12]
+                 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300/40
+                 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      <div className="flex w-full items-center justify-between gap-2">
+        <div className="text-sm font-bold text-white">{r.skill}</div>
+        <span className="shrink-0 text-[10px] text-white/50">{relativeTime(r.updatedAt)}</span>
+      </div>
+      {meta && <div className="text-xs leading-snug text-white/70">{meta}</div>}
+      <div className="mt-1 w-full">
+        <div className="mb-1 flex items-center justify-between text-[11px] text-white/60">
+          <span>{r.totalCount > 0 ? `${r.doneCount}/${r.totalCount} lessons` : "Not started"}</span>
+          <span>{pct}%</span>
+        </div>
+        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-emerald-400/80 transition-all" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      <span className="mt-1 text-[11px] font-medium text-emerald-300/90 group-hover:text-emerald-200">
+        {id ? "Resume →" : "Module unavailable"}
+      </span>
+    </button>
+  );
+}
+
 function ModuleCard({ m, onSelect }: { m: Module; onSelect: (id: string) => void }) {
   const { Icon } = m;
   return (
@@ -97,6 +202,7 @@ function ModuleCard({ m, onSelect }: { m: Module; onSelect: (id: string) => void
 }
 
 export default function Landing({ onSelect }: { onSelect: (id: string) => void }) {
+  const roadmaps = useStoredRoadmaps();
   return (
     <div className="relative z-10 h-full w-full overflow-y-auto">
       <div className="mx-auto flex max-w-5xl flex-col px-6 py-12 sm:py-16">
@@ -114,6 +220,21 @@ export default function Landing({ onSelect }: { onSelect: (id: string) => void }
             databases, real output, with an AI tutor beside you.
           </p>
         </header>
+
+        {/* Continue learning — the signed-in user's stored roadmaps */}
+        {roadmaps.length > 0 && (
+          <section className="mb-10">
+            <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              Continue learning
+            </h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {roadmaps.map((r) => (
+                <RoadmapCard key={r.skill} r={r} onSelect={onSelect} />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Module sections */}
         <div className="flex flex-col gap-8">
