@@ -296,6 +296,7 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
         <div className={leftView === "chat" ? "flex flex-1 min-w-0" : "hidden"}>
           <ChatPanel
             moduleId={moduleId}
+            visible={leftView === "chat"}
             boot={boot}
             hasRoadmap={!!roadmap}
             savedLevel={savedLevel}

@@ -39,7 +39,8 @@
     "shadcn": "^3.3.0",
     "sidebar": "^1.0.2",
     "tailwind-merge": "^3.3.1",
-    "three": "^0.180.0"
+    "three": "^0.180.0",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -47,6 +48,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "tailwindcss": "^4",
