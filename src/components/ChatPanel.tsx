@@ -32,6 +32,18 @@ import { Check, Circle, RotateCcw } from "lucide-react";
 
 marked.setOptions({ breaks: false });
 
+// Rewrite the assistant's inline documentation links — authored as [text](doc:Term) and
+// rendered by marked to <a href="doc:Term">…</a> — into inert, styled doc-links. The href
+// is dropped (so a stray click never navigates the page) and the term is carried on
+// data-doc-term; the chat bubble's click handler resolves it and opens the Docs tab.
+function linkifyDocAnchors(html: string): string {
+  return html.replace(
+    /<a\s+href="doc:([^"]*)"([^>]*)>/gi,
+    (_m, term: string, rest: string) =>
+      `<a data-doc-term="${term}" class="doc-link" role="link" tabindex="0"${rest}>`
+  );
+}
+
 type Message = {
   id: number;
   text: string;
@@ -48,6 +60,7 @@ type ChatPanelProps = {
   codeChange?: { code: string; nonce: number } | null;
   onLoadCode?: (code: string, html?: string) => void;
   onLessonComplete?: (pointId: string) => void;
+  onOpenDoc?: (term: string) => void;
   boot?: "loading" | "fresh" | "resumed";
   hasRoadmap?: boolean;
   savedLevel?: string;
@@ -78,6 +91,7 @@ export default function ChatPanel({
   codeChange,
   onLoadCode,
   onLessonComplete,
+  onOpenDoc,
   boot = "fresh",
   hasRoadmap = false,
   savedLevel,
@@ -276,6 +290,21 @@ export default function ChatPanel({
     setMessages((msgs) => [...msgs, { id: Date.now() + Math.floor(Math.random() * 1000), text, role }]);
   }
 
+  // Delegated click for inline doc-links inside a bot bubble: resolve the term to a doc
+  // section and open the Docs tab (handled upstream). preventDefault so nothing navigates.
+  function handleDocClick(e: React.MouseEvent<HTMLDivElement>) {
+    const el = (e.target as HTMLElement).closest?.("[data-doc-term]");
+    if (!el) return;
+    e.preventDefault();
+    let term = el.getAttribute("data-doc-term") || "";
+    try {
+      if (term.includes("%")) term = decodeURIComponent(term);
+    } catch {
+      /* keep raw term */
+    }
+    if (term) onOpenDoc?.(term);
+  }
+
   // Background solution validation: run the cached reference solution in its real
   // runtime off-screen; if it errors, regenerate it to fit the (unchanged) lesson via
   // /api/lesson/fix-solution and re-validate. Silent — never touches the UI. Capped.
@@ -434,6 +463,7 @@ export default function ChatPanel({
       if (cached) {
         setLesson({ pointId: node.id, title: node.title, objectives: cached.built.objectives, passed: cached.passed });
         // Restore the learner's edited code if we have it, else the starter scaffold.
+        const hasCode = !!cached.code;
         onLoadCode?.(cached.code ?? cached.built.starterCode, cached.built.html);
         pushMessage(
           "bot",
@@ -442,6 +472,35 @@ export default function ChatPanel({
         // Verify the reference solution once per session (covers lessons restored from
         // the DB that were never validated in a browser).
         void validateSolutionInBackground(node.id);
+        // Re-explain the lesson IN THE CONTEXT of their progress: recap the topic and
+        // point them at the next unmet objective (LLM call, informed by passed/remaining).
+        (async () => {
+          try {
+            setLoading(true);
+            const passedSet = new Set(cached.passed);
+            const res = await fetch("/api/lesson/explain", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pointTitle: node.title,
+                language: getRuntime(moduleId).langName,
+                moduleId: moduleId ?? undefined,
+                intro: cached.built.intro,
+                hasCode,
+                objectives: cached.built.objectives.map((o) => ({
+                  description: o.description,
+                  passed: passedSet.has(o.id),
+                })),
+              }),
+            });
+            const data = await res.json();
+            if (data.message) pushMessage("bot", data.message);
+          } catch {
+            /* recap is best-effort — the quick "Resuming…" line already landed */
+          } finally {
+            setLoading(false);
+          }
+        })();
         return;
       }
       setLoading(true);
@@ -565,6 +624,7 @@ export default function ChatPanel({
                 body: JSON.stringify({
                   pointTitle: active.title,
                   language: getRuntime(moduleId).langName,
+                  moduleId: moduleId ?? undefined,
                   code,
                   output,
                   results: active.objectives.map((o) => {
@@ -654,8 +714,10 @@ export default function ChatPanel({
           </pre>
         );
       } else {
-        // Use marked to render all Gemini Markdown as intended
-        const html = marked.parse(part.trim(), { async: false });
+        // Use marked to render all Gemini Markdown as intended, then turn the assistant's
+        // inline [text](doc:Term) references into clickable doc-links (handled by the
+        // bubble's click delegation — the href is stripped so nothing navigates away).
+        const html = linkifyDocAnchors(marked.parse(part.trim(), { async: false }) as string);
         return (
           <div className="flex flex-col gap-5" key={i} dangerouslySetInnerHTML={{ __html: html }} />
         );
@@ -663,7 +725,10 @@ export default function ChatPanel({
     });
     return (
       <div className={`flex my-4 justify-start`}>
-        <div className="bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal text-neutral-200 text-left">
+        <div
+          className="bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal text-neutral-200 text-left"
+          onClick={handleDocClick}
+        >
           <span>{rendered}</span>
         </div>
       </div>

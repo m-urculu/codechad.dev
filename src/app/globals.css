@@ -90,3 +90,20 @@ body {
   font-family: var(--font-sans);
   line-height: var(--leading);
 }
+
+/* Inline documentation links the assistant emits as [text](doc:Term). Styled like a
+   subtle cross-reference: accent color + dotted underline, no page navigation (the chat
+   handles the click and opens the Docs tab at the referenced section). */
+.doc-link {
+  color: #7dd3fc; /* sky-300 */
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.doc-link:hover {
+  color: #bae6fd; /* sky-200 */
+  text-decoration-style: solid;
+}
+.doc-link code {
+  color: inherit;
+}

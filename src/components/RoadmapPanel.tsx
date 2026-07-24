@@ -9,6 +9,8 @@ type RoadmapPanelProps = {
   roadmap: Roadmap | null;
   activeNodeId: string | null;
   doneNodeIds: string[];
+  // Per-lesson (point) completion in [0,1] — objective-level partial credit.
+  pointRatio?: Record<string, number>;
   onExpand: (node: RoadmapNode, path: string[]) => Promise<void>;
   onActivateLesson: (node: RoadmapNode) => void;
 };
@@ -17,6 +19,7 @@ export default function RoadmapPanel({
   roadmap,
   activeNodeId,
   doneNodeIds,
+  pointRatio,
   onExpand,
   onActivateLesson,
 }: RoadmapPanelProps) {
@@ -45,6 +48,32 @@ export default function RoadmapPanel({
     }
   }
 
+  // A lesson's completion in [0,1]: its objective-level ratio, falling back to done/not.
+  const pointOf = (id: string) => pointRatio?.[id] ?? (doneNodeIds.includes(id) ? 1 : 0);
+
+  // Continuous completion of a node in [0,1]. Each level weights its DIRECT children
+  // EQUALLY, so the bar drills down for partial credit: a topic = mean of its sub-topics,
+  // a sub-topic = mean of its lessons, a lesson = fraction of its objectives passed. So
+  // with 6 topics, finishing #1 and starting #2 fills 1/6 plus a slice of the next sixth —
+  // the width of that slice is however far into #2 (its sub-topics/lessons/objectives) you
+  // are. Ungenerated branches count as 0 (nothing to credit yet).
+  function ratio(node: RoadmapNode): number {
+    if (node.kind === "point") return pointOf(node.id);
+    if (!node.children || node.children.length === 0) return 0;
+    return node.children.reduce((sum, c) => sum + ratio(c), 0) / node.children.length;
+  }
+
+  // Whether an expandable node has generated substructure worth drawing a bar for.
+  function hasStructure(node: RoadmapNode): boolean {
+    return node.kind !== "point" && !!node.children && node.children.length > 0;
+  }
+
+  // Overall roadmap completion = equal-weighted mean across the top-level topics.
+  const overall =
+    roadmap && roadmap.topics.length > 0
+      ? roadmap.topics.reduce((s, t) => s + ratio(t), 0) / roadmap.topics.length
+      : 0;
+
   function Node({ node, depth, path }: { node: RoadmapNode; depth: number; path: string[] }) {
     const expandable = node.kind !== "point";
     const open = openIds.has(node.id);
@@ -52,6 +81,13 @@ export default function RoadmapPanel({
     const done = doneNodeIds.includes(node.id);
     const active = activeNodeId === node.id;
     const here = [...path, node.title];
+    // Continuous fill: expandable nodes roll up their subtree; a lesson uses its own
+    // objective ratio. Bars show for expandable nodes with generated structure, and for
+    // in-progress lessons (a partial objective bar).
+    const r = expandable ? ratio(node) : pointOf(node.id);
+    const pct = Math.round(r * 100);
+    const showBar = expandable ? hasStructure(node) : r > 0 && r < 1;
+    const complete = expandable ? hasStructure(node) && r >= 0.999 : done;
 
     return (
       <div>
@@ -87,7 +123,34 @@ export default function RoadmapPanel({
           >
             {node.title}
           </span>
+
+          {/* inline percentage on the header row */}
+          {showBar && (
+            <span
+              className={[
+                "shrink-0 font-mono text-[10px] tabular-nums",
+                complete ? "text-emerald-300" : "text-white/45",
+              ].join(" ")}
+            >
+              {pct}%
+            </span>
+          )}
         </button>
+
+        {/* continuous progress bar under the expanding tab (or under an in-progress lesson) */}
+        {showBar && (
+          <div style={{ paddingLeft: 8 + depth * 16 + 22, paddingRight: 12 }} className="pb-1.5">
+            <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+              <div
+                className={[
+                  "h-full rounded-full transition-all duration-300",
+                  complete ? "bg-emerald-400" : "bg-emerald-400/70",
+                ].join(" ")}
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {open && (
           <div>
@@ -144,8 +207,32 @@ export default function RoadmapPanel({
   return (
     <div className="flex h-full w-full min-w-0 flex-col border border-white/50 backdrop-blur-md font-sans">
       <div className="border-b border-white/50 px-5 py-3">
-        <h2 className="truncate text-sm font-bold text-white">{roadmap ? roadmap.title : "Roadmap"}</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="truncate text-sm font-bold text-white">{roadmap ? roadmap.title : "Roadmap"}</h2>
+          {roadmap && roadmap.topics.length > 0 && (
+            <span
+              className={[
+                "shrink-0 font-mono text-[11px] tabular-nums",
+                overall >= 0.999 ? "text-emerald-300" : "text-white/55",
+              ].join(" ")}
+            >
+              {Math.round(overall * 100)}%
+            </span>
+          )}
+        </div>
         {roadmap?.summary && <p className="mt-1 text-xs leading-snug text-white/60">{roadmap.summary}</p>}
+        {/* Overall course progress across all top-level topics. */}
+        {roadmap && roadmap.topics.length > 0 && (
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div
+              className={[
+                "h-full rounded-full transition-all duration-300",
+                overall >= 0.999 ? "bg-emerald-400" : "bg-emerald-400/70",
+              ].join(" ")}
+              style={{ width: `${Math.round(overall * 100)}%` }}
+            />
+          </div>
+        )}
       </div>
 
       {!roadmap ? (

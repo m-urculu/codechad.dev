@@ -3,10 +3,13 @@
 import ChatPanel from "@/components/ChatPanel";
 import CodeHere from "@/components/CodeHere";
 import RoadmapPanel from "@/components/RoadmapPanel";
+import DocsPanel from "@/components/DocsPanel";
 import { useEffect, useRef, useState } from "react";
-import { MessageSquare, Map, Code2 } from "lucide-react";
+import { MessageSquare, Map, Code2, BookOpen } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { getModuleMeta } from "@/lib/modules";
+import { getDocSource } from "@/lib/docs";
+import { resolveDocUrl } from "@/lib/docs-index";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
 
@@ -59,6 +62,23 @@ function nextPointAfter(roadmap: Roadmap | null, pointId: string | null): Roadma
   return i >= 0 && i + 1 < points.length ? points[i + 1] : null;
 }
 
+// The learner's live frontier: the FIRST not-yet-completed lesson in roadmap order
+// (optionally ignoring `excludeId`, e.g. the one just being finished). This is where
+// auto-advance should land — so completing an OLD/re-taken lesson returns you to your
+// newest uncompleted lesson instead of stepping to whatever sequentially follows the
+// old one. Falls back to null when every loaded point is done.
+function firstUncompletedPoint(
+  roadmap: Roadmap | null,
+  progress: Progress,
+  excludeId?: string | null
+): RoadmapNode | null {
+  for (const p of flattenPoints(roadmap)) {
+    if (p.id === excludeId) continue;
+    if (!progress[p.id]?.done) return p;
+  }
+  return null;
+}
+
 // Immutably replace a node's children anywhere in the tree.
 function setChildren(roadmap: Roadmap, nodeId: string, children: RoadmapNode[]): Roadmap {
   const walk = (nodes: RoadmapNode[]): RoadmapNode[] =>
@@ -71,7 +91,7 @@ function setChildren(roadmap: Roadmap, nodeId: string, children: RoadmapNode[]):
 export default function EditorPanels({ moduleId }: { moduleId?: string | null }) {
   const skill = getModuleMeta(moduleId)?.title ?? "";
 
-  const [leftView, setLeftView] = useState<"chat" | "roadmap">("chat");
+  const [leftView, setLeftView] = useState<"chat" | "roadmap" | "docs">("chat");
   const [codeOpen, setCodeOpen] = useState(false);
 
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
@@ -81,6 +101,7 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
   const [submitRequest, setSubmitRequest] = useState<{ code: string; output: string; nonce: number } | null>(null);
   const [codeChange, setCodeChange] = useState<{ code: string; nonce: number } | null>(null);
   const [loadCode, setLoadCode] = useState<{ code: string; html?: string; nonce: number } | null>(null);
+  const [docTarget, setDocTarget] = useState<{ url: string; nonce: number } | null>(null);
 
   // Persistence boot state + loaded values handed to the chat.
   const [userId, setUserId] = useState<string | null>(null);
@@ -90,6 +111,16 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
   const [initialProgress, setInitialProgress] = useState<Record<string, { built?: BuiltLesson; passed: string[]; code?: string }> | null>(null);
 
   const doneNodeIds = Object.keys(progress).filter((id) => progress[id]?.done);
+
+  // Per-lesson completion ratio in [0,1] for continuous roadmap progress bars: a done
+  // lesson is 1, otherwise the fraction of its objectives passed. This is the deepest
+  // accounting layer; the roadmap rolls it up through lessons → sub-topics → topics.
+  const pointRatio: Record<string, number> = {};
+  for (const [id, e] of Object.entries(progress)) {
+    const total = e.built?.objectives?.length ?? 0;
+    const passed = e.passed?.length ?? 0;
+    pointRatio[id] = e.done ? 1 : total > 0 ? Math.min(1, passed / total) : 0;
+  }
 
   // Load saved state on mount / module change.
   useEffect(() => {
@@ -190,10 +221,14 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
   }
 
   function handleLessonComplete(pointId: string) {
-    setProgress((p) => ({ ...p, [pointId]: { ...(p[pointId] ?? { passed: [] }), done: true } }));
-    // Auto-advance: open the next lesson point in roadmap order (no-op if it's the
-    // last loaded point). ChatPanel posts the hard-coded transition message.
-    const next = nextPointAfter(roadmap, pointId);
+    // Mark done, then advance to the learner's live frontier (the first still-uncompleted
+    // lesson), NOT simply the point that sequentially follows the one just finished — so
+    // re-completing an old lesson returns you to your newest uncompleted lesson. Falls
+    // back to the sequential next point when nothing earlier is left (end of loaded tree).
+    const nextProgress: Progress = { ...progress, [pointId]: { ...(progress[pointId] ?? { passed: [], done: false }), done: true } };
+    setProgress(nextProgress);
+    const next =
+      firstUncompletedPoint(roadmap, nextProgress, pointId) ?? nextPointAfter(roadmap, pointId);
     if (next) handleActivateLesson(next);
   }
 
@@ -223,6 +258,18 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
     setCodeOpen(true);
   }
 
+  // A doc link was clicked in the chat. Switch to the Docs tab IMMEDIATELY (so it never
+  // feels unresponsive while the index loads), then resolve the term to an exact DevDocs
+  // section URL (search fallback) and navigate there. Suppressed for external-doc modules,
+  // whose lessons carry no doc links anyway.
+  async function handleOpenDoc(term: string) {
+    const src = getDocSource(moduleId);
+    if (!src || src.kind !== "devdocs") return;
+    setLeftView("docs"); // instant tab switch — resolution can take a beat on first click
+    const url = await resolveDocUrl(moduleId, term);
+    if (url) setDocTarget({ url, nonce: Date.now() });
+  }
+
   const railBtn = (active: boolean) =>
     [
       "flex h-10 w-10 items-center justify-center border transition-colors cursor-pointer",
@@ -240,6 +287,9 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
         <button className={railBtn(leftView === "roadmap")} onClick={() => setLeftView("roadmap")} title="Roadmap" aria-label="Show roadmap">
           <Map className="h-5 w-5" />
         </button>
+        <button className={railBtn(leftView === "docs")} onClick={() => setLeftView("docs")} title="Documentation" aria-label="Show documentation">
+          <BookOpen className="h-5 w-5" />
+        </button>
       </div>
 
       <div className="flex flex-1 min-h-0 min-w-0 gap-4 p-4">
@@ -253,12 +303,15 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
             initialProgress={initialProgress}
             onRoadmap={handleRoadmap}
             lessonRequest={lessonRequest}
-            nextLessonTitle={nextPointAfter(roadmap, activeNodeId)?.title ?? null}
+            nextLessonTitle={
+              (firstUncompletedPoint(roadmap, progress, activeNodeId) ?? nextPointAfter(roadmap, activeNodeId))?.title ?? null
+            }
             submitRequest={submitRequest}
             codeChange={codeChange}
             onLoadCode={handleLoadCode}
             onLessonComplete={handleLessonComplete}
             onProgressChange={handleProgressChange}
+            onOpenDoc={handleOpenDoc}
           />
         </div>
         <div className={leftView === "roadmap" ? "flex flex-1 min-w-0" : "hidden"}>
@@ -266,9 +319,13 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
             roadmap={roadmap}
             activeNodeId={activeNodeId}
             doneNodeIds={doneNodeIds}
+            pointRatio={pointRatio}
             onExpand={handleExpand}
             onActivateLesson={handleActivateLesson}
           />
+        </div>
+        <div className={leftView === "docs" ? "flex flex-1 min-w-0" : "hidden"}>
+          <DocsPanel moduleId={moduleId} docTarget={docTarget} />
         </div>
         <div className={codeOpen ? "flex flex-1 min-w-0" : "hidden"}>
           <CodeHere moduleId={moduleId} onSubmit={handleSubmitCode} onCodeChange={handleCodeChange} loadCode={loadCode} />
