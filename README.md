@@ -19,11 +19,11 @@
 
 **Get a personalized curriculum.** Answer two questions (level + goal) and the AI generates a grounded roadmap for that technology — topics expand on demand into sub-topics and concrete learning points, with continuous progress bars at every layer.
 
-![Calibration and roadmap generation](docs/screenshots/onboarding.gif)
+![Main menu, calibration and roadmap generation](docs/screenshots/onboarding.webp)
 
 **Learn in a live workspace.** Each learning point becomes a micro-lesson: the tutor explains in chat (with inline links into official documentation), the editor holds starter code with a real gap to fill, and Run executes it instantly — the console output is graded deterministically against the lesson's objectives.
 
-![Lesson — writing code and running it live](docs/screenshots/lesson-run.gif)
+![Lesson — writing code and running it live](docs/screenshots/lesson-run.webp)
 
 ## How it works
 
