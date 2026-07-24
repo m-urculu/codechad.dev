@@ -1,7 +1,7 @@
 "use client";
 
 // React and hooks
-import { useRef, useState, useEffect, KeyboardEvent, FormEvent, memo } from "react";
+import { useRef, useState, useEffect, useLayoutEffect, KeyboardEvent, FormEvent, memo } from "react";
 
 // Markdown and syntax highlighting
 import { marked } from "marked";
@@ -26,33 +26,64 @@ import { createClient } from '@supabase/supabase-js';
 import { LEVELS, getModuleMeta } from "@/lib/modules";
 import { getRuntime } from "@/lib/runtimes/registry";
 import { gradeSubmission } from "@/lib/agents/grade";
+import ReadAloudButton from "@/components/ReadAloudButton";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
 import { Check, Circle, RotateCcw } from "lucide-react";
 
 marked.setOptions({ breaks: false });
 
-// Rewrite the assistant's inline documentation links — authored as [text](doc:Term) and
-// rendered by marked to <a href="doc:Term">…</a> — into inert, styled doc-links. The href
-// is dropped (so a stray click never navigates the page) and the term is carried on
-// data-doc-term; the chat bubble's click handler resolves it and opens the Docs tab.
+// Post-process marked's HTML for a bot message:
+//  1) Inline documentation links — authored as [text](doc:Term), rendered to
+//     <a href="doc:Term">… — become inert, styled doc-links. The href is dropped (so a
+//     stray click never navigates the page) and the term is carried on data-doc-term; the
+//     chat bubble's click handler resolves it and opens the Docs tab.
+//  2) Real external links (http/https) get target="_blank" so they open in a NEW browser
+//     tab instead of navigating the whole app away.
 function linkifyDocAnchors(html: string): string {
-  return html.replace(
-    /<a\s+href="doc:([^"]*)"([^>]*)>/gi,
-    (_m, term: string, rest: string) =>
-      `<a data-doc-term="${term}" class="doc-link" role="link" tabindex="0"${rest}>`
-  );
+  return html
+    .replace(
+      /<a\s+href="doc:([^"]*)"([^>]*)>/gi,
+      (_m, term: string, rest: string) =>
+        `<a data-doc-term="${term}" class="doc-link" role="link" tabindex="0"${rest}>`
+    )
+    .replace(
+      /<a\s+href="(https?:[^"]*)"((?:(?!target=)[^>])*)>/gi,
+      (_m, href: string, rest: string) =>
+        `<a href="${href}"${rest} target="_blank" rel="noopener noreferrer">`
+    );
 }
 
 type Message = {
   id: number;
   text: string;
   role: 'user' | 'bot';
+  // Orientation message (lesson intro / resume recap) tied to a lesson. These are PERSISTED
+  // but deduped per lesson: opening a lesson replaces its previous orientation message(s)
+  // rather than stacking new ones — so they survive refresh yet never pile up.
+  lessonId?: string;
 };
+
+// Legacy cleanup on load: very old transcripts may hold UNTAGGED "Resuming **X** — N/M
+// objectives done so far." recap lines (plus the bot explanation after each). Drop those
+// pairs. Current orientation messages carry a lessonId and are deduped instead of purged.
+const RESUMING_LINE = /^Resuming \*\*.+\*\* — \d+\/\d+ objectives done so far\.?$/;
+function stripResumeRecaps<T extends { role: string; text: string; lessonId?: string }>(msgs: T[]): T[] {
+  const out: T[] = [];
+  for (let i = 0; i < msgs.length; i++) {
+    if (!msgs[i].lessonId && msgs[i].role === "bot" && RESUMING_LINE.test(msgs[i].text.trim())) {
+      if (msgs[i + 1]?.role === "bot" && !msgs[i + 1].lessonId) i++; // drop the recap after it
+      continue;
+    }
+    out.push(msgs[i]);
+  }
+  return out;
+}
 
 
 type ChatPanelProps = {
   moduleId?: string | null;
+  visible?: boolean; // is the chat tab currently shown? (re-align when it becomes visible)
   onRoadmap?: (roadmap: Roadmap) => void;
   lessonRequest?: { node: RoadmapNode; outline?: string; nonce: number } | null;
   nextLessonTitle?: string | null;
@@ -84,6 +115,7 @@ const supabase = createClient(
 
 export default function ChatPanel({
   moduleId,
+  visible = true,
   onRoadmap,
   lessonRequest,
   nextLessonTitle,
@@ -116,6 +148,11 @@ export default function ChatPanel({
   useEffect(() => {
     lessonRef.current = lesson;
   }, [lesson]);
+  // The lesson whose intro/recap was the assistant's MOST RECENT turn. Set when we post an
+  // intro or resume recap; cleared the moment the learner does anything else (types, or
+  // submits). Resuming a lesson that's still "freshly introduced" then skips repeating the
+  // same rundown.
+  const introducedRef = useRef<string | null>(null);
   // Per-node lesson cache: keeps each point's built lesson + objective progress so
   // switching between points retains progress (and skips re-generation). In-memory for
   // now; Supabase persistence layers on top once the project is reachable.
@@ -135,9 +172,111 @@ export default function ChatPanel({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Chat pagination: render only the most recent BATCH messages; scrolling to the top
+  // reveals older ones a batch at a time (instead of mounting the whole conversation).
+  const BATCH = 25;
+  const [visibleCount, setVisibleCount] = useState(BATCH);
+  const messagesRef = useRef(messages);
+  const visibleCountRef = useRef(BATCH);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
+  useEffect(() => { visibleCountRef.current = visibleCount; }, [visibleCount]);
+
+  const scrollRootRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLElement | null>(null);
+  const followingRef = useRef(true);       // is the user viewing the newest message?
+  const loadingMoreRef = useRef(false);    // an older-batch reveal is in flight
+  const prevScrollHeightRef = useRef(0);   // to preserve position when prepending
+  const pendingBottomRef = useRef(true);   // force align-to-latest (init / user action)
+  const TOP_PAD = 8;                       // breathing room above the aligned message
+
+  function getViewport(): HTMLElement | null {
+    if (!viewportRef.current) {
+      viewportRef.current =
+        (scrollRootRef.current?.querySelector('[data-slot="scroll-area-viewport"]') as HTMLElement | null) ?? null;
+    }
+    return viewportRef.current;
+  }
+
+  // The DOM node of the newest rendered message (message bubbles carry data-chat-msg).
+  function lastMsgEl(): HTMLElement | null {
+    const vp = getViewport();
+    if (!vp) return null;
+    const nodes = vp.querySelectorAll("[data-chat-msg]");
+    return (nodes[nodes.length - 1] as HTMLElement) ?? null;
+  }
+
+  // Scroll so the TOP of the newest message sits at the top of the chat area — the natural
+  // place to start reading it. A short last message clamps to the bottom automatically.
+  function alignLatestToTop() {
+    const vp = getViewport();
+    const el = lastMsgEl();
+    if (vp && el) {
+      vp.scrollTop += el.getBoundingClientRect().top - vp.getBoundingClientRect().top - TOP_PAD;
+    } else if (vp) {
+      vp.scrollTop = vp.scrollHeight;
+    } else {
+      messagesEndRef.current?.scrollIntoView();
+    }
+  }
+
+  // Reset the window to the latest batch and re-align — used whenever the whole conversation
+  // is (re)loaded, so we land on the newest message's start, not the top of the history.
+  function resetToLatest() {
+    pendingBottomRef.current = true;
+    followingRef.current = true;
+    setVisibleCount(BATCH);
+  }
+
+  // Attach a scroll listener to the Radix viewport: track whether the user is still on the
+  // newest message and, near the top, reveal an older batch (preserving position on prepend).
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const vp = getViewport();
+    if (!vp) return;
+    const onScroll = () => {
+      const el = lastMsgEl();
+      // "Following" = the newest message's top is at/above the viewport top (we're reading it
+      // from its start or below) — i.e. the user hasn't scrolled up into older history.
+      followingRef.current = el
+        ? el.getBoundingClientRect().top <= vp.getBoundingClientRect().top + 40
+        : vp.scrollHeight - vp.scrollTop - vp.clientHeight < 80;
+      if (vp.scrollTop < 60 && !loadingMoreRef.current && visibleCountRef.current < messagesRef.current.length) {
+        loadingMoreRef.current = true;
+        prevScrollHeightRef.current = vp.scrollHeight;
+        setVisibleCount((c) => Math.min(c + BATCH, messagesRef.current.length));
+      }
+    };
+    vp.addEventListener("scroll", onScroll, { passive: true });
+    return () => vp.removeEventListener("scroll", onScroll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // After each render: preserve position when older messages were prepended, otherwise align
+  // the newest message's top to the top of the chat area (init / new message, if following).
+  useLayoutEffect(() => {
+    const vp = getViewport();
+    if (loadingMoreRef.current) {
+      if (vp) vp.scrollTop = vp.scrollTop + (vp.scrollHeight - prevScrollHeightRef.current);
+      loadingMoreRef.current = false;
+      return;
+    }
+    if (pendingBottomRef.current || followingRef.current) {
+      alignLatestToTop();
+      pendingBottomRef.current = false;
+    }
+  }, [messages, visibleCount]);
+
+  // While the chat tab is hidden (display:none) it can't be scrolled or measured, so any
+  // alignment is lost. When it becomes visible again, re-align to the newest message.
+  const wasVisibleRef = useRef(visible);
+  useLayoutEffect(() => {
+    if (visible && !wasVisibleRef.current) {
+      pendingBottomRef.current = true;
+      alignLatestToTop();
+      pendingBottomRef.current = false;
+    }
+    wasVisibleRef.current = visible;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   useEffect(() => {
     // Get user id from Supabase, and load chat history only when NOT doing a
@@ -162,6 +301,7 @@ export default function ChatPanel({
                 role: msg.role === "assistant" ? "bot" : "user"
               }))
             );
+            resetToLatest();
           }
         } catch {
           // Optionally handle error
@@ -187,10 +327,11 @@ export default function ChatPanel({
           const { state } = await res.json();
           if (state?.messages?.length) {
             setMessages(
-              state.messages.map((m: { role: string; text: string }, i: number) => ({
+              stripResumeRecaps(state.messages as { role: string; text: string; lessonId?: string }[]).map((m, i: number) => ({
                 id: i + 1,
-                role: m.role === "user" ? "user" : "bot",
+                role: m.role === "user" ? "user" : "bot" as 'user' | 'bot',
                 text: m.text,
+                lessonId: m.lessonId,
               }))
             );
             setCalib({
@@ -199,6 +340,7 @@ export default function ChatPanel({
               goal: state.calib?.goal ?? savedGoal,
             });
             chatRestored.current = true;
+            resetToLatest(); // land on the newest batch, not the whole history
             return;
           }
         } catch {
@@ -244,7 +386,8 @@ export default function ChatPanel({
         body: JSON.stringify({
           user_id: userId,
           module: moduleId,
-          messages: messages.map((m) => ({ role: m.role, text: m.text })),
+          // Persist everything, carrying the lesson tag so orientation messages stay deduped.
+          messages: messages.map((m) => ({ role: m.role, text: m.text, ...(m.lessonId ? { lessonId: m.lessonId } : {}) })),
           calib: { step: calib.step, level: calib.level, goal: calib.goal },
         }),
       }).catch(() => {});
@@ -287,7 +430,22 @@ export default function ChatPanel({
   }
 
   function pushMessage(role: 'user' | 'bot', text: string) {
+    // A message the learner sent should always bring the view to the bottom, even if they
+    // were scrolled up reading history.
+    if (role === "user") pendingBottomRef.current = true;
     setMessages((msgs) => [...msgs, { id: Date.now() + Math.floor(Math.random() * 1000), text, role }]);
+  }
+
+  // Show a lesson orientation message (intro / resume recap). Persisted but deduped per
+  // lesson: by default it REPLACES this lesson's previous orientation message(s) so opening
+  // a lesson never stacks duplicates. `append` adds to the current set instead (e.g. the
+  // recap explanation that follows the "Resuming…" line). Always scrolls into view.
+  function pushLesson(lessonId: string, text: string, append = false) {
+    pendingBottomRef.current = true;
+    setMessages((msgs) => {
+      const base = append ? msgs : msgs.filter((m) => m.lessonId !== lessonId);
+      return [...base, { id: Date.now() + Math.floor(Math.random() * 1000), text, role: 'bot' as const, lessonId }];
+    });
   }
 
   // Delegated click for inline doc-links inside a bot bubble: resolve the term to a doc
@@ -362,6 +520,42 @@ export default function ChatPanel({
       lessonCache.current[pointId].built.solution = solution;
       onProgressChange?.(lessonCache.current);
     }
+
+    // Gap invariant: the STARTER must NOT already satisfy the objectives (else there's
+    // nothing to do — the "solution already in the starter" defect). Run it off-screen; if
+    // it passes every check, regenerate a starter that leaves the work undone, and swap it
+    // in when the learner hasn't started yet. (Pure JS is already gap-checked server-side.)
+    try {
+      const rec = lessonCache.current[pointId];
+      if (!rec) return;
+      const b = rec.built;
+      const { findRuntimeErrors } = await import("@/lib/runtimes/validate");
+      const probe = await findRuntimeErrors(spec, b.starterCode, b.html);
+      const g = gradeSubmission(b.objectives, b.starterCode, probe.output);
+      if (!g.gradable || !g.allPassed) return; // a real gap exists → nothing to fix
+      const res = await fetch("/api/lesson/fix-starter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          objectives: b.objectives,
+          starterCode: b.starterCode,
+          solution: b.solution,
+          html: b.html,
+          language: spec.langName,
+        }),
+      });
+      const data = await res.json();
+      if (!data.starterCode) return;
+      rec.built.starterCode = data.starterCode as string;
+      onProgressChange?.(lessonCache.current);
+      // If this lesson is open and untouched, load the corrected starter so the learner sees
+      // a real exercise instead of the pre-solved one.
+      if (lessonRef.current?.pointId === pointId && !rec.code && rec.passed.length === 0) {
+        onLoadCode?.(rec.built.starterCode, rec.built.html);
+      }
+    } catch {
+      /* gap check is best-effort */
+    }
   }
 
   // Re-take the current lesson: clear passed objectives and reload the starter code.
@@ -376,10 +570,11 @@ export default function ChatPanel({
       onProgressChange?.(lessonCache.current);
       onLoadCode?.(cached.built.starterCode, cached.built.html);
     }
-    pushMessage("bot", `Restarting **${lesson.title}** — starter code reloaded. Here's the rundown again:`);
+    pushLesson(lesson.pointId, `Restarting **${lesson.title}** — starter code reloaded. Here's the rundown again:`);
     // Re-explain the topic + task (the cached lesson intro) so the learner has the
     // technical context on a restart, just like on first start. No rebuild/LLM call.
-    if (cached?.built.intro) pushMessage("bot", cached.built.intro);
+    if (cached?.built.intro) pushLesson(lesson.pointId, cached.built.intro, true);
+    introducedRef.current = lesson.pointId; // restart rundown is the latest interaction
   }
 
   async function generateFirstLesson(level: string, goal: string) {
@@ -440,6 +635,7 @@ export default function ChatPanel({
     }
 
     pushMessage('user', text);
+    introducedRef.current = null; // the learner moved the conversation on
     setLoading(true);
     try {
       const { response, roadmap } = await callAgent(text);
@@ -456,22 +652,47 @@ export default function ChatPanel({
     if (!lessonRequest || lessonRequest.nonce === handledLessonNonce.current) return;
     handledLessonNonce.current = lessonRequest.nonce;
     const node = lessonRequest.node;
+    // Starting/resuming a lesson is an explicit action → always bring its intro/recap into
+    // view (align it to the top), even if the user wasn't following the newest message.
+    pendingBottomRef.current = true;
     (async () => {
       if (loading) return;
       // Resume a previously-opened lesson: restore its objectives + progress, no rebuild.
       const cached = lessonCache.current[node.id];
       if (cached) {
+        // If this lesson's intro/recap was the assistant's last turn, re-selecting it must
+        // NOT repeat the same rundown. Restore state silently (without clobbering in-progress
+        // code if it's already the active lesson) and stop.
+        if (introducedRef.current === node.id) {
+          if (lessonRef.current?.pointId !== node.id) {
+            setLesson({ pointId: node.id, title: node.title, objectives: cached.built.objectives, passed: cached.passed });
+            onLoadCode?.(cached.code ?? cached.built.starterCode, cached.built.html);
+          }
+          void validateSolutionInBackground(node.id);
+          return;
+        }
         setLesson({ pointId: node.id, title: node.title, objectives: cached.built.objectives, passed: cached.passed });
         // Restore the learner's edited code if we have it, else the starter scaffold.
         const hasCode = !!cached.code;
         onLoadCode?.(cached.code ?? cached.built.starterCode, cached.built.html);
-        pushMessage(
-          "bot",
-          `Resuming **${node.title}** — ${cached.passed.length}/${cached.built.objectives.length} objectives done so far.`
-        );
+        introducedRef.current = node.id; // this lesson's rundown is now the latest interaction
         // Verify the reference solution once per session (covers lessons restored from
         // the DB that were never validated in a browser).
         void validateSolutionInBackground(node.id);
+
+        // Opened before but NO objectives done yet → nothing to "resume". Re-present the
+        // lesson intro (deduped by lessonId, so it replaces the old copy instead of stacking)
+        // so opening the lesson always shows and scrolls to its content.
+        if (cached.passed.length === 0) {
+          pushLesson(node.id, cached.built.intro || `Let's work on ${node.title}.`);
+          return;
+        }
+
+        // Deduped per lesson: replaces any prior recap for this lesson (no pile-up).
+        pushLesson(
+          node.id,
+          `Resuming **${node.title}** — ${cached.passed.length}/${cached.built.objectives.length} objectives done so far.`
+        );
         // Re-explain the lesson IN THE CONTEXT of their progress: recap the topic and
         // point them at the next unmet objective (LLM call, informed by passed/remaining).
         (async () => {
@@ -494,7 +715,7 @@ export default function ChatPanel({
               }),
             });
             const data = await res.json();
-            if (data.message) pushMessage("bot", data.message);
+            if (data.message) pushLesson(node.id, data.message, true); // append to this lesson's recap
           } catch {
             /* recap is best-effort — the quick "Resuming…" line already landed */
           } finally {
@@ -529,7 +750,10 @@ export default function ChatPanel({
           onProgressChange?.(lessonCache.current);
           setLesson({ pointId: node.id, title: node.title, objectives: l.objectives, passed: [] });
           onLoadCode?.(l.starterCode, l.html);
-          pushMessage("bot", l.intro || `Let's work on ${node.title}.`);
+          // Intro is real lesson content → persisted, and tagged so re-opening replaces it
+          // rather than stacking a duplicate.
+          pushLesson(node.id, l.intro || `Let's work on ${node.title}.`);
+          introducedRef.current = node.id; // fresh intro is the latest interaction
           // Background: verify the reference solution runs in the real runtime; if it
           // errors, regenerate it to fit the lesson (no UI disruption).
           void validateSolutionInBackground(node.id);
@@ -566,6 +790,7 @@ export default function ChatPanel({
     if (!submitRequest || submitRequest.nonce === handledSubmitNonce.current) return;
     handledSubmitNonce.current = submitRequest.nonce;
     const { code, output } = submitRequest;
+    introducedRef.current = null; // a submission is a new interaction; later resume may recap
     (async () => {
       if (loading) return;
       setLoading(true);
@@ -673,7 +898,7 @@ export default function ChatPanel({
   const MessageBubble = memo(function MessageBubble({ msg }: { msg: Message }) {
     if (msg.role === 'user') {
       return (
-        <div className={`flex my-4 justify-end`}>
+        <div className={`flex my-4 justify-end`} data-chat-msg>
           <div className="bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal text-white text-right">
             {msg.text}
           </div>
@@ -724,12 +949,15 @@ export default function ChatPanel({
       }
     });
     return (
-      <div className={`flex my-4 justify-start`}>
+      <div className={`flex my-4 justify-start`} data-chat-msg>
         <div
-          className="bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal text-neutral-200 text-left"
+          className="group bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal text-neutral-200 text-left"
           onClick={handleDocClick}
         >
           <span>{rendered}</span>
+          <div className="mt-1.5 flex justify-end">
+            <ReadAloudButton id={String(msg.id)} text={msg.text} />
+          </div>
         </div>
       </div>
     );
@@ -780,14 +1008,20 @@ export default function ChatPanel({
               )}
             </div>
           )}
-          <ScrollArea className="flex-1 overflow-y-auto overflow-hidden px-6 space-y-2 font-mono font-normal leading-normal">
+          <div ref={scrollRootRef} className="flex-1 min-h-0 flex">
+          <ScrollArea className="h-full w-full overflow-y-auto overflow-hidden px-6 space-y-2 font-mono font-normal leading-normal">
             {/* highlight.js theme handles code styling */}
             <div className="space-y-5">
+              {visibleCount < messages.length && (
+                <div className="pt-2 pb-1 text-center text-[11px] font-mono text-white/30">
+                  Scroll up for earlier messages…
+                </div>
+              )}
               {messages.length === 0 ? (
                 <div className="text-neutral-500 text-center mt-8 font-mono font-normal leading-normal">No messages yet. Start the conversation below!
                 </div>
               ) : (
-                messages.map((msg) => (
+                (visibleCount >= messages.length ? messages : messages.slice(-visibleCount)).map((msg) => (
                   <MessageBubble key={msg.id} msg={msg} />
                 ))
               )}
@@ -829,6 +1063,7 @@ export default function ChatPanel({
             <div ref={messagesEndRef} />
             <ScrollBar orientation="vertical" />
           </ScrollArea>
+          </div>
           <form
             className="flex items-center gap-2 p-4 border-t border-white/50"
             onSubmit={handleSend}

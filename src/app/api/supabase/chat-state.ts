@@ -9,7 +9,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
 );
 
-export type ChatStateMsg = { role: "user" | "bot"; text: string };
+export type ChatStateMsg = { role: "user" | "bot"; text: string; lessonId?: string };
 export type ChatCalib = { step?: string; level?: string; goal?: string };
 export type ChatState = { messages: ChatStateMsg[]; calib: ChatCalib };
 

@@ -79,6 +79,7 @@ type RoadmapSummary = {
   updatedAt: string;
   doneCount: number;
   totalCount: number;
+  ratio?: number; // continuous completion [0,1] — matches the roadmap tab's overall bar
 };
 
 const supabase = createClient(
@@ -139,7 +140,9 @@ function useStoredRoadmaps(): RoadmapSummary[] {
 
 function RoadmapCard({ r, onSelect }: { r: RoadmapSummary; onSelect: (id: string) => void }) {
   const id = moduleIdForSkill(r.skill);
-  const pct = r.totalCount > 0 ? Math.round((r.doneCount / r.totalCount) * 100) : 0;
+  // Use the same continuous, objective-level ratio the roadmap tab shows (falls back to
+  // the done/total lessons fraction for older summaries without a ratio).
+  const pct = Math.round(((r.ratio ?? (r.totalCount > 0 ? r.doneCount / r.totalCount : 0)) as number) * 100);
   const meta = [r.level, r.goal].filter(Boolean).join(" · ");
   return (
     <button

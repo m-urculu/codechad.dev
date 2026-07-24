@@ -226,9 +226,9 @@ function buildPrompt(
     (spec.allowDom
       ? `1. "html": the page scaffold the code runs against (a live Preview is shown). It MUST contain the ACTUAL elements the objectives and starterCode reference, with the EXACT ids/classes used. If this point doesn't need markup, set "html" to "".\n`
       : `1. "html": always "" for this module.\n`) +
-    `2. "starterCode" is the EXACT ${spec.langName} in the learner's editor. It MUST already DECLARE, with sensible initial values, every identifier any objective refers to${spec.allowDom ? " (selectors must match elements in html)" : ""}, with comments marking where the learner adds code.\n` +
+    `2. "starterCode" is the EXACT ${spec.langName} in the learner's editor. It MUST already DECLARE, with sensible initial values, every identifier any objective refers to${spec.allowDom ? " (selectors must match elements in html)" : ""}. CRITICAL GAP RULE: the starter must LEAVE THE OBJECTIVES UNDONE — it must NOT already contain the statements/expressions that satisfy any objective's check. Where the learner must write code, put a TODO comment describing the task, NOT the answer. If the starter were run as-is, it MUST FAIL the objective checks; only the "solution" satisfies them. (E.g. never pre-write \`print(10 + 2 * 5)\` if an objective is to print that result — leave a \`# TODO\` instead.)\n` +
     `3. "intro": markdown teaching text, instructional voice, no pleasantries. Structure it in two parts: (a) a PRACTICAL, TECHNICAL explanation of the topic — what it is, how it actually works, the relevant syntax/semantics/API behavior, and when/why it's used, so the learner understands the task on a technical level BEFORE writing code; (b) then describe the ACTUAL starterCode${spec.allowDom ? "/html" : ""} the learner sees and what the task requires them to change — never an unrelated example. Be concise but genuinely explanatory; use a short code snippet or bullet list where it aids understanding.\n` +
-    `4. "objectives": 2 to 4 CONCRETE, CHECKABLE tasks completed by EDITING the starterCode, each referencing only identifiers that already exist and verifiable from the run output. No vague or stylistic objectives.`
+    `4. "objectives": 2 to 4 CONCRETE, CHECKABLE tasks completed by EDITING the starterCode. Each objective's DESCRIPTION must state exactly the observable thing its "check" verifies (e.g. "print X", "define function Y that returns Z") — describe the gradeable ACTION, never an ungradeable mental step like "predict", "notice", "understand", or "observe". Each references only identifiers that already exist and is verifiable from the run output or code. No vague or stylistic objectives.`
   );
 }
 
@@ -286,7 +286,7 @@ export async function buildLesson(input: {
   // Pure-JS logic lessons run server-side here (Node sandbox) so validation happens
   // BEFORE the lesson is served. DOM/heavy-runtime lessons are validated client-side
   // in the background (their engines only exist in the browser).
-  if (last) last = await validateJsSolution(last, spec);
+  if (last) last = await validateJsLesson(last, spec);
 
   return last;
 }
@@ -335,17 +335,45 @@ export async function fixSolution(input: {
   return fixed?.solution ? String(fixed.solution).trim() : null;
 }
 
-// For pure-JS logic lessons: run the solution, and if it throws, regenerate it to fit
-// the (unchanged) lesson and re-run. Capped to bound quota.
-async function validateJsSolution(lesson: Lesson, spec: RuntimeSpec): Promise<Lesson> {
+// Regenerate ONLY the starter so the exercise has a real GAP — i.e. the learner must write
+// code to satisfy the objectives. Used when the generated starter already passes the checks
+// on its own (nothing to do). Keeps declarations; replaces the answer lines with TODOs.
+// Shared by the server-side JS loop and the client-driven /api/lesson/fix-starter.
+export async function fixStarter(input: {
+  objectives: Objective[];
+  starterCode: string;
+  solution: string;
+  html?: string;
+  language: string;
+}): Promise<string | null> {
+  const fixed = await geminiJSON<{ starterCode?: string }>(
+    `A ${input.language} exercise's STARTER already satisfies its objectives on its own, so the learner has nothing to write. Rewrite ONLY the starter so the learner MUST complete it:\n` +
+      `- REMOVE the exact statements/expressions that satisfy these objectives — ${input.objectives.map((o) => o.description).join("; ")} — and replace each with a clear TODO comment saying what to write (NEVER the answer itself).\n` +
+      `- KEEP every identifier/variable/function/data declaration the objectives reference, with sensible initial values, so the code still runs without name errors.\n` +
+      `- The starter MUST run to completion with NO errors, but MUST NOT yet satisfy the objective checks — that is the learner's job.\n` +
+      (input.html ? `PAGE HTML (unchanged, selectors must still match):\n${input.html}\n\n` : "") +
+      `REFERENCE SOLUTION (complete correct code — context only; do NOT copy it into the starter):\n${input.solution}\n\n` +
+      `CURRENT (too-complete) STARTER:\n${input.starterCode}\n\n` +
+      `Return ONLY JSON {"starterCode": string}.`
+  );
+  return fixed?.starterCode ? String(fixed.starterCode).trim() : null;
+}
+
+// Lesson-integrity invariant for pure-JS logic lessons, enforced server-side BEFORE serving:
+//   (1) the SOLUTION must run clean AND pass every check (the lesson is solvable), and
+//   (2) the STARTER must run but FAIL at least one check (there is a real gap to fill).
+// Each violation self-corrects by regenerating just the offending part. This is the general
+// guard against "task ≠ solution" drift (e.g. a starter that already prints the answer).
+async function validateJsLesson(lesson: Lesson, spec: RuntimeSpec): Promise<Lesson> {
   const isPlainJs = spec.engine === "worker-js" && !spec.allowDom;
   if (!isPlainJs || !lesson.solution) return lesson;
 
   let current = lesson;
+
+  // (1) Solution must be correct.
   for (let attempt = 0; attempt < 2; attempt++) {
     const run = runJsInSandbox(current.solution!);
     let error = run.error;
-    // Beyond "no crash": the solution must satisfy the objectives' deterministic checks.
     if (!error) {
       const g = gradeSubmission(current.objectives, current.solution!, run.output);
       if (g.gradable && !g.allPassed) {
@@ -353,7 +381,7 @@ async function validateJsSolution(lesson: Lesson, spec: RuntimeSpec): Promise<Le
           g.results.filter((r) => !r.passed).map((r) => r.detail).join("; ");
       }
     }
-    if (!error) return current; // runs clean AND passes its checks → lesson is solvable
+    if (!error) break; // runs clean AND passes its checks
     const fixed = await fixSolution({
       objectives: current.objectives,
       starterCode: current.starterCode,
@@ -364,6 +392,22 @@ async function validateJsSolution(lesson: Lesson, spec: RuntimeSpec): Promise<Le
     if (!fixed) break;
     current = { ...current, solution: fixed };
   }
+
+  // (2) Starter must leave a gap — it must NOT already pass all checks.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const run = runJsInSandbox(current.starterCode);
+    const g = gradeSubmission(current.objectives, current.starterCode, run.output);
+    if (!g.gradable || !g.allPassed) break; // gap exists (or nothing gradable) → good
+    const fixed = await fixStarter({
+      objectives: current.objectives,
+      starterCode: current.starterCode,
+      solution: current.solution!,
+      language: spec.langName,
+    });
+    if (!fixed) break;
+    current = { ...current, starterCode: fixed };
+  }
+
   return current; // best effort (client-side background validation is the backstop)
 }
 

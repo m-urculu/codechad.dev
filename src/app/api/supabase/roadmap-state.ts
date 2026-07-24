@@ -52,6 +52,7 @@ export type RoadmapSummary = {
   updatedAt: string;
   doneCount: number;   // lesson points marked done
   totalCount: number;  // lesson points currently in the (lazily-expanded) tree
+  ratio: number;       // continuous completion in [0,1] — SAME metric as the roadmap tab
 };
 
 // Count "point" (lesson leaf) nodes anywhere in a stored Roadmap tree.
@@ -68,6 +69,31 @@ function countPoints(tree: unknown): number {
   return n;
 }
 
+// Continuous completion of the whole roadmap in [0,1], mirroring the roadmap tab EXACTLY:
+// each level equally weights its direct children, drilling down to per-lesson objective
+// ratios (a done lesson = 1, otherwise passed/total objectives). Ungenerated branches = 0.
+type TreeNode = { id?: string; kind?: string; children?: unknown };
+type ProgressVal = { done?: boolean; passed?: unknown; built?: { objectives?: unknown[] } };
+function computeRatio(tree: unknown, progress: Record<string, ProgressVal>): number {
+  const pointRatio = (id?: string): number => {
+    const e = id ? progress[id] : undefined;
+    if (!e) return 0;
+    if (e.done) return 1;
+    const total = Array.isArray(e.built?.objectives) ? e.built!.objectives!.length : 0;
+    const passed = Array.isArray(e.passed) ? e.passed.length : 0;
+    return total > 0 ? Math.min(1, passed / total) : 0;
+  };
+  const ratio = (node: TreeNode): number => {
+    if (node?.kind === "point") return pointRatio(node.id);
+    const children = node?.children;
+    if (!Array.isArray(children) || children.length === 0) return 0;
+    return (children as TreeNode[]).reduce((s, c) => s + ratio(c), 0) / children.length;
+  };
+  const topics = (tree as { topics?: unknown })?.topics;
+  if (!Array.isArray(topics) || topics.length === 0) return 0;
+  return (topics as TreeNode[]).reduce((s, t) => s + ratio(t), 0) / topics.length;
+}
+
 // All roadmaps for a user, newest first, with computed progress counts.
 export async function listRoadmapStates(user_id: string): Promise<RoadmapSummary[]> {
   try {
@@ -81,7 +107,7 @@ export async function listRoadmapStates(user_id: string): Promise<RoadmapSummary
       return [];
     }
     return (data ?? []).map((r) => {
-      const progress = (r.progress ?? {}) as Record<string, { done?: boolean }>;
+      const progress = (r.progress ?? {}) as Record<string, ProgressVal>;
       const doneCount = Object.values(progress).filter((p) => p?.done).length;
       return {
         skill: r.skill as string,
@@ -90,6 +116,7 @@ export async function listRoadmapStates(user_id: string): Promise<RoadmapSummary
         updatedAt: r.updated_at as string,
         doneCount,
         totalCount: countPoints(r.tree),
+        ratio: computeRatio(r.tree, progress),
       };
     });
   } catch (e) {
