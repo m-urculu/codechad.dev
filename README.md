@@ -9,6 +9,12 @@
   No installs, no server-side runtimes: every language and database below executes client-side.
 </p>
 
+<p align="center">
+  <img alt="version" src="https://img.shields.io/badge/version-0.1.0-34d399" />
+  <img alt="status" src="https://img.shields.io/badge/status-alpha-38bdf8" />
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-white" />
+</p>
+
 ---
 
 ## What it looks like
@@ -30,23 +36,6 @@
 - **Official docs, embedded** — a Docs tab embeds DevDocs for the module's technology, and tutor messages deep-link terms straight to the exact documentation section.
 - **Progress that follows you** — roadmaps, lesson state, and chat history persist per user (Supabase + Google login), with course management (sort, expand, delete) from the landing page. Completing an old lesson fast-forwards you to your actual frontier.
 - **Read-aloud tutor** — neural text-to-speech on any chat message, with a native-voice fallback.
-
-## Running locally
-
-```bash
-npm install
-npm run dev
-```
-
-Create `.env.local` with:
-
-```bash
-NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL=…      # Supabase project URL
-NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY=… # Supabase anon key
-GEMINI_API_KEY=…                               # Google AI Studio key (roadmaps, lessons, tutoring)
-```
-
-Open [http://localhost:3000](http://localhost:3000). Signing in (Google via Supabase) enables saved courses and progress; everything else works logged-out.
 
 ## Stack
 
