@@ -85,6 +85,7 @@ type ChatPanelProps = {
   moduleId?: string | null;
   visible?: boolean; // is the chat tab currently shown? (re-align when it becomes visible)
   onRoadmap?: (roadmap: Roadmap) => void;
+  onRoadmapFailed?: (level: string, goal: string) => void; // save a stub course so it's listed/deletable
   lessonRequest?: { node: RoadmapNode; outline?: string; nonce: number } | null;
   nextLessonTitle?: string | null;
   submitRequest?: { code: string; output: string; nonce: number } | null;
@@ -117,6 +118,7 @@ export default function ChatPanel({
   moduleId,
   visible = true,
   onRoadmap,
+  onRoadmapFailed,
   lessonRequest,
   nextLessonTitle,
   submitRequest,
@@ -264,6 +266,17 @@ export default function ChatPanel({
       pendingBottomRef.current = false;
     }
   }, [messages, visibleCount]);
+
+  // The thinking bubble is rendered from `loading`, not from a message, so the alignment
+  // effect above never sees it appear. When it shows while we're on the newest message,
+  // scroll fully down so the bubble is in view below the message.
+  useLayoutEffect(() => {
+    if (!loading) return;
+    const vp = getViewport();
+    if (vp && (followingRef.current || pendingBottomRef.current)) {
+      vp.scrollTop = vp.scrollHeight;
+    }
+  }, [loading]);
 
   // While the chat tab is hidden (display:none) it can't be scrolled or measured, so any
   // alignment is lost. When it becomes visible again, re-align to the newest message.
@@ -521,6 +534,45 @@ export default function ChatPanel({
       onProgressChange?.(lessonCache.current);
     }
 
+    // Check-repair invariant: if the solution runs CLEAN but still fails a check, the
+    // CHECK is wrong (an invented constant no correct answer can produce — an unpassable
+    // objective). Reground the failing checks on the solution's actual output.
+    try {
+      const rec = lessonCache.current[pointId];
+      if (rec) {
+        const { findRuntimeErrors } = await import("@/lib/runtimes/validate");
+        const probe = await findRuntimeErrors(spec, solution, rec.built.html);
+        if (!probe.error) {
+          const g = gradeSubmission(rec.built.objectives, solution, probe.output);
+          if (g.gradable && !g.allPassed) {
+            const res = await fetch("/api/lesson/fix-checks", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                objectives: rec.built.objectives,
+                failingIds: g.results.filter((r) => !r.passed).map((r) => r.id),
+                solution,
+                solutionOutput: probe.output,
+                language: spec.langName,
+              }),
+            });
+            const data = await res.json();
+            if (Array.isArray(data.objectives)) {
+              rec.built.objectives = data.objectives;
+              onProgressChange?.(lessonCache.current);
+              // Live lesson open on this point → grade future submissions with the
+              // repaired checks, keeping already-passed objectives.
+              if (lessonRef.current?.pointId === pointId) {
+                setLesson((l) => (l ? { ...l, objectives: data.objectives } : l));
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      /* check repair is best-effort */
+    }
+
     // Gap invariant: the STARTER must NOT already satisfy the objectives (else there's
     // nothing to do — the "solution already in the starter" defect). Run it off-screen; if
     // it passes every check, regenerate a starter that leaves the work undone, and swap it
@@ -595,10 +647,19 @@ export default function ChatPanel({
           `Your **${meta.title}** roadmap is ready in the Roadmap tab → expand a topic to reveal its sub-topics and learning points, then hit **Start lesson** on any point and we'll dive in here.`
         );
       } else {
-        pushMessage("bot", data.error || "I couldn't build the roadmap just now — try again in a moment.");
+        onRoadmapFailed?.(level, goal); // store the course shell — listed, resumable, deletable
+        pushMessage(
+          "bot",
+          (data.error || "I couldn't build the roadmap just now.") +
+            " Your course is saved — send any message here and I'll retry generating it."
+        );
       }
     } catch {
-      pushMessage("bot", "I couldn't reach the roadmap service. Please try again.");
+      onRoadmapFailed?.(level, goal);
+      pushMessage(
+        "bot",
+        "I couldn't reach the roadmap service. Your course is saved — send any message here and I'll retry."
+      );
     } finally {
       setLoading(false);
     }
@@ -631,6 +692,15 @@ export default function ChatPanel({
     // During cold-start, a typed message answers the current calibration step.
     if (calib.step !== "done") {
       answerCalibration(text);
+      return;
+    }
+
+    // Calibrated but no roadmap (an earlier generation failed) → any message retries
+    // generation; without a roadmap there is nothing else to converse about.
+    if (!hasRoadmap && meta) {
+      pushMessage('user', text);
+      pushMessage('bot', `Retrying your **${meta.title}** roadmap…`);
+      await generateFirstLesson(calib.level ?? "Some experience", calib.goal ?? "general mastery");
       return;
     }
 
@@ -791,6 +861,7 @@ export default function ChatPanel({
     handledSubmitNonce.current = submitRequest.nonce;
     const { code, output } = submitRequest;
     introducedRef.current = null; // a submission is a new interaction; later resume may recap
+    pendingBottomRef.current = true; // submitting is a user action → align to the response
     (async () => {
       if (loading) return;
       setLoading(true);

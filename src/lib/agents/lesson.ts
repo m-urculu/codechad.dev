@@ -184,6 +184,7 @@ function buildPrompt(
     `create a focused, hands-on micro-lesson for the learning point "${pointTitle}"` +
     (pointSummary ? ` (${pointSummary})` : "") +
     `.\nLearner level: ${level ?? "unknown"}. Goal: ${goal ?? "general mastery"}.\n` +
+    `DIFFICULTY CALIBRATION: fit the exercise to that level and to how early this point sits in the roadmap. For a new/beginner learner in the roadmap's early points, teach ONE new concept: the task should be a few short, simple lines applying just that concept — do NOT stack auxiliary requirements (e.g. casting + aggregation + grouping + ordering at once); split ambition like that into the objectives of LATER points that cover it. A beginner must be able to complete the first lessons from the intro text alone.\n` +
     (treeOutline
       ? `ROADMAP CONTEXT — the module's full curriculum ("◀ CURRENT" marks this lesson's point, "✓done" marks what the learner already completed):\n${treeOutline.slice(0, 8000)}\n` +
         `Teach ONLY the current point. Assume ✓done and earlier material is known — build on it, never re-teach it. ` +
@@ -333,6 +334,54 @@ export async function fixSolution(input: {
       `BROKEN SOLUTION:\n${input.solution}`
   );
   return fixed?.solution ? String(fixed.solution).trim() : null;
+}
+
+// Regenerate ONLY the machine checks that the verified reference solution FAILS.
+// When the solution runs clean but a check still fails, the check itself is wrong —
+// typically an LLM-invented constant that doesn't match the exercise's real data
+// (an unpassable objective). The solution's ACTUAL run output is the ground truth:
+// new stdout checks must be copied from it verbatim, never computed.
+export async function fixChecks(input: {
+  objectives: Objective[];
+  failingIds: string[];
+  solution: string;
+  solutionOutput: string;
+  language: string;
+}): Promise<Objective[] | null> {
+  const failing = input.objectives.filter((o) => input.failingIds.includes(o.id));
+  if (failing.length === 0) return null;
+  const fixed = await geminiJSON<{ checks?: { id?: string; type?: string; value?: string }[] }>(
+    `A ${input.language} exercise has machine-graded objectives. The REFERENCE SOLUTION below is correct and runs with no errors, ` +
+      `but these objectives' checks FAIL against it — so the CHECKS themselves are wrong (usually an invented value that doesn't match the exercise's real data):\n` +
+      failing
+        .map((o) => `- id "${o.id}": ${o.description} (broken check: ${JSON.stringify(o.check)})`)
+        .join("\n") +
+      `\n\nRewrite ONLY those checks so the reference solution PASSES them while still verifying each objective's intent.\n` +
+      `RULES:\n` +
+      `- For "stdout_equals"/"stdout_includes", the value MUST be copied VERBATIM from the ACTUAL OUTPUT below — never computed, rounded, or invented. Prefer one (or a few consecutive) distinctive line(s).\n` +
+      `- Use {"type":"code_matches","value":"<regexp>"} only when the objective is about HOW the code is written; the regexp must match the reference solution.\n\n` +
+      `REFERENCE SOLUTION:\n${input.solution}\n\n` +
+      `ACTUAL OUTPUT of the reference solution:\n${input.solutionOutput}\n\n` +
+      `Return ONLY JSON {"checks": [{"id": string, "type": "stdout_equals"|"stdout_includes"|"code_matches", "value": string}]}.`
+  );
+  const arr = Array.isArray(fixed?.checks) ? fixed!.checks! : [];
+  const byId = new Map(arr.map((c) => [c?.id, c]));
+  let changed = false;
+  const merged = input.objectives.map((o) => {
+    if (!input.failingIds.includes(o.id)) return o;
+    const c = byId.get(o.id);
+    if (
+      c &&
+      (c.type === "stdout_equals" || c.type === "stdout_includes" || c.type === "code_matches") &&
+      typeof c.value === "string" &&
+      c.value.length > 0
+    ) {
+      changed = true;
+      return { ...o, check: { type: c.type, value: c.value } as ObjectiveCheck };
+    }
+    return o;
+  });
+  return changed ? merged : null;
 }
 
 // Regenerate ONLY the starter so the exercise has a real GAP — i.e. the learner must write

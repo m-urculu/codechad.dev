@@ -7,13 +7,16 @@ import type { Objective } from "./lesson";
 export type GradeResult = { id: string; passed: boolean; detail?: string };
 export type Grade = { results: GradeResult[]; allPassed: boolean; gradable: boolean };
 
-// Normalize console output for comparison: strip CR, trim each line's trailing space,
-// drop leading/trailing blank lines. Order and interior blank lines are preserved.
+// Normalize console output for comparison: strip CR, collapse each line's interior
+// runs of spaces/tabs to one space and trim it, drop leading/trailing blank lines.
+// Collapsing makes checks robust to column padding (SQL result tables align cells
+// with spaces — a check authored as "a | b" must match "a    | b"). Line order and
+// interior blank lines are preserved.
 function norm(s: string): string {
   return String(s ?? "")
     .replace(/\r/g, "")
     .split("\n")
-    .map((l) => l.replace(/\s+$/, ""))
+    .map((l) => l.replace(/[ \t]+/g, " ").trim())
     .join("\n")
     .replace(/^\n+|\n+$/g, "");
 }

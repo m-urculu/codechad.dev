@@ -184,6 +184,17 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
     setLeftView("roadmap");
   }
 
+  // Generation failed → persist a course shell (level/goal, no tree) so the course
+  // still shows up in "My courses", can be resumed for a retry, and can be deleted.
+  function handleRoadmapFailed(level: string, goal: string) {
+    if (!userId || !skill) return;
+    fetch("/api/roadmap/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, skill, level, goal }),
+    }).catch(() => {});
+  }
+
   async function handleExpand(node: RoadmapNode, path: string[]) {
     if (!roadmap || node.children !== null) return;
     try {
@@ -303,6 +314,7 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
             savedGoal={savedGoal}
             initialProgress={initialProgress}
             onRoadmap={handleRoadmap}
+            onRoadmapFailed={handleRoadmapFailed}
             lessonRequest={lessonRequest}
             nextLessonTitle={
               (firstUncompletedPoint(roadmap, progress, activeNodeId) ?? nextPointAfter(roadmap, activeNodeId))?.title ?? null
