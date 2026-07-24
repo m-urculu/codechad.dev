@@ -25,9 +25,10 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { createClient } from '@supabase/supabase-js';
 import { LEVELS, getModuleMeta } from "@/lib/modules";
 import { getRuntime } from "@/lib/runtimes/registry";
+import { gradeSubmission } from "@/lib/agents/grade";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
-import { Check, Circle } from "lucide-react";
+import { Check, Circle, RotateCcw } from "lucide-react";
 
 marked.setOptions({ breaks: false });
 
@@ -42,15 +43,17 @@ type ChatPanelProps = {
   moduleId?: string | null;
   onRoadmap?: (roadmap: Roadmap) => void;
   lessonRequest?: { node: RoadmapNode; outline?: string; nonce: number } | null;
+  nextLessonTitle?: string | null;
   submitRequest?: { code: string; output: string; nonce: number } | null;
+  codeChange?: { code: string; nonce: number } | null;
   onLoadCode?: (code: string, html?: string) => void;
   onLessonComplete?: (pointId: string) => void;
   boot?: "loading" | "fresh" | "resumed";
   hasRoadmap?: boolean;
   savedLevel?: string;
   savedGoal?: string;
-  initialProgress?: Record<string, { built?: BuiltLesson; passed: string[] }> | null;
-  onProgressChange?: (cache: Record<string, { built: BuiltLesson; passed: string[] }>) => void;
+  initialProgress?: Record<string, { built?: BuiltLesson; passed: string[]; code?: string }> | null;
+  onProgressChange?: (cache: Record<string, { built: BuiltLesson; passed: string[]; code?: string }>) => void;
 };
 
 // Cold-start calibration: Level -> Goal -> generate first lesson.
@@ -59,7 +62,7 @@ type Calib = { step: CalibStep; level?: string; goal?: string };
 
 // Active lesson with its fixed objectives + which are satisfied (the progress meter).
 type ActiveLesson = { pointId: string; title: string; objectives: Objective[]; passed: string[] };
-type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[] };
+type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[]; solution?: string };
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
@@ -70,7 +73,9 @@ export default function ChatPanel({
   moduleId,
   onRoadmap,
   lessonRequest,
+  nextLessonTitle,
   submitRequest,
+  codeChange,
   onLoadCode,
   onLessonComplete,
   boot = "fresh",
@@ -100,14 +105,15 @@ export default function ChatPanel({
   // Per-node lesson cache: keeps each point's built lesson + objective progress so
   // switching between points retains progress (and skips re-generation). In-memory for
   // now; Supabase persistence layers on top once the project is reachable.
-  const lessonCache = useRef<Record<string, { built: BuiltLesson; passed: string[] }>>({});
+  const lessonCache = useRef<Record<string, { built: BuiltLesson; passed: string[]; code?: string }>>({});
 
-  // Seed the cache from saved (Supabase) progress so resumed lessons restore.
+  // Seed the cache from saved (Supabase) progress so resumed lessons restore — including
+  // the learner's edited code, not just the objectives.
   useEffect(() => {
     if (!initialProgress) return;
-    const seeded: Record<string, { built: BuiltLesson; passed: string[] }> = {};
+    const seeded: Record<string, { built: BuiltLesson; passed: string[]; code?: string }> = {};
     for (const [id, v] of Object.entries(initialProgress)) {
-      if (v.built) seeded[id] = { built: v.built, passed: v.passed ?? [] };
+      if (v.built) seeded[id] = { built: v.built, passed: v.passed ?? [], code: v.code };
     }
     lessonCache.current = { ...lessonCache.current, ...seeded };
   }, [initialProgress]);
@@ -270,6 +276,83 @@ export default function ChatPanel({
     setMessages((msgs) => [...msgs, { id: Date.now() + Math.floor(Math.random() * 1000), text, role }]);
   }
 
+  // Background solution validation: run the cached reference solution in its real
+  // runtime off-screen; if it errors, regenerate it to fit the (unchanged) lesson via
+  // /api/lesson/fix-solution and re-validate. Silent — never touches the UI. Capped.
+  const validatedPoints = useRef<Set<string>>(new Set());
+  async function validateSolutionInBackground(pointId: string) {
+    if (validatedPoints.current.has(pointId)) return;
+    const cached = lessonCache.current[pointId];
+    const built = cached?.built;
+    if (!built?.solution) return;
+    validatedPoints.current.add(pointId);
+    const spec = getRuntime(moduleId);
+    let solution = built.solution;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let err: string | null = null;
+      try {
+        const { findRuntimeErrors } = await import("@/lib/runtimes/validate");
+        const probe = await findRuntimeErrors(spec, solution, built.html);
+        err = probe.error;
+        // Not just "no crash" — the reference solution must also pass every objective's
+        // deterministic check. If it doesn't, the check/solution are inconsistent; feed
+        // that as the failure so regeneration fixes it.
+        if (!err) {
+          const g = gradeSubmission(built.objectives, solution, probe.output);
+          if (g.gradable && !g.allPassed) {
+            err = "The reference solution does not satisfy the objective checks: " +
+              g.results.filter((r) => !r.passed).map((r) => r.detail).join("; ");
+          }
+        }
+      } catch {
+        return; // validator itself failed — leave the solution as-is
+      }
+      if (!err) break; // runs clean AND passes its checks
+      try {
+        const res = await fetch("/api/lesson/fix-solution", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            objectives: built.objectives,
+            starterCode: built.starterCode,
+            html: built.html,
+            solution,
+            error: err,
+            language: spec.langName,
+          }),
+        });
+        const data = await res.json();
+        if (!data.solution) break;
+        solution = data.solution as string;
+      } catch {
+        break;
+      }
+    }
+    // Persist the (possibly corrected) solution back into the cache + progress.
+    if (lessonCache.current[pointId]) {
+      lessonCache.current[pointId].built.solution = solution;
+      onProgressChange?.(lessonCache.current);
+    }
+  }
+
+  // Re-take the current lesson: clear passed objectives and reload the starter code.
+  // Uses the cached built lesson — no rebuild / LLM call.
+  function restartLesson() {
+    if (!lesson) return;
+    const cached = lessonCache.current[lesson.pointId];
+    setLesson({ ...lesson, passed: [] });
+    if (cached) {
+      cached.passed = [];
+      cached.code = undefined; // re-take starts from the scaffold again
+      onProgressChange?.(lessonCache.current);
+      onLoadCode?.(cached.built.starterCode, cached.built.html);
+    }
+    pushMessage("bot", `Restarting **${lesson.title}** — starter code reloaded. Here's the rundown again:`);
+    // Re-explain the topic + task (the cached lesson intro) so the learner has the
+    // technical context on a restart, just like on first start. No rebuild/LLM call.
+    if (cached?.built.intro) pushMessage("bot", cached.built.intro);
+  }
+
   async function generateFirstLesson(level: string, goal: string) {
     if (!meta) return;
     setLoading(true);
@@ -350,11 +433,15 @@ export default function ChatPanel({
       const cached = lessonCache.current[node.id];
       if (cached) {
         setLesson({ pointId: node.id, title: node.title, objectives: cached.built.objectives, passed: cached.passed });
-        onLoadCode?.(cached.built.starterCode, cached.built.html);
+        // Restore the learner's edited code if we have it, else the starter scaffold.
+        onLoadCode?.(cached.code ?? cached.built.starterCode, cached.built.html);
         pushMessage(
           "bot",
           `Resuming **${node.title}** — ${cached.passed.length}/${cached.built.objectives.length} objectives done so far.`
         );
+        // Verify the reference solution once per session (covers lessons restored from
+        // the DB that were never validated in a browser).
+        void validateSolutionInBackground(node.id);
         return;
       }
       setLoading(true);
@@ -375,15 +462,18 @@ export default function ChatPanel({
         });
         const data = await res.json();
         if (data.lesson) {
-          const l = data.lesson as { intro: string; starterCode: string; html?: string; objectives: Objective[] };
+          const l = data.lesson as { intro: string; starterCode: string; html?: string; objectives: Objective[]; solution?: string };
           lessonCache.current[node.id] = {
-            built: { intro: l.intro, starterCode: l.starterCode, html: l.html || "", objectives: l.objectives },
+            built: { intro: l.intro, starterCode: l.starterCode, html: l.html || "", objectives: l.objectives, solution: l.solution },
             passed: [],
           };
           onProgressChange?.(lessonCache.current);
           setLesson({ pointId: node.id, title: node.title, objectives: l.objectives, passed: [] });
           onLoadCode?.(l.starterCode, l.html);
           pushMessage("bot", l.intro || `Let's work on ${node.title}.`);
+          // Background: verify the reference solution runs in the real runtime; if it
+          // errors, regenerate it to fit the lesson (no UI disruption).
+          void validateSolutionInBackground(node.id);
         } else {
           pushMessage("bot", data.error || "I couldn't build that lesson — try again.");
         }
@@ -395,6 +485,20 @@ export default function ChatPanel({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonRequest]);
+
+  // Persist the learner's edited code into the active lesson's cache (debounced upstream
+  // in CodeHere) so resuming restores their work, not just the objectives.
+  const handledCodeNonce = useRef(0);
+  useEffect(() => {
+    if (!codeChange || codeChange.nonce === handledCodeNonce.current) return;
+    handledCodeNonce.current = codeChange.nonce;
+    const active = lessonRef.current;
+    if (!active) return;
+    const rec = lessonCache.current[active.pointId];
+    if (!rec) return;
+    rec.code = codeChange.code;
+    onProgressChange?.(lessonCache.current); // flows to progress → Supabase (debounced there)
+  }, [codeChange]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When the learner hits "Submit" in the editor, send the code + console output
   // to the tutor for review.
@@ -409,29 +513,71 @@ export default function ChatPanel({
       try {
         const active = lessonRef.current;
         if (active) {
-          // Grade against the FIXED objectives only (bounded — can't add new tasks).
-          const res = await fetch("/api/lesson/evaluate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              pointTitle: active.title,
-              objectives: active.objectives,
-              code,
-              output,
-              alreadyPassed: active.passed,
-              language: getRuntime(moduleId).langName,
-            }),
-          });
-          const data = await res.json();
-          const results: { id: string; passed: boolean }[] = Array.isArray(data.results) ? data.results : [];
-          const passed = Array.from(new Set([...active.passed, ...results.filter((r) => r.passed).map((r) => r.id)]));
+          // 1) DETERMINISTIC grading (authoritative). The LLM never decides pass/fail.
+          const grade = gradeSubmission(active.objectives, code, output);
+          let passed: string[];
+          if (grade.gradable) {
+            passed = Array.from(new Set([...active.passed, ...grade.results.filter((r) => r.passed).map((r) => r.id)]));
+          } else {
+            // Legacy lesson with no machine checks → fall back to the LLM grader.
+            const res = await fetch("/api/lesson/evaluate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                pointTitle: active.title,
+                objectives: active.objectives,
+                code,
+                output,
+                alreadyPassed: active.passed,
+                language: getRuntime(moduleId).langName,
+              }),
+            });
+            const data = await res.json();
+            const results: { id: string; passed: boolean }[] = Array.isArray(data.results) ? data.results : [];
+            passed = Array.from(new Set([...active.passed, ...results.filter((r) => r.passed).map((r) => r.id)]));
+            if (data.message) pushMessage("bot", data.message);
+          }
+
           setLesson({ ...active, passed });
-          if (lessonCache.current[active.pointId]) lessonCache.current[active.pointId].passed = passed; // retain progress
+          if (lessonCache.current[active.pointId]) {
+            lessonCache.current[active.pointId].passed = passed; // retain progress
+            lessonCache.current[active.pointId].code = code;     // checkpoint the submitted code
+          }
           onProgressChange?.(lessonCache.current);
-          if (data.message) pushMessage("bot", data.message);
-          if (active.objectives.every((o) => passed.includes(o.id))) {
+
+          const allDone = active.objectives.every((o) => passed.includes(o.id));
+          if (allDone) {
+            // All objectives met → hard-coded completion + auto-advance. No LLM call.
+            pushMessage("bot", `**Lesson complete** — all objectives met for "${active.title}".`);
+            if (nextLessonTitle) {
+              pushMessage("bot", `Nice work — moving you to the next lesson: **${nextLessonTitle}** →`);
+            } else {
+              pushMessage("bot", `That wraps up the loaded roadmap — great job! Open the next point from the roadmap whenever you're ready.`);
+            }
             onLessonComplete?.(active.pointId);
-            pushMessage("bot", `**Lesson complete** — all objectives met for "${active.title}". Pick the next point in the roadmap to continue.`);
+          } else if (grade.gradable) {
+            // 2) GUIDANCE (the LLM's real job): only when something failed, fed the
+            // deterministic results so it teaches the actual gap instead of re-judging.
+            try {
+              const gres = await fetch("/api/lesson/guide", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  pointTitle: active.title,
+                  language: getRuntime(moduleId).langName,
+                  code,
+                  output,
+                  results: active.objectives.map((o) => {
+                    const r = grade.results.find((x) => x.id === o.id);
+                    return { id: o.id, description: o.description, passed: !!r?.passed, detail: r?.detail };
+                  }),
+                }),
+              });
+              const gdata = await gres.json();
+              if (gdata.message) pushMessage("bot", gdata.message);
+            } catch {
+              /* guidance is best-effort */
+            }
           }
         } else {
           // No active lesson: silent generic continuation.
@@ -555,6 +701,18 @@ export default function ChatPanel({
                   );
                 })}
               </ul>
+              {lesson.objectives.length > 0 && lesson.objectives.every((o) => lesson.passed.includes(o.id)) && (
+                <button
+                  type="button"
+                  onClick={restartLesson}
+                  title="Reset progress and reload the starter code"
+                  className="mt-2.5 inline-flex items-center gap-1.5 border border-white/40 bg-black/70 px-2.5 py-1 text-[11px] font-mono
+                             text-white/80 leading-none transition-colors hover:bg-neutral-700 hover:text-white cursor-pointer"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Re-take lesson
+                </button>
+              )}
             </div>
           )}
           <ScrollArea className="flex-1 overflow-y-auto overflow-hidden px-6 space-y-2 font-mono font-normal leading-normal">

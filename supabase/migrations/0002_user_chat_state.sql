@@ -11,3 +11,10 @@ create table if not exists public.user_chat_state (
 );
 
 grant all on public.user_chat_state to anon, authenticated, service_role;
+
+-- Match user_roadmap_state's posture: the app persists chat server-side with the
+-- anon key + an explicit user_id (not the user's JWT), so RLS keyed to auth.uid()
+-- would reject those writes. RLS is therefore disabled here, same as the roadmap
+-- table. (If this table was created via the dashboard, RLS may be ON by default —
+-- this line makes the intended state explicit.)
+alter table public.user_chat_state disable row level security;

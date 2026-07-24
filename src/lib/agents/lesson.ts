@@ -10,14 +10,27 @@
 
 import { groundedText, extractJSON } from "./snowflake";
 import { geminiJSON } from "./llm";
+import { gradeSubmission } from "./grade";
 import { getRuntime, type RuntimeSpec, type ForbidLang } from "@/lib/runtimes/registry";
 
-export type Objective = { id: string; description: string };
+// A deterministic, programmatic check for one objective. Grading runs these — the LLM
+// is only used afterward for guidance, never to decide pass/fail.
+//   stdout_equals   : normalized run output === value
+//   stdout_includes : normalized run output contains value (good for interaction after
+//                     a synthetic event, or a specific printed line)
+//   code_matches    : value (a regexp source) matches the learner's code (for "how"
+//                     objectives — use a construct, add a listener, etc.)
+export type ObjectiveCheck =
+  | { type: "stdout_equals"; value: string }
+  | { type: "stdout_includes"; value: string }
+  | { type: "code_matches"; value: string };
+export type Objective = { id: string; description: string; check?: ObjectiveCheck };
 export type Lesson = {
   intro: string;
   starterCode: string;
   html: string; // HTML scaffold for DOM/Preview lessons (empty otherwise)
   objectives: Objective[];
+  solution?: string;   // complete correct code; validated so the exercise is solvable
   sources?: string[];
 };
 export type EvalResult = { id: string; passed: boolean; feedback: string };
@@ -124,17 +137,29 @@ function selfContainmentViolations(code: string, lang: ForbidLang): string[] {
 
 // ---------- lesson generation ----------
 
-type RawLesson = { intro?: string; starterCode?: string; html?: string; objectives?: { id?: string; description?: string }[] };
+type RawCheck = { type?: string; value?: string };
+type RawLesson = { intro?: string; starterCode?: string; html?: string; solution?: string; objectives?: { id?: string; description?: string; check?: RawCheck }[] };
+
+function parseCheck(raw: RawCheck | undefined): ObjectiveCheck | undefined {
+  if (!raw || typeof raw.value !== "string") return undefined;
+  const t = raw.type;
+  if (t === "stdout_equals" || t === "stdout_includes" || t === "code_matches") {
+    return { type: t, value: raw.value };
+  }
+  return undefined;
+}
 
 function mkLesson(data: RawLesson, sources: string[], spec: RuntimeSpec): Lesson {
   return {
     intro: String(data.intro ?? "").trim(),
     starterCode: String(data.starterCode ?? "").trim() || spec.defaultCode,
     html: spec.allowDom ? String(data.html ?? "").trim() : "",
+    solution: data.solution ? String(data.solution).trim() : undefined,
     sources,
     objectives: (Array.isArray(data.objectives) ? data.objectives : []).slice(0, 5).map((o, i) => ({
       id: String(o?.id || `o${i + 1}`),
       description: String(o?.description ?? "").trim(),
+      check: parseCheck(o?.check),
     })),
   };
 }
@@ -157,7 +182,13 @@ function buildPrompt(
       : "") +
     `LANGUAGE: the learner writes ${spec.langName} in an in-app editor. Output mechanism: ${spec.printHow}.\n` +
     `RUNTIME: ${spec.runNotes}\n\n` +
-    `Return ONLY JSON: {"intro": string, "starterCode": string, "html": string, "objectives": [{"id": string, "description": string}]}.\n\n`;
+    `Return ONLY JSON: {"intro": string, "starterCode": string, "html": string, "solution": string, "objectives": [{"id": string, "description": string, "check": {"type": string, "value": string}}]}.\n` +
+    `"solution": the COMPLETE correct ${spec.langName} — the starterCode with every objective fully implemented — that runs to completion WITHOUT errors and produces output proving all objectives. Same self-containment rules as starterCode${spec.allowDom ? "; it targets the same html (selectors must match)" : ""}. This is the reference answer; it is validated by running it.\n` +
+    `Every objective MUST carry a "check" — a DETERMINISTIC, machine-verifiable test (grading runs it; no AI judges pass/fail). Pick the type that fits:\n` +
+    `  • {"type":"stdout_equals","value":"<exact full run output>"} — when the objective is fully defined by what the program prints.\n` +
+    `  • {"type":"stdout_includes","value":"<substring the output must contain>"} — when only part of the output matters.\n` +
+    `  • {"type":"code_matches","value":"<JS regexp source>"} — for "use X" / structural objectives, or interaction that doesn't print on a plain run (e.g. a click handler): match the required construct in the learner's code, e.g. "addEventListener\\\\(\\\\s*['\\"]click['\\"]".\n` +
+    `CRITICAL: your own "solution" MUST pass every check (stdout checks match the solution's real output; code_matches matches the solution's code). Checks are validated by running the solution — if they don't pass it, they are wrong.\n\n`;
 
   if (!spec.runnable) {
     return (
@@ -165,7 +196,7 @@ function buildPrompt(
       `THIS MODULE HAS NO RUNTIME — the learner CANNOT execute code; they submit it for review.\n` +
       `- "starterCode": ${spec.langName} scaffold the learner edits. Self-contained, no external services assumed beyond what the code itself shows.\n` +
       `- "html": always "".\n` +
-      `- "intro": concise markdown teaching text describing the ACTUAL starterCode. Instructional voice, no pleasantries. Make clear they press Submit (not Run) when done.\n` +
+      `- "intro": markdown teaching text, instructional voice, no pleasantries. First give a PRACTICAL, TECHNICAL explanation of the topic — what it is, how it works, relevant syntax/semantics/API, and when/why it's used — so the learner understands the task technically; THEN describe the ACTUAL starterCode and what to change. Make clear they press Submit (not Run) when done.\n` +
       `- "objectives": 2 to 4 CONCRETE tasks verifiable by READING the learner's code alone (structure, correct API usage, naming) — never by program output.`
     );
   }
@@ -185,7 +216,7 @@ function buildPrompt(
       ? `1. "html": the page scaffold the code runs against (a live Preview is shown). It MUST contain the ACTUAL elements the objectives and starterCode reference, with the EXACT ids/classes used. If this point doesn't need markup, set "html" to "".\n`
       : `1. "html": always "" for this module.\n`) +
     `2. "starterCode" is the EXACT ${spec.langName} in the learner's editor. It MUST already DECLARE, with sensible initial values, every identifier any objective refers to${spec.allowDom ? " (selectors must match elements in html)" : ""}, with comments marking where the learner adds code.\n` +
-    `3. "intro": concise markdown teaching text, instructional voice, no pleasantries. It must describe the ACTUAL starterCode${spec.allowDom ? "/html" : ""} the learner sees — never an unrelated example.\n` +
+    `3. "intro": markdown teaching text, instructional voice, no pleasantries. Structure it in two parts: (a) a PRACTICAL, TECHNICAL explanation of the topic — what it is, how it actually works, the relevant syntax/semantics/API behavior, and when/why it's used, so the learner understands the task on a technical level BEFORE writing code; (b) then describe the ACTUAL starterCode${spec.allowDom ? "/html" : ""} the learner sees and what the task requires them to change — never an unrelated example. Be concise but genuinely explanatory; use a short code snippet or bullet list where it aids understanding.\n` +
     `4. "objectives": 2 to 4 CONCRETE, CHECKABLE tasks completed by EDITING the starterCode, each referencing only identifiers that already exist and verifiable from the run output. No vague or stylistic objectives.`
   );
 }
@@ -240,7 +271,89 @@ export async function buildLesson(input: {
     }
   }
 
+  // Validate the reference solution by RUNNING it, and self-correct on error.
+  // Pure-JS logic lessons run server-side here (Node sandbox) so validation happens
+  // BEFORE the lesson is served. DOM/heavy-runtime lessons are validated client-side
+  // in the background (their engines only exist in the browser).
+  if (last) last = await validateJsSolution(last, spec);
+
   return last;
+}
+
+// Run a self-contained JS snippet in a Node sandbox, capturing console + errors.
+// Only meaningful for pure-JS logic (no DOM / no browser APIs).
+export function runJsInSandbox(code: string): { ok: boolean; error?: string; output: string } {
+  const logs: string[] = [];
+  const push = (...a: unknown[]) => logs.push(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" "));
+  const sandbox = {
+    console: { log: push, info: push, warn: push, error: push, debug: push },
+    setTimeout, clearTimeout, Math, Date, JSON, Object, Array, String, Number, Boolean, Map, Set, Symbol,
+  };
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const vm = require("node:vm");
+    vm.createContext(sandbox);
+    vm.runInContext(code, sandbox, { timeout: 3000, displayErrors: true });
+    return { ok: true, output: logs.join("\n") };
+  } catch (e) {
+    const err = e as { stack?: string; message?: string };
+    return { ok: false, error: String(err?.stack || err?.message || e), output: logs.join("\n") };
+  }
+}
+
+// Regenerate ONLY the solution to fix a runtime error, keeping the lesson (starter
+// code / html / objectives) unchanged. Returns null if the model gave nothing usable.
+// Shared by the server-side JS loop and the client-driven /api/lesson/fix-solution.
+export async function fixSolution(input: {
+  objectives: Objective[];
+  starterCode: string;
+  html?: string;
+  solution: string;
+  error: string;
+  language: string;
+}): Promise<string | null> {
+  const fixed = await geminiJSON<{ solution?: string }>(
+    `A reference solution for a ${input.language} exercise throws when run:\n${input.error}\n\n` +
+      `Rewrite ONLY the solution so it runs to completion with NO errors and still satisfies these objectives: ` +
+      `${input.objectives.map((o) => o.description).join("; ")}. ` +
+      `Self-contained: no network, no files, no shell. Return ONLY JSON {"solution": string}.\n\n` +
+      (input.html ? `PAGE HTML (the solution runs against this — selectors must match):\n${input.html}\n\n` : "") +
+      `STARTER CODE (the exercise, do not change it):\n${input.starterCode}\n\n` +
+      `BROKEN SOLUTION:\n${input.solution}`
+  );
+  return fixed?.solution ? String(fixed.solution).trim() : null;
+}
+
+// For pure-JS logic lessons: run the solution, and if it throws, regenerate it to fit
+// the (unchanged) lesson and re-run. Capped to bound quota.
+async function validateJsSolution(lesson: Lesson, spec: RuntimeSpec): Promise<Lesson> {
+  const isPlainJs = spec.engine === "worker-js" && !spec.allowDom;
+  if (!isPlainJs || !lesson.solution) return lesson;
+
+  let current = lesson;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const run = runJsInSandbox(current.solution!);
+    let error = run.error;
+    // Beyond "no crash": the solution must satisfy the objectives' deterministic checks.
+    if (!error) {
+      const g = gradeSubmission(current.objectives, current.solution!, run.output);
+      if (g.gradable && !g.allPassed) {
+        error = "reference solution does not satisfy the objective checks: " +
+          g.results.filter((r) => !r.passed).map((r) => r.detail).join("; ");
+      }
+    }
+    if (!error) return current; // runs clean AND passes its checks → lesson is solvable
+    const fixed = await fixSolution({
+      objectives: current.objectives,
+      starterCode: current.starterCode,
+      solution: current.solution!,
+      error,
+      language: spec.langName,
+    });
+    if (!fixed) break;
+    current = { ...current, solution: fixed };
+  }
+  return current; // best effort (client-side background validation is the backstop)
 }
 
 export async function evaluateSubmission(input: {

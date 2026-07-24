@@ -39,6 +39,29 @@ window.onerror = function(m, s, l, c, err){ __post('error', (err && err.stack) |
 window.addEventListener('unhandledrejection', function(e){ __post('error', 'Uncaught (in promise) ' + __fmt(e.reason)); });
 `;
 
+// A lesson's HTML scaffold sometimes forgets to declare an element the starter code
+// references (a generation slip), so `document.getElementById('x')` returns null and
+// the code throws "Cannot set properties of null". To keep the exercise runnable, we
+// scan the JS for element ids it looks up and inject any that the HTML is missing —
+// deterministically, at run time (no rebuild / LLM call). Buttons are guessed from the
+// id name; everything else becomes a div.
+function ensureDomTargets(js: string, html: string): string {
+  const ids = new Set<string>();
+  const re = /getElementById\(\s*['"]([\w-]+)['"]\s*\)|querySelector(?:All)?\(\s*['"]#([\w-]+)['"]\s*\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(js))) {
+    const id = m[1] || m[2];
+    if (id) ids.add(id);
+  }
+  if (ids.size === 0) return html;
+  const missing = [...ids].filter((id) => !new RegExp(`id\\s*=\\s*['"]${id}['"]`).test(html));
+  if (missing.length === 0) return html;
+  const injected = missing
+    .map((id) => (/btn|button/i.test(id) ? `<button id="${id}">${id}</button>` : `<div id="${id}"></div>`))
+    .join("\n");
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${injected}\n</body>`) : `${html}\n${injected}`;
+}
+
 export type WebLibs = "react" | "vue" | "three";
 
 // CDN assets per library preset (pinned majors).
@@ -64,6 +87,9 @@ export function runWeb(opts: {
   // Don't let `</script>` in user/lesson code terminate our injected script.
   const safeJs = js.replace(/<\/script>/gi, "<\\/script>");
 
+  // Guarantee the elements the code looks up by id actually exist in the page.
+  const safeHtml = ensureDomTargets(js, html);
+
   // The runner script differs by preset:
   // - react: Babel transpiles JSX in a text/babel script (errors surface via console/onerror)
   // - three: an ES module that imports three and exposes THREE before the user code
@@ -84,7 +110,7 @@ export function runWeb(opts: {
     `<style>html,body{font-family:system-ui,sans-serif;color:#111;background:#fff;margin:0;padding:12px}</style>` +
     `<script>(function(){\n${SHIM}\n})();<\/script>` +
     (libs ? LIB_HEAD[libs] : "") +
-    `</head><body>\n${html}\n` +
+    `</head><body>\n${safeHtml}\n` +
     runner +
     // 'done' fires on window load (after deferred/module/babel scripts have executed).
     `<script>window.addEventListener('load', function(){ setTimeout(function(){ __post('done',''); }, 150); });<\/script>` +
