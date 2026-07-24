@@ -33,7 +33,8 @@ export async function POST(request: Request) {
       `Deterministic checks have ALREADY decided which objectives pass or fail — treat this as ground truth and NEVER contradict it or claim an objective passed/failed differently.\n\n` +
       `OBJECTIVE RESULTS:\n${lines}\n\n` +
       `THEIR CODE:\n${code ?? ""}\n\nRUN OUTPUT:\n${(output ?? "").trim() || "(no output)"}\n\n` +
-      `Write 1–3 sentences of guidance: pinpoint the specific gap behind the FIRST failed objective and nudge them toward fixing it, using the failure details. Teach the concept, don't hand them the full answer. No pleasantries, no restating what passed.` +
+      `Write 1–3 sentences of guidance: pinpoint the specific gap behind the FIRST failed objective and nudge them toward fixing it, using the failure details. ` +
+      `NEVER include the exact code/expression/statement that satisfies an objective — not the exercise's identifiers combined into the answer. If a snippet helps, illustrate the same syntax pattern on DIFFERENT, unrelated data (different table/variable names and values) and let them transfer it. No pleasantries, no restating what passed.` +
       docLinks;
 
     const message = (await geminiText(prompt)).trim();

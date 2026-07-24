@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { RUNTIMES } from "@/lib/runtimes/registry";
 import type { IconType } from "react-icons";
+import { FiSettings, FiChevronDown, FiChevronUp } from "react-icons/fi";
 import {
   SiJavascript,
   SiTypescript,
@@ -70,7 +71,10 @@ const SECTIONS: Section[] = [
   },
 ];
 
-// ---- Continue learning (stored roadmaps) --------------------------------
+// Module metadata by id, so course cards can borrow the brand icon + color.
+const MODULE_BY_ID = new Map(SECTIONS.flatMap((s) => s.modules).map((m) => [m.id, m]));
+
+// ---- My courses (stored roadmaps) --------------------------------
 
 type RoadmapSummary = {
   skill: string;
@@ -107,18 +111,21 @@ function relativeTime(iso: string): string {
 }
 
 // Loads the signed-in user's stored roadmaps; re-fetches on auth changes.
-function useStoredRoadmaps(): RoadmapSummary[] {
+// `remove` deletes a course optimistically (card disappears at once, API call follows).
+function useStoredRoadmaps(): { roadmaps: RoadmapSummary[]; remove: (r: RoadmapSummary) => void } {
   const [roadmaps, setRoadmaps] = useState<RoadmapSummary[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    async function load(userId: string | null) {
-      if (!userId) {
+    async function load(uid: string | null) {
+      if (!cancelled) setUserId(uid);
+      if (!uid) {
         if (!cancelled) setRoadmaps([]);
         return;
       }
       try {
-        const res = await fetch(`/api/roadmap/list?user_id=${encodeURIComponent(userId)}`);
+        const res = await fetch(`/api/roadmap/list?user_id=${encodeURIComponent(uid)}`);
         const data = await res.json();
         if (!cancelled) setRoadmaps(Array.isArray(data.roadmaps) ? data.roadmaps : []);
       } catch {
@@ -135,29 +142,78 @@ function useStoredRoadmaps(): RoadmapSummary[] {
     };
   }, []);
 
-  return roadmaps;
+  function remove(r: RoadmapSummary) {
+    setRoadmaps((list) => list.filter((x) => x.skill !== r.skill));
+    if (!userId) return;
+    const mod = moduleIdForSkill(r.skill);
+    const qs =
+      `user_id=${encodeURIComponent(userId)}&skill=${encodeURIComponent(r.skill)}` +
+      (mod ? `&module=${encodeURIComponent(mod)}` : "");
+    fetch(`/api/roadmap/state?${qs}`, { method: "DELETE" }).catch(() => {});
+  }
+
+  return { roadmaps, remove };
 }
 
-function RoadmapCard({ r, onSelect }: { r: RoadmapSummary; onSelect: (id: string) => void }) {
+// Continuous completion in [0,1] — same metric as the roadmap tab.
+function pctOf(r: RoadmapSummary): number {
+  return (r.ratio ?? (r.totalCount > 0 ? r.doneCount / r.totalCount : 0)) as number;
+}
+
+function RoadmapCard({
+  r,
+  onSelect,
+  onDelete,
+}: {
+  r: RoadmapSummary;
+  onSelect: (id: string) => void;
+  onDelete: () => void;
+}) {
   const id = moduleIdForSkill(r.skill);
+  const mod = id ? MODULE_BY_ID.get(id) : undefined;
+  const [confirming, setConfirming] = useState(false);
   // Use the same continuous, objective-level ratio the roadmap tab shows (falls back to
   // the done/total lessons fraction for older summaries without a ratio).
-  const pct = Math.round(((r.ratio ?? (r.totalCount > 0 ? r.doneCount / r.totalCount : 0)) as number) * 100);
+  const pct = Math.round(pctOf(r) * 100);
   const meta = [r.level, r.goal].filter(Boolean).join(" · ");
   return (
-    <button
-      type="button"
-      disabled={!id}
-      onClick={() => id && onSelect(id)}
-      className="group relative flex cursor-pointer flex-col items-start gap-3 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] px-5 py-4.5 text-left leading-relaxed
+    <div
+      role="button"
+      tabIndex={0}
+      aria-disabled={!id}
+      onClick={() => !confirming && id && onSelect(id)}
+      onKeyDown={(e) => {
+        if (!confirming && id && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onSelect(id);
+        }
+      }}
+      className={`group relative flex flex-col items-start gap-3 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] px-5 py-4.5 text-left leading-relaxed
                  shadow-lg shadow-black/40 backdrop-blur-xl
                  transition-all duration-200 hover:-translate-y-1 hover:border-emerald-300/40 hover:bg-emerald-400/[0.12]
                  focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300/40
-                 disabled:cursor-not-allowed disabled:opacity-50"
+                 ${id ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}
     >
-      <div className="flex w-full items-center justify-between gap-2">
-        <div className="text-sm font-bold text-white">{r.skill}</div>
-        <span className="shrink-0 text-[10px] text-white/50">{relativeTime(r.updatedAt)}</span>
+      {/* Course settings — revealed on hover, like the read-aloud button in chat */}
+      <button
+        type="button"
+        aria-label={`Settings for ${r.skill} course`}
+        onClick={(e) => {
+          e.stopPropagation();
+          setConfirming(true);
+        }}
+        className="absolute right-3 top-3 z-10 rounded-md p-1 text-white/40 opacity-0 transition-opacity
+                   hover:bg-white/10 hover:text-white/90 focus-visible:opacity-100 group-hover:opacity-100"
+      >
+        <FiSettings size={14} />
+      </button>
+
+      <div className="flex w-full items-center gap-2.5 pr-7">
+        {mod && <mod.Icon size={18} color={mod.color} className="shrink-0 drop-shadow" />}
+        <div className="min-w-0">
+          <div className="truncate text-sm font-bold text-white">{r.skill}</div>
+          <span className="text-[10px] text-white/50">{relativeTime(r.updatedAt)}</span>
+        </div>
       </div>
       {meta && <div className="text-xs leading-snug text-white/70">{meta}</div>}
       <div className="mt-1 w-full">
@@ -172,7 +228,145 @@ function RoadmapCard({ r, onSelect }: { r: RoadmapSummary; onSelect: (id: string
       <span className="mt-1 text-[11px] font-medium text-emerald-300/90 group-hover:text-emerald-200">
         {id ? "Resume →" : "Module unavailable"}
       </span>
-    </button>
+
+      {/* Settings overlay: delete with explicit confirm — destructive, so never one-click */}
+      {confirming && (
+        <div
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-xl bg-slate-950/90 p-4 text-center backdrop-blur-sm"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-xs leading-relaxed text-white/85">
+            Delete <span className="font-bold text-white">{r.skill}</span>?
+            <br />
+            <span className="text-white/60">Roadmap, progress and chat history will be erased.</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              className="rounded-md bg-red-500/90 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-500"
+            >
+              Delete course
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirming(false);
+              }}
+              className="rounded-md border border-white/20 px-3 py-1.5 text-xs text-white/80 transition-colors hover:bg-white/10"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- My courses section --------------------------------------------------
+
+type SortMode = "recent" | "progress" | "name";
+const SORT_LABELS: Record<SortMode, string> = { recent: "Recent", progress: "Progress", name: "A–Z" };
+
+function MyCourses({
+  roadmaps,
+  onSelect,
+  onDelete,
+}: {
+  roadmaps: RoadmapSummary[];
+  onSelect: (id: string) => void;
+  onDelete: (r: RoadmapSummary) => void;
+}) {
+  const [sort, setSort] = useState<SortMode>(() => {
+    if (typeof window === "undefined") return "recent";
+    const s = window.localStorage.getItem("courses-sort");
+    return s === "progress" || s === "name" ? s : "recent";
+  });
+  const [expanded, setExpanded] = useState(false);
+
+  const sorted = useMemo(() => {
+    const list = [...roadmaps];
+    if (sort === "progress") list.sort((a, b) => pctOf(b) - pctOf(a));
+    else if (sort === "name") list.sort((a, b) => a.skill.localeCompare(b.skill));
+    return list; // "recent": keep API order (newest first)
+  }, [roadmaps, sort]);
+
+  const shown = expanded ? sorted : sorted.slice(0, 3);
+  const lessonsDone = roadmaps.reduce((s, r) => s + r.doneCount, 0);
+  const avgPct = Math.round((roadmaps.reduce((s, r) => s + pctOf(r), 0) / roadmaps.length) * 100);
+
+  function setSortPersist(mode: SortMode) {
+    setSort(mode);
+    try {
+      window.localStorage.setItem("courses-sort", mode);
+    } catch {}
+  }
+
+  return (
+    <section className="mb-10">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+        <div>
+          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            My courses
+            <span className="rounded-full border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-white/60">
+              {roadmaps.length}
+            </span>
+          </h2>
+          <p className="mt-1.5 text-[11px] text-white/45">
+            {lessonsDone} lesson{lessonsDone === 1 ? "" : "s"} completed · {avgPct}% average progress
+          </p>
+        </div>
+        {roadmaps.length > 1 && (
+          <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-0.5 backdrop-blur-md">
+            {(Object.keys(SORT_LABELS) as SortMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setSortPersist(mode)}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                  sort === mode
+                    ? "bg-emerald-400/15 text-emerald-200"
+                    : "text-white/55 hover:bg-white/10 hover:text-white/85"
+                }`}
+              >
+                {SORT_LABELS[mode]}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {shown.map((r) => (
+          <RoadmapCard key={r.skill} r={r} onSelect={onSelect} onDelete={() => onDelete(r)} />
+        ))}
+      </div>
+
+      {sorted.length > 3 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="mx-auto mt-3 flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-[11px] font-medium text-white/70 backdrop-blur-md
+                     transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white"
+        >
+          {expanded ? (
+            <>
+              Show less <FiChevronUp size={12} />
+            </>
+          ) : (
+            <>
+              Show all {sorted.length} courses <FiChevronDown size={12} />
+            </>
+          )}
+        </button>
+      )}
+    </section>
   );
 }
 
@@ -205,7 +399,7 @@ function ModuleCard({ m, onSelect }: { m: Module; onSelect: (id: string) => void
 }
 
 export default function Landing({ onSelect }: { onSelect: (id: string) => void }) {
-  const roadmaps = useStoredRoadmaps();
+  const { roadmaps, remove } = useStoredRoadmaps();
   return (
     <div className="relative z-10 h-full w-full overflow-y-auto">
       <div className="mx-auto flex max-w-5xl flex-col px-6 py-12 sm:py-16">
@@ -224,19 +418,9 @@ export default function Landing({ onSelect }: { onSelect: (id: string) => void }
           </p>
         </header>
 
-        {/* Continue learning — the signed-in user's stored roadmaps */}
+        {/* My courses — the signed-in user's stored roadmaps */}
         {roadmaps.length > 0 && (
-          <section className="mb-10">
-            <h2 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Continue learning
-            </h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {roadmaps.map((r) => (
-                <RoadmapCard key={r.skill} r={r} onSelect={onSelect} />
-              ))}
-            </div>
-          </section>
+          <MyCourses roadmaps={roadmaps} onSelect={onSelect} onDelete={remove} />
         )}
 
         {/* Module sections */}

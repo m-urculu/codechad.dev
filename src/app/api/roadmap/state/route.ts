@@ -6,7 +6,7 @@
 // so the in-memory experience keeps working.
 
 import { NextResponse } from "next/server";
-import { loadRoadmapState, saveRoadmapState } from "@/app/api/supabase/roadmap-state";
+import { deleteRoadmapState, loadRoadmapState, saveRoadmapState } from "@/app/api/supabase/roadmap-state";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -17,6 +17,19 @@ export async function GET(request: Request) {
   }
   const state = await loadRoadmapState(user_id, skill);
   return NextResponse.json({ state });
+}
+
+// DELETE /api/roadmap/state?user_id=..&skill=..&module=..  -> { ok }
+// Erases the course: roadmap + progress, and its chat history when module is given.
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const user_id = searchParams.get("user_id");
+  const skill = searchParams.get("skill");
+  if (!user_id || !skill) {
+    return NextResponse.json({ error: "user_id and skill are required" }, { status: 400 });
+  }
+  const ok = await deleteRoadmapState(user_id, skill, searchParams.get("module") ?? undefined);
+  return NextResponse.json({ ok });
 }
 
 export async function POST(request: Request) {

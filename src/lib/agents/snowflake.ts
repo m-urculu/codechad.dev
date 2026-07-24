@@ -6,7 +6,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { GoogleGenAI } from "@google/genai";
-import { GEMINI_MODEL } from "./models";
+import { GEMINI_MODELS } from "./models";
 
 export type NodeKind = "topic" | "subtopic" | "point";
 
@@ -30,43 +30,45 @@ export type Roadmap = {
   topics: RoadmapNode[];
 };
 
-const MODEL = GEMINI_MODEL;
-
-// Grounded text generation (Google Search tool). Returns text + source URLs.
+// Grounded text generation (Google Search tool) with the full model-fallback chain.
+// For each model in GEMINI_MODELS: try grounded first (source URLs), then ungrounded —
+// grounding has no free-tier quota (429 RESOURCE_EXHAUSTED) and some models don't
+// support the tool at all. Any per-model failure moves down the chain instead of
+// failing the request; only an exhausted chain returns empty text.
 export async function groundedText(prompt: string): Promise<{ text: string; sources: string[] }> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return { text: "", sources: [] };
   const ai = new GoogleGenAI({ apiKey });
-  let res: any;
-  try {
-    res = await ai.models.generateContent({
-      model: MODEL,
-      contents: prompt,
-      config: { tools: [{ googleSearch: {} }] },
-    });
-  } catch (err: any) {
-    // Google Search grounding has no quota on the free tier (429 RESOURCE_EXHAUSTED).
-    // Fall back to an ungrounded call so generation still works (no source URLs).
-    const isQuota =
-      err?.status === 429 ||
-      err?.code === 429 ||
-      /RESOURCE_EXHAUSTED|\b429\b/.test(String(err?.message ?? ""));
-    if (isQuota) {
-      res = await ai.models.generateContent({ model: MODEL, contents: prompt });
-    } else {
-      throw err;
+  for (const model of GEMINI_MODELS) {
+    for (const grounded of [true, false]) {
+      let res: any;
+      try {
+        res = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          ...(grounded ? { config: { tools: [{ googleSearch: {} }] } } : {}),
+        });
+      } catch (err: any) {
+        console.warn(
+          `[snowflake] ${model}${grounded ? " (grounded)" : ""} failed:`,
+          err?.message ?? err
+        );
+        continue;
+      }
+      const text: string =
+        res?.text ??
+        res?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? "").join("") ??
+        "";
+      if (!text) continue;
+      const chunks: any[] = res?.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
+      const sources = chunks
+        .map((c) => c?.web?.uri)
+        .filter((u: unknown): u is string => typeof u === "string")
+        .slice(0, 6);
+      return { text, sources };
     }
   }
-  const text: string =
-    res?.text ??
-    res?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text ?? "").join("") ??
-    "";
-  const chunks: any[] = res?.candidates?.[0]?.groundingMetadata?.groundingChunks ?? [];
-  const sources = chunks
-    .map((c) => c?.web?.uri)
-    .filter((u: unknown): u is string => typeof u === "string")
-    .slice(0, 6);
-  return { text, sources };
+  return { text: "", sources: [] };
 }
 
 // Robustly pull a JSON value out of a (possibly fenced / chatty) grounded reply.
@@ -91,6 +93,31 @@ export function extractJSON(text: string): any | null {
     }
   }
   return null;
+}
+
+// One grounded call + JSON extraction with a single retry. The grounded endpoint
+// occasionally returns an empty/blocked/chatty reply or a transient 5xx — that must
+// cost one retry, not surface as a user-facing "could not generate" failure. Always
+// logs the offending reply so silent nulls are diagnosable from the server log.
+async function groundedJSON(
+  prompt: string,
+  valid: (d: any) => boolean
+): Promise<{ data: any | null; sources: string[] }> {
+  let sources: string[] = [];
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const r = await groundedText(prompt);
+      sources = r.sources;
+      const data = extractJSON(r.text);
+      if (data && valid(data)) return { data, sources };
+      console.warn(
+        `[snowflake] bad reply (attempt ${attempt}, ${r.text.length} chars): ${r.text.slice(0, 200)}`
+      );
+    } catch (err) {
+      console.warn(`[snowflake] call failed (attempt ${attempt}):`, err);
+    }
+  }
+  return { data: null, sources };
 }
 
 function mkNode(id: string, kind: NodeKind, raw: any): RoadmapNode {
@@ -122,12 +149,15 @@ export async function generateOverview(input: {
         `Skip topics that cannot be practiced in that sandbox (real file I/O, OS integration, networking, C APIs) unless they are core to the skill and can be simulated.\n`
       : "") +
     `Calibrate the number of topics to what is genuinely needed (typically 6-10), fundamentals first.\n` +
+    `CALIBRATE TO THE LEVEL: if the learner is new/a beginner, the FIRST topics must start from absolute basics — the simplest possible reading and writing of the language — and ramp up gradually. Edge-case material (overflow, precision pitfalls, performance tuning) belongs AFTER the plain everyday operations it qualifies, never in the opening topics.\n` +
     `Topics MUST be MUTUALLY EXCLUSIVE: every concept appears in exactly ONE topic. No umbrella topics that restate other topics, no two topics covering the same ground (e.g. don't list "Variables and Data Types" AND "Data Types and Operators").\n` +
     `Return ONLY JSON: {"title": string, "summary": string, "topics": [{"title": string, "summary": string, "description": string}]}.`;
 
-  const { text, sources } = await groundedText(prompt);
-  const data = extractJSON(text);
-  if (!data || !Array.isArray(data.topics) || data.topics.length === 0) return null;
+  const { data, sources } = await groundedJSON(
+    prompt,
+    (d) => Array.isArray(d?.topics) && d.topics.length > 0
+  );
+  if (!data) return null;
 
   return {
     skill,
@@ -196,8 +226,10 @@ export async function expandNode(input: {
       `Return ONLY JSON: {"children": [{"title": string, "summary": string}]}.`;
   }
 
-  const { text } = await groundedText(prompt);
-  const data = extractJSON(text);
+  const { data } = await groundedJSON(
+    prompt,
+    (d) => Array.isArray(d?.children) && d.children.length > 0
+  );
   const arr: any[] = Array.isArray(data?.children) ? data.children : [];
   const tag = childKind === "subtopic" ? "s" : "p";
   return arr.slice(0, 10).map((c, i) => mkNode(`${parentId}-${tag}${i}`, childKind, c));

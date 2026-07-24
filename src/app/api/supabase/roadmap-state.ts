@@ -125,6 +125,38 @@ export async function listRoadmapStates(user_id: string): Promise<RoadmapSummary
   }
 }
 
+// Permanently removes a stored course: the roadmap row and (when the module id is
+// known) its chat history. Progress lives inside the roadmap row, so it goes with it.
+export async function deleteRoadmapState(
+  user_id: string,
+  skill: string,
+  module?: string
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from("user_roadmap_state")
+      .delete()
+      .eq("user_id", user_id)
+      .eq("skill", skill);
+    if (error) {
+      console.error("[roadmap-state] delete error:", error.message);
+      return false;
+    }
+    if (module) {
+      const { error: chatErr } = await supabase
+        .from("user_chat_state")
+        .delete()
+        .eq("user_id", user_id)
+        .eq("module", module);
+      if (chatErr) console.error("[roadmap-state] chat delete error:", chatErr.message);
+    }
+    return true;
+  } catch (e) {
+    console.error("[roadmap-state] delete exception:", e);
+    return false;
+  }
+}
+
 export async function saveRoadmapState(
   user_id: string,
   skill: string,
