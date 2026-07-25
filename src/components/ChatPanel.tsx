@@ -650,7 +650,16 @@ export default function ChatPanel({
       const res = await fetch("/api/roadmap/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ skill: meta.title, level, goal, moduleId: moduleId ?? undefined }),
+        // user_id + moduleId let the generator see the learner's OTHER courses for
+        // this technology and avoid rebuilding ground they already have.
+        body: JSON.stringify({
+          skill: meta.title,
+          level,
+          goal,
+          moduleId: moduleId ?? undefined,
+          user_id: userId ?? undefined,
+          course_id: courseId ?? undefined,
+        }),
       });
       const data = await res.json();
       if (data.roadmap) {

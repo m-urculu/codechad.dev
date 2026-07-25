@@ -132,17 +132,50 @@ function mkNode(id: string, kind: NodeKind, raw: any): RoadmapNode {
 }
 
 // L1: grounded overview of the whole skill.
+// One of the learner's OTHER courses for the same technology. Its topics are ground
+// they have already been given, so a new course should not rebuild them.
+export type SiblingCourse = { name: string; goal?: string; topics: string[] };
+
 export async function generateOverview(input: {
   skill: string;
   level?: string;
   goal?: string;
   runtimeNotes?: string;
+  /** Other courses the learner has for this same technology. */
+  siblings?: SiblingCourse[];
+  /** A topic list the learner edited by hand, used as a strong draft. */
+  draftTopics?: string[];
+  /** Free-text steer from the learner ("assume I know general Python syntax"). */
+  guidance?: string;
 }): Promise<Roadmap | null> {
-  const { skill, level, goal, runtimeNotes } = input;
+  const { skill, level, goal, runtimeNotes, siblings, draftTopics, guidance } = input;
+
+  // Only siblings that actually got as far as having topics are useful context.
+  const covered = (siblings ?? []).filter((s) => s.topics.length > 0);
+
   const prompt =
     `Using REAL, current official documentation and widely-accepted best practices, ` +
     `design a learning roadmap OVERVIEW for "${skill}".\n` +
     `Learner level: ${level ?? "unknown"}. Goal: ${goal ?? "general mastery"}.\n` +
+    (covered.length
+      ? `ALREADY COVERED — the learner has these OTHER "${skill}" courses. Treat everything listed as ground they have already been taught:\n` +
+        covered
+          .map(
+            (s) =>
+              `  • "${s.name}"${s.goal ? ` (goal: ${s.goal})` : ""}: ${s.topics.slice(0, 20).join("; ")}`
+          )
+          .join("\n") +
+        `\nDo NOT rebuild that material. This course must earn its place beside those: spend its topics on what THIS goal ("${goal ?? "general mastery"}") needs and the other courses do not deliver. ` +
+        `If a covered concept is a genuine prerequisite, you may assume it rather than teach it. Only re-teach something already covered when this goal demands a materially different treatment of it — and say so in that topic's description.\n`
+      : "") +
+    (draftTopics?.length
+      ? `LEARNER'S DRAFT TOPIC LIST — the learner wrote this themselves and it carries more weight than your own preferences:\n` +
+        draftTopics.map((t, i) => `  ${i + 1}. ${t}`).join("\n") +
+        `\nKeep every one of these topics, keeping their wording unless it is plainly wrong. You MAY insert missing prerequisites, split an overloaded topic, or reorder for difficulty — but never silently drop one.\n`
+      : "") +
+    (guidance
+      ? `LEARNER'S GUIDANCE (follow it): ${String(guidance).slice(0, 600)}\n`
+      : "") +
     (runtimeNotes
       ? `CONTEXT — the learner studies entirely INSIDE a browser learning app with a built-in editor and runtime (${runtimeNotes}). ` +
         `NEVER include topics about installing the language, setting up environments/editors/IDEs, or running scripts from a terminal — the environment already exists. ` +
