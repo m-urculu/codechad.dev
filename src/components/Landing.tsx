@@ -277,7 +277,12 @@ function RoadmapCard({
         )}
         <div className="min-w-0">
           <div className="truncate text-sm font-bold leading-5 text-ink">{r.name}</div>
-          <span className="text-micro text-ink-dim">{relativeTime(r.updatedAt)}</span>
+          {/* Block, with its own leading: as an inline it was laid out in the
+              line box of the 16px strut this card inherits from leading-relaxed,
+              which floated it 8px clear of the title it belongs to. */}
+          <span className="block text-micro leading-4 text-ink-dim">
+            {relativeTime(r.updatedAt)}
+          </span>
         </div>
       </div>
       {meta && <div className="text-xs leading-snug text-ink-muted">{meta}</div>}
