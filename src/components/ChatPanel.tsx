@@ -1146,14 +1146,17 @@ export default function ChatPanel({
                 </div>
               )}
               {loading && (
-                <div className="flex justify-start">
+                // Same vertical rhythm as a real message bubble — without my-4 this
+                // sat flush against the message above it and against the composer.
+                <div className="flex my-4 justify-start">
                   <div className="bg-surface-1 px-4 py-2 text-sm border border-line-strong max-w-[100%] sm:max-w-[90%] font-normal leading-relaxed text-ink-muted text-left opacity-70 gemini-glow">
                     Thinking...
                   </div>
                 </div>
               )}
             </div>
-            <div ref={messagesEndRef} />
+            {/* Breathing room under the last bubble so nothing touches the composer. */}
+            <div ref={messagesEndRef} className="h-4" />
             <ScrollBar orientation="vertical" />
           </ScrollArea>
           </div>
