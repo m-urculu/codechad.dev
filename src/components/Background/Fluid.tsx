@@ -741,13 +741,13 @@ export const DEFAULT_FLUID_CONFIG: FluidConfig = {
   splatForce: 5,
   splatRadius: 0.008,
   splatDye: 0.08,
-  sourceRate: 0.7,
+  sourceRate: 1.25,
   waveFrequency: 3,
   waveAmplitude: 0.4,
   waveSpeed: 0.05,
   colorNum: 20,
   pixelSize: 1,
-  color: [0.4, 0.4, 0.4],
+  color: [0.34, 0.34, 0.34],
   animate: true,
 };
 
