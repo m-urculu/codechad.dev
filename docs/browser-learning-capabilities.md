@@ -1,6 +1,6 @@
 # Browser Learning Capabilities — What We're Sure We Can Build
 
-Scope: hands-on, in-browser coding experiences for **project-ai-courses**, with **no
+Scope: hands-on, in-browser coding experiences for **CodePath.AI**, with **no
 backend execution server**. Everything in this document runs **fully client-side**
 (the user's tab) using mature, production-proven technology. Speculative / heavy /
 server-dependent options are tracked separately at the bottom, not here.
@@ -138,6 +138,6 @@ Listed here so we don't accidentally promise them as in-browser:
 
 ---
 
-*Maintained for project-ai-courses. "Sure" entries are backed by a maintained, widely-used
+*Maintained for CodePath.AI. "Sure" entries are backed by a maintained, widely-used
 library. Verify exact versions / package availability before committing to an
 implementation.*
