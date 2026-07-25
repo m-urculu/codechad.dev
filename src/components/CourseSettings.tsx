@@ -126,6 +126,9 @@ export default function CourseSettings({
   onDeleted: () => void;
 }) {
   const [name, setName] = useState(course.name);
+  // The name as last persisted. Distinct from the draft above, because regenerating
+  // can rename the course from under the learner and the heading has to follow.
+  const [savedName, setSavedName] = useState(course.name);
   const [level, setLevel] = useState(course.level ?? "");
   const [goal, setGoal] = useState(course.goal ?? "");
   const [tree, setTree] = useState<Tree>(null);
@@ -193,8 +196,9 @@ export default function CourseSettings({
 
   async function saveName() {
     const trimmed = name.trim();
-    if (!trimmed || trimmed === course.name) return;
+    if (!trimmed || trimmed === savedName) return;
     await post({ action: "rename", name: trimmed });
+    setSavedName(trimmed);
     setSaved("name");
     setTimeout(() => setSaved(null), 2000);
   }
@@ -253,6 +257,16 @@ export default function CourseSettings({
           progress: {},
         }),
       });
+      // Re-offer the generated title: the curriculum just changed, so a course
+      // still carrying its placeholder name should follow. A name the learner
+      // typed is left alone — the server decides, not this call site.
+      if (data.roadmap.title) {
+        const named = await post({ action: "autoname", name: data.roadmap.title });
+        if (named?.name) {
+          setName(named.name);
+          setSavedName(named.name);
+        }
+      }
       const fresh = (data.roadmap.topics ?? []) as TreeNode[];
       setTree({ topics: fresh });
       setProgress({});
@@ -288,7 +302,7 @@ export default function CourseSettings({
 
         {/* --- Overview ------------------------------------------------------ */}
         <header className="border border-line-strong bg-surface-1 p-5 backdrop-blur-md">
-          <h1 className="text-base font-bold text-ink">{course.name}</h1>
+          <h1 className="text-base font-bold text-ink">{savedName}</h1>
           <p className="mt-1 text-xs text-ink-dim">
             {course.skill}
             {course.level ? ` · ${course.level}` : ""}
@@ -347,7 +361,7 @@ export default function CourseSettings({
             <button
               type="button"
               onClick={saveName}
-              disabled={!name.trim() || name.trim() === course.name}
+              disabled={!name.trim() || name.trim() === savedName}
               className="bg-ink px-3 py-1.5 text-xs font-semibold text-surface-0 transition-colors duration-150
                          hover:bg-ink-muted disabled:opacity-40"
             >
@@ -355,7 +369,8 @@ export default function CourseSettings({
             </button>
           </div>
           <p className="mt-2 text-meta text-ink-dim">
-            Only the label shown on the card. Duplicates are named “{course.skill} (2)” by default.
+            Only the label shown on the card. Named from the roadmap when it is generated;
+            once you set a name here, regenerating keeps it.
           </p>
         </section>
 

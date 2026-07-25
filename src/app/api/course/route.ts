@@ -2,6 +2,7 @@
 //   POST /api/course { action: "duplicate", user_id, course_id }  -> { ok, course_id }
 //   POST /api/course { action: "reset",     user_id, course_id }  -> { ok }
 //   POST /api/course { action: "rename",    user_id, course_id, name } -> { ok }
+//   POST /api/course { action: "autoname",  user_id, course_id, name } -> { ok, name }
 //   POST /api/course { action: "recalibrate", user_id, course_id, level, goal } -> { ok }
 //   POST /api/course { action: "saveTopics",  user_id, course_id, topics: [{id?,title}] } -> { ok }
 //
@@ -13,6 +14,7 @@
 
 import { NextResponse } from "next/server";
 import {
+  applyGeneratedName,
   duplicateCourse,
   loadRoadmapState,
   resetCourseProgress,
@@ -55,6 +57,16 @@ export async function POST(request: Request) {
         }
         const id = await saveRoadmapState(user_id, course_id, { name: trimmed.slice(0, 80) });
         return NextResponse.json({ ok: !!id });
+      }
+      // The title the generator produced, offered as the course's name. Applied
+      // only if the learner never named it themselves — see applyGeneratedName.
+      case "autoname": {
+        const proposed = String(name ?? "").trim();
+        if (!proposed) {
+          return NextResponse.json({ error: "name is required" }, { status: 400 });
+        }
+        const applied = await applyGeneratedName(user_id, course_id, proposed.slice(0, 80));
+        return NextResponse.json({ ok: !!applied, name: applied });
       }
       case "recalibrate": {
         // Emptying the tree is what makes the workspace regenerate on next open.

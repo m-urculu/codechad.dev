@@ -131,6 +131,18 @@ function mkNode(id: string, kind: NodeKind, raw: any): RoadmapNode {
   };
 }
 
+// The model's title becomes the course's name on the landing page, so it gets the
+// same treatment a typed name would: quotes and trailing punctuation stripped,
+// whitespace collapsed, and capped at the 80 chars the rename action allows.
+export function courseTitle(raw: unknown, fallback: string): string {
+  const t = String(raw ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^["'“”‘’]+|["'“”‘’.,;:]+$/g, "")
+    .trim();
+  return t ? t.slice(0, 80) : fallback;
+}
+
 // L1: grounded overview of the whole skill.
 // One of the learner's OTHER courses for the same technology. Its topics are ground
 // they have already been given, so a new course should not rebuild them.
@@ -184,6 +196,18 @@ export async function generateOverview(input: {
     `Calibrate the number of topics to what is genuinely needed (typically 6-10), fundamentals first.\n` +
     `CALIBRATE TO THE LEVEL: if the learner is new/a beginner, the FIRST topics must start from absolute basics — the simplest possible reading and writing of the language — and ramp up gradually. Edge-case material (overflow, precision pitfalls, performance tuning) belongs AFTER the plain everyday operations it qualifies, never in the opening topics.\n` +
     `Topics MUST be MUTUALLY EXCLUSIVE: every concept appears in exactly ONE topic. No umbrella topics that restate other topics, no two topics covering the same ground (e.g. don't list "Variables and Data Types" AND "Data Types and Operators").\n` +
+    // "title" is the course's NAME in the learner's course list, so it has to earn
+    // its place there: a course is created before its content exists and starts out
+    // called after the bare technology, which tells the learner nothing once they
+    // have two of them.
+    `NAME THE COURSE. "title" is what this course is called in the learner's list of courses. ` +
+    // Kept to a single example on purpose: given a list, the model reaches for
+    // whichever entry is closest to the skill and returns it verbatim.
+    `Write 3-6 words describing what THIS course actually covers, drawn from the topics you just chose and this learner's goal — a course built around reading and cleaning CSVs with pandas is "Pandas for CSV Analysis", not "Python Roadmap". ` +
+    `Do NOT return a generic label ("Learning Roadmap", "${skill} Roadmap", "Complete Guide", "Mastering ${skill}"), and do not tack the level onto it. ` +
+    (covered.length
+      ? `It must be tellable apart at a glance from the courses listed above.\n`
+      : `If the course really is broad fundamentals, name it that way.\n`) +
     `Return ONLY JSON: {"title": string, "summary": string, "topics": [{"title": string, "summary": string, "description": string}]}.`;
 
   const { data, sources } = await groundedJSON(
@@ -197,7 +221,9 @@ export async function generateOverview(input: {
     level,
     goal,
     sources,
-    title: String(data.title ?? `${skill} Roadmap`).trim(),
+    // Falls back to the bare skill, which is exactly what the course is called
+    // before generation — a title we couldn't get should change nothing.
+    title: courseTitle(data.title, skill),
     summary: String(data.summary ?? "").trim(),
     topics: data.topics.slice(0, 12).map((t: any, i: number) => mkNode(`t${i}`, "topic", t)),
   };
