@@ -115,15 +115,20 @@ body {
   line-height: var(--leading);
 }
 
-/* Links inherit the info tone; the accent is reserved for actions. */
-a {
-  color: var(--color-info);
-  text-decoration: none;
-  transition: color var(--duration-base);
-}
-a:hover {
-  color: var(--color-info);
-  text-decoration: underline;
+/* Links inherit the info tone; the accent is reserved for actions.
+   Declared in @layer base ON PURPOSE. Unlayered, this rule beat every utility —
+   a `text-ink` wordmark or a `text-ink-dim` footer link came out info-blue with
+   no way to override it short of !important. In the base layer it is still the
+   default for a bare <a>, but a colour utility now wins, as it should. */
+@layer base {
+  a {
+    color: var(--color-info);
+    text-decoration: none;
+    transition: color var(--duration-base);
+  }
+  a:hover {
+    text-decoration: underline;
+  }
 }
 
 /* Anything interactive shows a pointer. Tailwind v4's preflight sets buttons to

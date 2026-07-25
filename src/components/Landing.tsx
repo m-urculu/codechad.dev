@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { RUNTIMES } from "@/lib/runtimes/registry";
 import type { IconType } from "react-icons";
@@ -541,6 +542,24 @@ export default function Landing({
         <p className="mt-10 text-center text-meta text-ink-dim">
           C# · Node.js · Linux · Rust · Go · cloud tracks are coming as heavier runtimes land.
         </p>
+
+        {/* Google's OAuth consent screen requires the privacy policy to be reachable
+            from the app's homepage, so these links are not optional decoration. */}
+        <footer className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-line pt-5 text-meta text-ink-dim">
+          <span>CodePath — beta</span>
+          <Link href="/privacy" className="text-ink-dim transition-colors duration-150 hover:text-ink">
+            Privacy
+          </Link>
+          <Link href="/terms" className="text-ink-dim transition-colors duration-150 hover:text-ink">
+            Terms
+          </Link>
+          <a
+            href="mailto:mrcel83@gmail.com"
+            className="text-ink-dim transition-colors duration-150 hover:text-ink"
+          >
+            Contact
+          </a>
+        </footer>
       </div>
     </div>
   );
