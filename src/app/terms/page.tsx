@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 };
 
 const UPDATED = "25 July 2026";
-const CONTACT = "mrcel83@gmail.com";
+const CONTACT = "marceloheoliveira@gmail.com";
 
 const sections: Section[] = [
   {

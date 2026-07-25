@@ -554,7 +554,7 @@ export default function Landing({
             Terms
           </Link>
           <a
-            href="mailto:mrcel83@gmail.com"
+            href="mailto:marceloheoliveira@gmail.com"
             className="text-ink-dim transition-colors duration-150 hover:text-ink"
           >
             Contact
