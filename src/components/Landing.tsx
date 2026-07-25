@@ -265,10 +265,18 @@ function RoadmapCard({
         </DropdownMenu>
       </div>
 
-      <div className="flex w-full items-center gap-2 pr-7">
-        {mod && <mod.Icon size={18} color={mod.color} className="shrink-0" />}
+      {/* The icon aligns to the TITLE, not to the title+timestamp block: centring
+          it on the pair leaves it straddling the two lines, reading as adrift.
+          The wrapper's height matches the title's line box so the two centres
+          coincide — hence the explicit leading rather than an inherited one. */}
+      <div className="flex w-full items-start gap-2 pr-7">
+        {mod && (
+          <span className="flex h-5 shrink-0 items-center">
+            <mod.Icon size={18} color={mod.color} />
+          </span>
+        )}
         <div className="min-w-0">
-          <div className="truncate text-sm font-bold text-ink">{r.name}</div>
+          <div className="truncate text-sm font-bold leading-5 text-ink">{r.name}</div>
           <span className="text-micro text-ink-dim">{relativeTime(r.updatedAt)}</span>
         </div>
       </div>
