@@ -527,11 +527,44 @@ export default function Landing({
           </p>
         </header>
 
-        {/* What the app is, and why it asks for a Google account. Sits directly
-            under the hero, ABOVE the technology grid: the OAuth review rejected this
-            page twice for "does not explain the purpose", and a reviewer who has to
-            scroll past fifteen product cards to find the explanation may not. */}
-        <section className="mb-10 border-y border-line py-8">
+
+        {/* My courses — the signed-in user's stored roadmaps */}
+        {roadmaps.length > 0 && (
+          <MyCourses
+            roadmaps={roadmaps}
+            onSelect={onSelect}
+            onDelete={remove}
+            onDuplicate={duplicate}
+            onSettings={onSettings}
+          />
+        )}
+
+        {/* Module sections */}
+        <div className="flex flex-col gap-8">
+          {SECTIONS.map((section) => (
+            <section key={section.label}>
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-dim">
+                {section.label}
+              </h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {section.modules.map((m) => (
+                  <ModuleCard key={m.id} m={m} onSelect={onSelect} />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+
+        {/* Footnote */}
+        <p className="mt-10 text-center text-meta text-ink-dim">
+          C# · Node.js · Linux · Rust · Go · cloud tracks are coming as heavier runtimes land.
+        </p>
+
+        {/* What the app is, and why it asks for a Google account. The hero above
+            carries the short version; this is the full one, including which Google
+            scopes are requested and why — the question an OAuth reviewer is actually
+            asking when they open the page signed out. */}
+        <section className="mt-12 border-t border-line pt-10">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-dim">
             {`About ${SITE_NAME}`}
           </h2>
@@ -567,7 +600,7 @@ export default function Landing({
                 show ads, or use it to train AI models.`}
               </p>
               <p className="mt-3 text-sm leading-relaxed text-ink-muted">
-                You can browse and try every technology below without an account. Read the{" "}
+                You can browse and try every technology above without an account. Read the{" "}
                 <Link
                   href="/privacy"
                   className="text-accent underline underline-offset-2 transition-colors duration-150 hover:text-accent-bright"
@@ -579,39 +612,6 @@ export default function Landing({
             </div>
           </div>
         </section>
-
-        {/* My courses — the signed-in user's stored roadmaps */}
-        {roadmaps.length > 0 && (
-          <MyCourses
-            roadmaps={roadmaps}
-            onSelect={onSelect}
-            onDelete={remove}
-            onDuplicate={duplicate}
-            onSettings={onSettings}
-          />
-        )}
-
-        {/* Module sections */}
-        <div className="flex flex-col gap-8">
-          {SECTIONS.map((section) => (
-            <section key={section.label}>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-dim">
-                {section.label}
-              </h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                {section.modules.map((m) => (
-                  <ModuleCard key={m.id} m={m} onSelect={onSelect} />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-
-        {/* Footnote */}
-        <p className="mt-10 text-center text-meta text-ink-dim">
-          C# · Node.js · Linux · Rust · Go · cloud tracks are coming as heavier runtimes land.
-        </p>
-
 
         {/* Google's OAuth consent screen requires the privacy policy to be reachable
             from the app's homepage, so these links are not optional decoration. */}
