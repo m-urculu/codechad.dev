@@ -83,6 +83,11 @@ function stripResumeRecaps<T extends { role: string; text: string; lessonId?: st
 
 type ChatPanelProps = {
   moduleId?: string | null;
+  /** The stored course this conversation belongs to. Chat is keyed by course, not
+   *  module, so duplicated courses keep separate threads. */
+  courseId?: string | null;
+  /** Creates the course row on demand (first calibration answer) and returns its id. */
+  ensureCourseId?: () => Promise<string | null>;
   visible?: boolean; // is the chat tab currently shown? (re-align when it becomes visible)
   onRoadmap?: (roadmap: Roadmap) => void;
   onRoadmapFailed?: (level: string, goal: string) => void; // save a stub course so it's listed/deletable
@@ -116,6 +121,8 @@ const supabase = createClient(
 
 export default function ChatPanel({
   moduleId,
+  courseId,
+  ensureCourseId,
   visible = true,
   onRoadmap,
   onRoadmapFailed,
@@ -329,14 +336,15 @@ export default function ChatPanel({
   const chatRestored = useRef(false);
   useEffect(() => {
     if (!meta || boot === "loading") return;
-    const key = `${moduleId}|${userId ?? "anon"}`;
+    const key = `${courseId ?? moduleId}|${userId ?? "anon"}`;
     if (chatBootKey.current === key) return;
     chatBootKey.current = key;
     (async () => {
       // 1) Saved conversation? Restore it verbatim (messages + calibration).
-      if (userId) {
+      //    Only a course that already exists can have one.
+      if (userId && courseId) {
         try {
-          const res = await fetch(`/api/chat/state?user_id=${userId}&module=${encodeURIComponent(moduleId ?? "")}`);
+          const res = await fetch(`/api/chat/state?user_id=${userId}&course_id=${encodeURIComponent(courseId)}`);
           const { state } = await res.json();
           if (state?.messages?.length) {
             setMessages(
@@ -383,7 +391,7 @@ export default function ChatPanel({
       ]);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [moduleId, boot, userId]);
+  }, [moduleId, courseId, boot, userId]);
 
   // Persist the conversation (debounced) whenever it changes — logged-in only.
   const chatSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -392,12 +400,17 @@ export default function ChatPanel({
     // Don't save the initial single greeting unless the user has engaged or we restored.
     if (!chatRestored.current && messages.length < 2) return;
     if (chatSaveTimer.current) clearTimeout(chatSaveTimer.current);
-    chatSaveTimer.current = setTimeout(() => {
+    chatSaveTimer.current = setTimeout(async () => {
+      // The course row may not exist yet — this is the first thing the learner has
+      // said, so create it now and key the conversation to it.
+      const cid = courseId ?? (await ensureCourseId?.());
+      if (!cid) return;
       fetch("/api/chat/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: userId,
+          course_id: cid,
           module: moduleId,
           // Persist everything, carrying the lesson tag so orientation messages stay deduped.
           messages: messages.map((m) => ({ role: m.role, text: m.text, ...(m.lessonId ? { lessonId: m.lessonId } : {}) })),
@@ -408,7 +421,7 @@ export default function ChatPanel({
     return () => {
       if (chatSaveTimer.current) clearTimeout(chatSaveTimer.current);
     };
-  }, [messages, calib, userId, moduleId]);
+  }, [messages, calib, userId, moduleId, courseId, ensureCourseId]);
 
   // Run the agent pipeline (chat manager) and return its reply + optional roadmap.
   async function callAgent(

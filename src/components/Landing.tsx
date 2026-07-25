@@ -4,7 +4,21 @@ import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { RUNTIMES } from "@/lib/runtimes/registry";
 import type { IconType } from "react-icons";
-import { FiSettings, FiChevronDown, FiChevronUp } from "react-icons/fi";
+import {
+  FiSettings,
+  FiChevronDown,
+  FiChevronUp,
+  FiMoreVertical,
+  FiCopy,
+  FiTrash2,
+} from "react-icons/fi";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   SiJavascript,
   SiTypescript,
@@ -76,10 +90,14 @@ const MODULE_BY_ID = new Map(SECTIONS.flatMap((s) => s.modules).map((m) => [m.id
 
 // ---- My courses (stored roadmaps) --------------------------------
 
-type RoadmapSummary = {
+export type RoadmapSummary = {
+  courseId: string;
   skill: string;
+  module?: string;
+  name: string; // display label; a duplicate gets "Python (2)"
   level?: string;
   goal?: string;
+  createdAt?: string;
   updatedAt: string;
   doneCount: number;
   totalCount: number;
@@ -112,9 +130,15 @@ function relativeTime(iso: string): string {
 
 // Loads the signed-in user's stored roadmaps; re-fetches on auth changes.
 // `remove` deletes a course optimistically (card disappears at once, API call follows).
-function useStoredRoadmaps(): { roadmaps: RoadmapSummary[]; remove: (r: RoadmapSummary) => void } {
+function useStoredRoadmaps(): {
+  roadmaps: RoadmapSummary[];
+  remove: (r: RoadmapSummary) => void;
+  duplicate: (r: RoadmapSummary) => Promise<void>;
+  reload: () => void;
+} {
   const [roadmaps, setRoadmaps] = useState<RoadmapSummary[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,19 +164,30 @@ function useStoredRoadmaps(): { roadmaps: RoadmapSummary[]; remove: (r: RoadmapS
       cancelled = true;
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [nonce]);
 
   function remove(r: RoadmapSummary) {
-    setRoadmaps((list) => list.filter((x) => x.skill !== r.skill));
+    setRoadmaps((list) => list.filter((x) => x.courseId !== r.courseId));
     if (!userId) return;
-    const mod = moduleIdForSkill(r.skill);
-    const qs =
-      `user_id=${encodeURIComponent(userId)}&skill=${encodeURIComponent(r.skill)}` +
-      (mod ? `&module=${encodeURIComponent(mod)}` : "");
+    const qs = `user_id=${encodeURIComponent(userId)}&course_id=${encodeURIComponent(r.courseId)}`;
     fetch(`/api/roadmap/state?${qs}`, { method: "DELETE" }).catch(() => {});
   }
 
-  return { roadmaps, remove };
+  async function duplicate(r: RoadmapSummary) {
+    if (!userId) return;
+    try {
+      await fetch("/api/course", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "duplicate", user_id: userId, course_id: r.courseId }),
+      });
+    } catch {
+      /* fail soft — the list simply won't show a copy */
+    }
+    setNonce((n) => n + 1); // refetch so the copy appears with a server-assigned id
+  }
+
+  return { roadmaps, remove, duplicate, reload: () => setNonce((n) => n + 1) };
 }
 
 // Continuous completion in [0,1] — same metric as the roadmap tab.
@@ -164,28 +199,34 @@ function RoadmapCard({
   r,
   onSelect,
   onDelete,
+  onDuplicate,
+  onSettings,
 }: {
   r: RoadmapSummary;
-  onSelect: (id: string) => void;
+  onSelect: (moduleId: string, courseId: string) => void;
   onDelete: () => void;
+  onDuplicate: () => void;
+  onSettings: () => void;
 }) {
-  const id = moduleIdForSkill(r.skill);
+  const id = r.module ?? moduleIdForSkill(r.skill);
   const mod = id ? MODULE_BY_ID.get(id) : undefined;
   const [confirming, setConfirming] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   // Use the same continuous, objective-level ratio the roadmap tab shows (falls back to
   // the done/total lessons fraction for older summaries without a ratio).
   const pct = Math.round(pctOf(r) * 100);
   const meta = [r.level, r.goal].filter(Boolean).join(" · ");
+  const busy = confirming || menuOpen;
   return (
     <div
       role="button"
       tabIndex={0}
       aria-disabled={!id}
-      onClick={() => !confirming && id && onSelect(id)}
+      onClick={() => !busy && id && onSelect(id, r.courseId)}
       onKeyDown={(e) => {
-        if (!confirming && id && (e.key === "Enter" || e.key === " ")) {
+        if (!busy && id && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
-          onSelect(id);
+          onSelect(id, r.courseId);
         }
       }}
       className={`group relative flex flex-col items-start gap-3 border border-accent-line bg-accent-wash p-4 text-left leading-relaxed
@@ -194,24 +235,40 @@ function RoadmapCard({
                  focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active
                  ${id ? "" : "opacity-50"}`}
     >
-      {/* Course settings — revealed on hover, like the read-aloud button in chat */}
-      <button
-        type="button"
-        aria-label={`Settings for ${r.skill} course`}
-        onClick={(e) => {
-          e.stopPropagation();
-          setConfirming(true);
-        }}
-        className="absolute right-3 top-3 z-10 p-1 text-ink-dim opacity-0 transition-opacity
-                   hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
-      >
-        <FiSettings size={14} />
-      </button>
+      {/* Course actions — a three-dot menu, so the destructive option is one of
+          several rather than the only thing the control does. */}
+      <div className="absolute right-2 top-2 z-10" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Actions for ${r.name}`}
+              className={`p-1 text-ink-dim transition-opacity hover:bg-surface-2 hover:text-ink
+                          focus-visible:opacity-100 group-hover:opacity-100
+                          ${menuOpen ? "opacity-100" : "opacity-0"}`}
+            >
+              <FiMoreVertical size={14} />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-[10rem]">
+            <DropdownMenuItem onClick={onSettings}>
+              <FiSettings size={13} /> Course settings…
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onDuplicate}>
+              <FiCopy size={13} /> Duplicate
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setConfirming(true)} className="text-danger">
+              <FiTrash2 size={13} /> Delete course…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
       <div className="flex w-full items-center gap-2 pr-7">
         {mod && <mod.Icon size={18} color={mod.color} className="shrink-0" />}
         <div className="min-w-0">
-          <div className="truncate text-sm font-bold text-ink">{r.skill}</div>
+          <div className="truncate text-sm font-bold text-ink">{r.name}</div>
           <span className="text-micro text-ink-dim">{relativeTime(r.updatedAt)}</span>
         </div>
       </div>
@@ -236,7 +293,7 @@ function RoadmapCard({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="text-xs leading-relaxed text-ink-muted">
-            Delete <span className="font-bold text-ink">{r.skill}</span>?
+            Delete <span className="font-bold text-ink">{r.name}</span>?
             <br />
             <span className="text-ink-dim">Roadmap, progress and chat history will be erased.</span>
           </div>
@@ -277,10 +334,14 @@ function MyCourses({
   roadmaps,
   onSelect,
   onDelete,
+  onDuplicate,
+  onSettings,
 }: {
   roadmaps: RoadmapSummary[];
-  onSelect: (id: string) => void;
+  onSelect: (moduleId: string, courseId: string) => void;
   onDelete: (r: RoadmapSummary) => void;
+  onDuplicate: (r: RoadmapSummary) => void;
+  onSettings: (r: RoadmapSummary) => void;
 }) {
   const [sort, setSort] = useState<SortMode>(() => {
     if (typeof window === "undefined") return "recent";
@@ -344,7 +405,14 @@ function MyCourses({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {shown.map((r) => (
-          <RoadmapCard key={r.skill} r={r} onSelect={onSelect} onDelete={() => onDelete(r)} />
+          <RoadmapCard
+            key={r.courseId}
+            r={r}
+            onSelect={onSelect}
+            onDelete={() => onDelete(r)}
+            onDuplicate={() => onDuplicate(r)}
+            onSettings={() => onSettings(r)}
+          />
         ))}
       </div>
 
@@ -394,8 +462,16 @@ function ModuleCard({ m, onSelect }: { m: Module; onSelect: (id: string) => void
   );
 }
 
-export default function Landing({ onSelect }: { onSelect: (id: string) => void }) {
-  const { roadmaps, remove } = useStoredRoadmaps();
+export default function Landing({
+  onSelect,
+  onSettings,
+}: {
+  /** courseId is supplied when resuming a stored course; omitted when starting a
+   *  technology from the grid, which resumes the most recent course or begins one. */
+  onSelect: (moduleId: string, courseId?: string) => void;
+  onSettings: (r: RoadmapSummary) => void;
+}) {
+  const { roadmaps, remove, duplicate } = useStoredRoadmaps();
   return (
     <div className="relative z-10 h-full w-full overflow-y-auto">
       <div className="mx-auto flex max-w-5xl flex-col px-6 py-12 sm:py-16">
@@ -416,7 +492,13 @@ export default function Landing({ onSelect }: { onSelect: (id: string) => void }
 
         {/* My courses — the signed-in user's stored roadmaps */}
         {roadmaps.length > 0 && (
-          <MyCourses roadmaps={roadmaps} onSelect={onSelect} onDelete={remove} />
+          <MyCourses
+            roadmaps={roadmaps}
+            onSelect={onSelect}
+            onDelete={remove}
+            onDuplicate={duplicate}
+            onSettings={onSettings}
+          />
         )}
 
         {/* Module sections */}
