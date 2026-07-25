@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 import { RUNTIMES } from "@/lib/runtimes/registry";
+import { CONTACT_EMAIL, SITE_NAME } from "@/lib/site";
 import type { IconType } from "react-icons";
 import {
   FiSettings,
@@ -502,12 +503,17 @@ export default function Landing({
             <span className="h-1.5 w-1.5 bg-accent" />
             Runs live in your browser — no installs
           </span>
+          {/* The h1 leads with the app name, verbatim. Google's OAuth review compares
+              the consent screen's app name against the home page and rejects a
+              mismatch — previously the name lived only in the nav wordmark. */}
           <h1 className="mt-5 text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
-            Learn by doing.
+            {SITE_NAME} — learn by doing.
           </h1>
-          <p className="mx-auto mt-3 max-w-xl text-sm text-ink-muted sm:text-base">
-            Pick a technology below and we run it live, right here — real code, real
-            databases, real output, with an AI tutor beside you.
+          <p className="mx-auto mt-3 max-w-2xl text-sm text-ink-muted sm:text-base">
+            {SITE_NAME} is a free, browser-based app for learning programming languages and
+            databases. Tell it what you want to learn and it builds you a personalised roadmap,
+            then teaches it lesson by lesson with an AI tutor — running your real code live in
+            the page, with nothing to install.
           </p>
         </header>
 
@@ -543,10 +549,63 @@ export default function Landing({
           C# · Node.js · Linux · Rust · Go · cloud tracks are coming as heavier runtimes land.
         </p>
 
+        {/* What the app is, and why it asks for a Google account.
+            Google's OAuth review rejected this page for not explaining the app's
+            purpose. A reviewer reads it signed out, so it must say plainly what the
+            app does, what signing in is for, and which data is requested. */}
+        <section className="mt-12 border-t border-line pt-10">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-dim">
+            About {SITE_NAME}
+          </h2>
+          <div className="mt-4 grid gap-6 sm:grid-cols-2">
+            <div>
+              <h3 className="text-sm font-bold text-ink">What it does</h3>
+              <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+                You pick a technology — Python, JavaScript, PostgreSQL and a dozen more — and
+                describe your level and what you are trying to achieve. {SITE_NAME} generates a
+                learning roadmap for exactly that, breaks it into topics and lessons, and walks
+                you through them one at a time.
+              </p>
+              <p className="mt-3 text-sm leading-relaxed text-ink-muted">
+                Every lesson is hands-on. You write real code in the built-in editor and run it
+                immediately: Python through Pyodide, PostgreSQL through PGlite, Ruby, PHP and Lua
+                through WebAssembly — all inside your browser, with nothing installed and no
+                server executing your code. An AI tutor sits beside the editor to explain, hint
+                and review, and each exercise is graded by actually running it and checking the
+                output.
+              </p>
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-ink">Why it asks you to sign in with Google</h3>
+              <p className="mt-2 text-sm leading-relaxed text-ink-muted">
+                Signing in is what lets {SITE_NAME} save your courses. Your roadmap, your progress
+                through it and your conversation with the tutor are stored against your account,
+                so you can close the tab and pick up where you left off on any device.
+              </p>
+              <p className="mt-3 text-sm leading-relaxed text-ink-muted">
+                We request only your basic profile and email address — the minimum needed to
+                identify your account. {SITE_NAME} never asks for, and cannot read, your Gmail,
+                Drive, Calendar, Contacts or any other Google service. We do not sell your data,
+                show ads, or use it to train AI models.
+              </p>
+              <p className="mt-3 text-sm leading-relaxed text-ink-muted">
+                You can browse and try every technology above without an account. Read the{" "}
+                <Link
+                  href="/privacy"
+                  className="text-accent underline underline-offset-2 transition-colors duration-150 hover:text-accent-bright"
+                >
+                  Privacy Policy
+                </Link>{" "}
+                for the full detail, including how to have your data deleted.
+              </p>
+            </div>
+          </div>
+        </section>
+
         {/* Google's OAuth consent screen requires the privacy policy to be reachable
             from the app's homepage, so these links are not optional decoration. */}
         <footer className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 border-t border-line pt-5 text-meta text-ink-dim">
-          <span>CodePath — beta</span>
+          <span>{SITE_NAME} — beta</span>
           <Link href="/privacy" className="text-ink-dim transition-colors duration-150 hover:text-ink">
             Privacy
           </Link>
@@ -554,7 +613,7 @@ export default function Landing({
             Terms
           </Link>
           <a
-            href="mailto:marceloheoliveira@gmail.com"
+            href={`mailto:${CONTACT_EMAIL}`}
             className="text-ink-dim transition-colors duration-150 hover:text-ink"
           >
             Contact

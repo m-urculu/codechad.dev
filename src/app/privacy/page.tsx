@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import LegalPage, { A, type Section } from "@/components/LegalPage";
+import { CONTACT_EMAIL, SITE_HOST, SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Privacy Policy — CodePath",
@@ -8,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 const UPDATED = "25 July 2026";
-const CONTACT = "marceloheoliveira@gmail.com";
+const CONTACT = CONTACT_EMAIL;
 
 const sections: Section[] = [
   {
@@ -17,8 +18,8 @@ const sections: Section[] = [
       {
         p: (
           <>
-            CodePath is an independent, non-commercial learning app run by a solo developer based
-            in Portugal, at <A href="https://codepath-dev.vercel.app">codepath-dev.vercel.app</A>.
+            {SITE_NAME} is an independent, non-commercial learning app run by a solo developer based
+            in Portugal, at <A href={SITE_URL}>{SITE_HOST}</A>.
             For anything in this policy, including requests about your data, write to{" "}
             <A href={`mailto:${CONTACT}`}>{CONTACT}</A> — that address reaches the operator
             directly. For the purposes of the EU General Data Protection Regulation, the operator
