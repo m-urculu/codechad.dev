@@ -268,6 +268,30 @@ every `button`, `[role="button"]`, `[role="tab"]`, `[role="menuitem"]`, `summary
 Animation respects `prefers-reduced-motion`, which is handled globally in
 `globals.css` — you do not need to guard individual transitions.
 
+### The background
+
+The one place motion is expressive rather than functional. `Background/Fluid.tsx` runs
+a real fluid simulation — Stable Fluids on the GPU: advection, vorticity confinement
+and a Jacobi pressure solve over half-float ping-pong targets — and the pointer injects
+momentum into the velocity field. Smoke is displaced, wakes curl and keep turning after
+the cursor has gone.
+
+Two properties are deliberate and should survive any retuning:
+
+- **It heals.** Dye dissipates while a scrolling FBM field feeds it back in, so the
+  background returns to its resting texture a couple of seconds after being stirred. It
+  never accumulates into a drawing the user has to look at.
+- **It stays background.** Grayscale, `colorNum: 20`, Bayer-dithered, rendered at
+  `dpr 0.5` — the same treatment as before it was simulated. The physics changed; the
+  look did not. Nothing here takes colour, and nothing here is ever information.
+
+Tuning lives in one place, `DEFAULT_FLUID_CONFIG`. `curlStrength` buys swirl,
+`splatForce` buys responsiveness, `densityDissipation` and `sourceRate` set how long a
+disturbance lasts (their ratio sets resting brightness, so change them together).
+
+Under `prefers-reduced-motion` the smoke stays — it is texture, not information — but
+drift, curl and pointer response are all switched off.
+
 ---
 
 ## 8. Component patterns
@@ -449,7 +473,8 @@ apology and no stack trace in the UI.
   a position change.
 - `prefers-reduced-motion` is honoured globally.
 - The animated background is decorative and sits behind a `-z-10` layer; when the GPU
-  check fails, a static gradient stands in so contrast never depends on it.
+  check fails, a static gradient stands in so contrast never depends on it. Where the
+  GPU is present but cannot render to float targets, the pre-simulation wave stands in.
 
 ---
 
