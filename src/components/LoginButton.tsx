@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import {
   DropdownMenu,
@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut } from "lucide-react";
 import { createClient, User } from "@supabase/supabase-js";
+import { GOOGLE_CLIENT_ID, loadGis, makeNonce } from "@/lib/googleAuth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
@@ -19,6 +20,7 @@ export function LoginButton() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [imgError, setImgError] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
 
   useEffect(() => {
     const getUser = async () => {
@@ -97,12 +99,78 @@ export function LoginButton() {
     );
   }
 
+  return <GoogleSignIn onError={setSignInError} error={signInError} />;
+}
+
+// Google's own button, because Sign in with Google has to be presented as Google's
+// button. `filled_black` + `rectangular` is the closest of its presets to the rest
+// of the app: black fill, square corners, no radius to fight. It renders inside an
+// iframe, so app CSS cannot reach it — the preset is the only lever.
+function GoogleSignIn({
+  onError,
+  error,
+}: {
+  onError: (m: string | null) => void;
+  error: string | null;
+}) {
+  const slot = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await loadGis();
+        if (cancelled || !slot.current) return;
+        const id = window.google?.accounts?.id;
+        if (!id) throw new Error("Google Identity Services unavailable");
+
+        // Google gets the hash, Supabase gets the raw value; see makeNonce.
+        const { raw, hashed } = await makeNonce();
+
+        id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
+          nonce: hashed,
+          cancel_on_tap_outside: true,
+          callback: async (res) => {
+            onError(null);
+            const { error: err } = await supabase.auth.signInWithIdToken({
+              provider: "google",
+              token: res.credential,
+              nonce: raw,
+            });
+            // The auth listener above picks the session up; only failure needs
+            // handling here.
+            if (err) onError(err.message);
+          },
+        });
+
+        id.renderButton(slot.current, {
+          type: "standard",
+          theme: "filled_black",
+          size: "medium",
+          text: "signin_with",
+          shape: "rectangular",
+          logo_alignment: "left",
+        });
+      } catch (e) {
+        if (!cancelled) onError(e instanceof Error ? e.message : "Sign-in unavailable");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onError]);
+
   return (
-    <button
-      className="px-3 py-1.5 text-ink-muted text-sm font-semibold transition-colors duration-150 border border-line-strong hover:bg-surface-2 hover:text-ink"
-      onClick={() => window.location.href = "/api/auth/google"}
-    >
-      Login
-    </button>
+    <div className="flex items-center gap-2">
+      {error && (
+        <span className="max-w-[16rem] truncate text-meta text-danger" title={error}>
+          {error}
+        </span>
+      )}
+      <div ref={slot} />
+    </div>
   );
 }
