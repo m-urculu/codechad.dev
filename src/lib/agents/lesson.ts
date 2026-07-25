@@ -16,7 +16,10 @@ import { getDocSource } from "@/lib/docs";
 
 // A deterministic, programmatic check for one objective. Grading runs these — the LLM
 // is only used afterward for guidance, never to decide pass/fail.
-//   stdout_equals   : normalized run output === value
+//   stdout_equals   : value appears in the normalized run output as a contiguous run of
+//                     lines. NOT whole-output equality — a learner's own debugging
+//                     (an extra console.log/print while working it out) must not fail a
+//                     correct answer. The block must still appear intact and in order.
 //   stdout_includes : normalized run output contains value (good for interaction after
 //                     a synthetic event, or a specific printed line)
 //   code_matches    : value (a regexp source) matches the learner's code (for "how"
@@ -195,7 +198,7 @@ function buildPrompt(
     `Return ONLY JSON: {"intro": string, "starterCode": string, "html": string, "solution": string, "objectives": [{"id": string, "description": string, "check": {"type": string, "value": string}}]}.\n` +
     `"solution": the COMPLETE correct ${spec.langName} — the starterCode with every objective fully implemented — that runs to completion WITHOUT errors and produces output proving all objectives. Same self-containment rules as starterCode${spec.allowDom ? "; it targets the same html (selectors must match)" : ""}. This is the reference answer; it is validated by running it.\n` +
     `Every objective MUST carry a "check" — a DETERMINISTIC, machine-verifiable test (grading runs it; no AI judges pass/fail). Pick the type that fits:\n` +
-    `  • {"type":"stdout_equals","value":"<exact full run output>"} — when the objective is fully defined by what the program prints.\n` +
+    `  • {"type":"stdout_equals","value":"<the exact line(s) the objective requires>"} — when the objective is fully defined by what the program prints. Grading looks for these lines inside the run output, so the learner may leave their own debugging prints in place; give ONLY the lines the objective is about, not incidental output.\n` +
     `  • {"type":"stdout_includes","value":"<substring the output must contain>"} — when only part of the output matters.\n` +
     `  • {"type":"code_matches","value":"<JS regexp source>"} — for "use X" / structural objectives, or interaction that doesn't print on a plain run (e.g. a click handler): match the required construct in the learner's code, e.g. "addEventListener\\\\(\\\\s*['\\"]click['\\"]".\n` +
     `CRITICAL: your own "solution" MUST pass every check (stdout checks match the solution's real output; code_matches matches the solution's code). Checks are validated by running the solution — if they don't pass it, they are wrong.\n` +

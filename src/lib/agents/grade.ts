@@ -21,6 +21,35 @@ function norm(s: string): string {
     .replace(/^\n+|\n+$/g, "");
 }
 
+// Does `want` appear as a contiguous run of lines inside `got`?
+//
+// This is what makes "stdout_equals" tolerant of a learner's own debugging. Exploring
+// with an extra console.log / print is good practice, and failing a correct answer
+// because of leftover tracing teaches the wrong lesson — what is being assessed is the
+// result, not the route taken to it.
+//
+// Requiring the lines to be CONTIGUOUS and IN ORDER keeps the check meaningful: the
+// expected block must still be produced as a unit, so a passing run genuinely contains
+// the required output rather than the right words scattered across unrelated lines.
+function containsLineBlock(got: string, want: string): boolean {
+  // An empty expectation still means "print nothing" — don't let it match anything.
+  if (want === "") return got === "";
+  const g = got.split("\n");
+  const w = want.split("\n");
+  if (w.length > g.length) return false;
+  for (let i = 0; i + w.length <= g.length; i++) {
+    let ok = true;
+    for (let j = 0; j < w.length; j++) {
+      if (g[i + j] !== w[j]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
 function checkOne(obj: Objective, code: string, output: string): GradeResult {
   const c = obj.check;
   if (!c) return { id: obj.id, passed: false, detail: "no deterministic check" };
@@ -28,7 +57,14 @@ function checkOne(obj: Objective, code: string, output: string): GradeResult {
   if (c.type === "stdout_equals") {
     const want = norm(c.value);
     const got = norm(output);
-    return { id: obj.id, passed: got === want, detail: got === want ? undefined : `expected output ${JSON.stringify(want)}, got ${JSON.stringify(got)}` };
+    const passed = containsLineBlock(got, want);
+    return {
+      id: obj.id,
+      passed,
+      detail: passed
+        ? undefined
+        : `expected the output to include ${JSON.stringify(want)}, got ${JSON.stringify(got)}`,
+    };
   }
   if (c.type === "stdout_includes") {
     const want = norm(c.value);
