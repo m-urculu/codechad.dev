@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="public/logo.svg" width="72" alt="CodePath.AI logo" />
+  <img src="public/logo.svg" width="72" alt="CodePath logo" />
 </p>
 
-<h1 align="center"><a href="https://codepath-dev.vercel.app/">CodePath.AI</a></h1>
+<h1 align="center"><a href="https://codepath-dev.vercel.app/">CodePath</a></h1>
 
 <p align="center">
   <b>Learn by doing — real code, real databases, real output, live in your browser, with an AI tutor beside you.</b><br/>
