@@ -12,14 +12,14 @@ export default function NavBar({ onHome }: { onHome?: () => void }) {
         <button
           type="button"
           onClick={onHome}
-          aria-label="CodePath.AI home"
+          aria-label="CodePath home"
           className="flex items-center gap-2.5 text-white cursor-pointer
                      transition-opacity hover:opacity-80 text-xl font-extrabold tracking-tight drop-shadow-lg select-none"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- static SVG, no optimization needed */}
           <img src="/logo.svg" alt="" className="h-8 w-8 drop-shadow" />
           <span className="flex items-baseline space-x-[10px]">
-            <span>CodePath.AI</span>
+            <span>CodePath</span>
             <span className="text-sm font-thin">v{version} beta</span>
           </span>
         </button>
