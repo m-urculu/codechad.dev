@@ -7,7 +7,14 @@
 // an explicit second click — the pattern the course card already uses for delete.
 
 import { useEffect, useMemo, useState } from "react";
-import { FiArrowLeft, FiCheck } from "react-icons/fi";
+import {
+  FiArrowLeft,
+  FiCheck,
+  FiChevronDown,
+  FiChevronUp,
+  FiPlus,
+  FiX,
+} from "react-icons/fi";
 import type { RoadmapSummary } from "@/components/Landing";
 
 type Progress = Record<string, { done?: boolean; passed?: unknown; built?: { objectives?: unknown[] } }>;
@@ -123,9 +130,14 @@ export default function CourseSettings({
   const [goal, setGoal] = useState(course.goal ?? "");
   const [tree, setTree] = useState<Tree>(null);
   const [progress, setProgress] = useState<Progress>({});
-  const [saved, setSaved] = useState<null | "name" | "calibration">(null);
+  const [saved, setSaved] = useState<null | "name" | "calibration" | "topics">(null);
   const [didReset, setDidReset] = useState(false);
   const [didClearChat, setDidClearChat] = useState(false);
+  // The editable topic list. `id` is absent for topics the learner added.
+  const [topics, setTopics] = useState<{ id?: string; title: string }[]>([]);
+  const [guidance, setGuidance] = useState("");
+  const [regenerating, setRegenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
 
   // Pull the full course so we can show per-topic progress, which the summary
   // endpoint deliberately does not carry.
@@ -141,6 +153,10 @@ export default function CourseSettings({
         if (cancelled || !state) return;
         setTree(state.tree ?? null);
         setProgress((state.progress ?? {}) as Progress);
+        const list = (state.tree as Tree)?.topics;
+        if (Array.isArray(list)) {
+          setTopics(list.map((t) => ({ id: t.id, title: String(t.title ?? "") })));
+        }
       } catch {
         /* the overview simply stays empty */
       }
@@ -150,7 +166,8 @@ export default function CourseSettings({
     };
   }, [userId, course.courseId]);
 
-  const topics = useMemo(() => {
+  // Per-topic completion for the read-only overview (distinct from the editable list).
+  const topicProgress = useMemo(() => {
     const list = tree?.topics;
     if (!Array.isArray(list)) return [];
     return list.map((t) => ({ title: t.title ?? "Untitled", pct: Math.round(ratioOf(t, progress) * 100) }));
@@ -180,6 +197,73 @@ export default function CourseSettings({
     await post({ action: "rename", name: trimmed });
     setSaved("name");
     setTimeout(() => setSaved(null), 2000);
+  }
+
+  function moveTopic(i: number, dir: -1 | 1) {
+    setTopics((list) => {
+      const next = [...list];
+      const j = i + dir;
+      if (j < 0 || j >= next.length) return list;
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+
+  async function saveTopics() {
+    const clean = topics.filter((t) => t.title.trim());
+    if (!clean.length) return;
+    await post({ action: "saveTopics", topics: clean });
+    setSaved("topics");
+    setTimeout(() => setSaved(null), 2000);
+  }
+
+  // The generative path: the edited list goes in as a strong draft, and the model
+  // may add prerequisites or reorder. Replaces the curriculum, so progress resets.
+  async function regenerateWithGuidance() {
+    if (!userId) return;
+    setRegenerating(true);
+    setGenError(null);
+    try {
+      const res = await fetch("/api/roadmap/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          skill: course.skill,
+          moduleId: course.module,
+          level,
+          goal,
+          user_id: userId,
+          course_id: course.courseId,
+          draftTopics: topics.map((t) => t.title.trim()).filter(Boolean),
+          guidance: guidance.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!data.roadmap) {
+        setGenError(data.error ?? "Could not regenerate the roadmap. Try again.");
+        return;
+      }
+      await fetch("/api/roadmap/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: userId,
+          course_id: course.courseId,
+          tree: data.roadmap,
+          progress: {},
+        }),
+      });
+      const fresh = (data.roadmap.topics ?? []) as TreeNode[];
+      setTree({ topics: fresh });
+      setProgress({});
+      setTopics(fresh.map((t) => ({ id: t.id, title: String(t.title ?? "") })));
+      setSaved("topics");
+      setTimeout(() => setSaved(null), 2000);
+    } catch {
+      setGenError("Could not regenerate the roadmap. Try again.");
+    } finally {
+      setRegenerating(false);
+    }
   }
 
   async function applyCalibration() {
@@ -227,13 +311,13 @@ export default function CourseSettings({
           </div>
         </header>
 
-        {topics.length > 0 && (
+        {topicProgress.length > 0 && (
           <section className="mt-8">
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-dim">
               Progress by topic
             </h2>
             <div className="flex flex-col gap-2">
-              {topics.map((t) => (
+              {topicProgress.map((t) => (
                 <div key={t.title} className="flex items-center gap-3">
                   <span className="w-52 shrink-0 truncate text-xs text-ink-muted">{t.title}</span>
                   <div className="h-1 flex-1 overflow-hidden bg-surface-2">
@@ -273,6 +357,116 @@ export default function CourseSettings({
           <p className="mt-2 text-meta text-ink-dim">
             Only the label shown on the card. Duplicates are named “{course.skill} (2)” by default.
           </p>
+        </section>
+
+        {/* --- Topics -------------------------------------------------------- */}
+        <section className="mt-8">
+          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-ink-dim">Topics</h2>
+          <p className="mb-3 text-meta text-ink-dim">
+            Reorder, rename or remove the top-level topics. Lessons under a topic you
+            change are rebuilt the next time you open it.
+          </p>
+
+          <div className="flex flex-col">
+            {topics.map((t, i) => (
+              <div
+                key={t.id ?? `new-${i}`}
+                className="flex items-center gap-1 border-b border-line py-1.5"
+              >
+                <span className="w-6 shrink-0 text-center font-mono text-meta tabular-nums text-ink-faint">
+                  {i + 1}
+                </span>
+                <input
+                  value={t.title}
+                  maxLength={120}
+                  onChange={(e) =>
+                    setTopics((list) =>
+                      list.map((x, j) => (j === i ? { ...x, title: e.target.value } : x))
+                    )
+                  }
+                  className="min-w-0 flex-1 bg-transparent px-1 py-1 text-sm text-ink outline-none
+                             focus:bg-surface-2"
+                />
+                <button
+                  type="button"
+                  aria-label={`Move ${t.title || "topic"} up`}
+                  disabled={i === 0}
+                  onClick={() => moveTopic(i, -1)}
+                  className="p-1 text-ink-dim transition-colors duration-150 hover:text-ink disabled:opacity-25"
+                >
+                  <FiChevronUp size={14} />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Move ${t.title || "topic"} down`}
+                  disabled={i === topics.length - 1}
+                  onClick={() => moveTopic(i, 1)}
+                  className="p-1 text-ink-dim transition-colors duration-150 hover:text-ink disabled:opacity-25"
+                >
+                  <FiChevronDown size={14} />
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Remove ${t.title || "topic"}`}
+                  onClick={() => setTopics((list) => list.filter((_, j) => j !== i))}
+                  className="p-1 text-ink-dim transition-colors duration-150 hover:text-danger"
+                >
+                  <FiX size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setTopics((list) => [...list, { title: "" }])}
+            className="mt-3 flex items-center gap-1.5 border border-line-strong px-3 py-1.5 text-xs
+                       text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
+          >
+            <FiPlus size={13} /> Add topic
+          </button>
+
+          <div className="mt-5">
+            <label htmlFor="guidance" className="text-xs text-ink-dim">
+              Guidance for regeneration (optional)
+            </label>
+            <textarea
+              id="guidance"
+              value={guidance}
+              maxLength={600}
+              rows={2}
+              placeholder="e.g. assume I already know general Python syntax — focus on dataframes"
+              onChange={(e) => setGuidance(e.target.value)}
+              className="mt-1.5 w-full resize-none border border-line-strong bg-surface-0 px-3 py-2 text-sm
+                         text-ink placeholder:text-ink-faint outline-none transition-colors duration-150
+                         focus:border-line-active"
+            />
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={saveTopics}
+              disabled={!topics.some((t) => t.title.trim())}
+              className="bg-ink px-3 py-1.5 text-xs font-semibold text-surface-0 transition-colors duration-150
+                         hover:bg-ink-muted disabled:opacity-40"
+            >
+              {saved === "topics" ? "Saved" : "Save topics"}
+            </button>
+            <button
+              type="button"
+              onClick={regenerateWithGuidance}
+              disabled={regenerating}
+              className="border border-line-strong px-3 py-1.5 text-xs font-semibold text-ink-muted
+                         transition-colors duration-150 hover:bg-surface-2 hover:text-ink disabled:opacity-40"
+            >
+              {regenerating ? "Regenerating…" : "Regenerate with guidance"}
+            </button>
+            <span className="text-meta text-ink-dim">
+              Save keeps your list exactly. Regenerate treats it as a draft and resets progress.
+            </span>
+          </div>
+          {genError && <p className="mt-2 text-meta text-danger">{genError}</p>}
         </section>
 
         {/* --- Calibration --------------------------------------------------- */}

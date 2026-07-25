@@ -282,6 +282,45 @@ export async function duplicateCourse(user_id: string, course_id: string): Promi
   });
 }
 
+// The learner's OTHER courses for the same technology, reduced to their top-level
+// topic titles. Fed into generation so a second course for a language builds on the
+// first instead of repeating it.
+export type SiblingCourse = { name: string; goal?: string; topics: string[] };
+
+export async function siblingCourses(
+  user_id: string,
+  module: string,
+  excludeCourseId?: string
+): Promise<SiblingCourse[]> {
+  try {
+    const { data, error } = await supabase
+      .from("user_roadmap_state")
+      .select("course_id, skill, name, goal, tree")
+      .eq("user_id", user_id)
+      .eq("module", module);
+    if (error) {
+      console.error("[roadmap-state] siblings error:", error.message);
+      return [];
+    }
+    return (data ?? [])
+      .filter((r) => r.course_id !== excludeCourseId)
+      .map((r) => {
+        const topics = (r.tree as { topics?: Array<{ title?: string }> } | null)?.topics;
+        return {
+          name: (r.name as string) || (r.skill as string),
+          goal: (r.goal as string) ?? undefined,
+          topics: Array.isArray(topics)
+            ? topics.map((t) => String(t?.title ?? "").trim()).filter(Boolean)
+            : [],
+        };
+      })
+      .filter((s) => s.topics.length > 0);
+  } catch (e) {
+    console.error("[roadmap-state] siblings exception:", e);
+    return [];
+  }
+}
+
 // Clear completions but keep the curriculum, so the course can be retaken.
 export async function resetCourseProgress(user_id: string, course_id: string): Promise<boolean> {
   try {
