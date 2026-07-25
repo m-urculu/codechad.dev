@@ -126,6 +126,25 @@ a:hover {
   text-decoration: underline;
 }
 
+/* Anything interactive shows a pointer. Tailwind v4's preflight sets buttons to
+   `cursor: default`, so without this every control needs its own
+   `cursor-pointer` class and new ones silently ship without it. Declared
+   unlayered so it beats preflight; disabled states are excluded and keep the
+   `not-allowed` cursor their utilities apply. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+[role="tab"],
+[role="menuitem"],
+summary,
+label[for],
+a[href] {
+  cursor: pointer;
+}
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 /* Buttons are styled entirely by utilities; strip UA chrome but keep a
    visible focus ring for keyboard users (removing it outright fails WCAG). */
 button:focus,

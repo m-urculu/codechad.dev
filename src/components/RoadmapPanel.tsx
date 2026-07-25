@@ -97,7 +97,7 @@ export default function RoadmapPanel({
           onClick={() => toggle(node, here)}
           style={{ paddingLeft: 8 + depth * 16 }}
           className={[
-            "group flex w-full items-center gap-2 border-l-2 py-2 pr-3 text-left transition-colors cursor-pointer",
+            "group flex w-full items-center gap-2 border-l-2 py-2 pr-3 text-left transition-colors ",
             active ? "border-line-active bg-surface-2" : done ? "border-accent-line" : "border-transparent hover:bg-surface-1",
           ].join(" ")}
         >
@@ -171,7 +171,7 @@ export default function RoadmapPanel({
                 <button
                   type="button"
                   onClick={() => onActivateLesson(node)}
-                  className="flex cursor-pointer items-center gap-1.5 border border-line-strong bg-surface-2 px-2.5 py-1 text-meta text-ink transition-colors hover:bg-surface-3"
+                  className="flex items-center gap-1.5 border border-line-strong bg-surface-2 px-2.5 py-1 text-meta text-ink transition-colors hover:bg-surface-3"
                 >
                   <Play className="h-3 w-3" />
                   {done ? "Review lesson" : "Start lesson"}

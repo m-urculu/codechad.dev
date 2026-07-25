@@ -13,7 +13,7 @@ export default function NavBar({ onHome }: { onHome?: () => void }) {
           type="button"
           onClick={onHome}
           aria-label="CodePath home"
-          className="flex items-center gap-2.5 text-ink cursor-pointer
+          className="flex items-center gap-2.5 text-ink 
                      transition-opacity hover:opacity-80 text-xl font-bold tracking-tight drop-shadow-lg select-none"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- static SVG, no optimization needed */}

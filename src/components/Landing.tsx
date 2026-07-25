@@ -192,7 +192,7 @@ function RoadmapCard({
                  backdrop-blur-md
                  transition-colors duration-150 hover:border-accent hover:bg-surface-2
                  focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active
-                 ${id ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}
+                 ${id ? "" : "opacity-50"}`}
     >
       {/* Course settings — revealed on hover, like the read-aloud button in chat */}
       <button
@@ -376,7 +376,7 @@ function ModuleCard({ m, onSelect }: { m: Module; onSelect: (id: string) => void
     <button
       type="button"
       onClick={() => onSelect(m.id)}
-      className="group relative flex cursor-pointer flex-col items-start gap-3 border border-line-strong bg-surface-1 p-4 text-left
+      className="group relative flex flex-col items-start gap-3 border border-line-strong bg-surface-1 p-4 text-left
                  backdrop-blur-md
                  transition-colors duration-150 hover:border-line-active hover:bg-surface-2
                  focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active"

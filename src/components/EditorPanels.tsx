@@ -283,7 +283,7 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
 
   const railBtn = (active: boolean) =>
     [
-      "flex h-10 w-10 items-center justify-center border transition-colors cursor-pointer",
+      "flex h-10 w-10 items-center justify-center border transition-colors ",
       active
         ? "border-line-active bg-surface-3 text-ink"
         : "border-line-strong bg-surface-0 text-ink-muted hover:bg-surface-2 hover:text-ink",

@@ -57,7 +57,7 @@ export function LoginButton() {
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="flex items-center justify-center overflow-hidden bg-surface-0 p-0 cursor-pointer"
+            className="flex items-center justify-center overflow-hidden bg-surface-0 p-0"
             style={{ width: 38, height: 38, border: 'none' }}
           >
             {user.user_metadata?.avatar_url && !imgError ? (
@@ -82,7 +82,7 @@ export function LoginButton() {
           className="bg-surface-0 border border-line-strong text-ink min-w-[8rem] p-1"
         >
           <DropdownMenuItem
-            className="px-3 py-2 hover:bg-surface-2 focus:bg-surface-2 text-ink text-sm cursor-pointer flex items-center gap-2"
+            className="px-3 py-2 hover:bg-surface-2 focus:bg-surface-2 text-ink text-sm flex items-center gap-2"
             onClick={async () => {
               setLoading(true); // Prevent drawing login button after logout
               await supabase.auth.signOut();
@@ -99,7 +99,7 @@ export function LoginButton() {
 
   return (
     <button
-      className="px-3 py-1.5 text-ink-muted text-sm font-semibold transition-colors duration-150 cursor-pointer border border-line-strong hover:bg-surface-2 hover:text-ink"
+      className="px-3 py-1.5 text-ink-muted text-sm font-semibold transition-colors duration-150 border border-line-strong hover:bg-surface-2 hover:text-ink"
       onClick={() => window.location.href = "/api/auth/google"}
     >
       Login
