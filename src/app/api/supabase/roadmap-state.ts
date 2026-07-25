@@ -239,13 +239,60 @@ export async function saveRoadmapState(
 // the point of duplicating is to run the same curriculum again from zero.
 // "Python" -> "Python" when free, otherwise "Python (2)", "Python (3)", … so two
 // courses for the same technology stay tellable apart on the landing page.
-export async function uniqueCourseName(user_id: string, base: string): Promise<string> {
+export async function uniqueCourseName(
+  user_id: string,
+  base: string,
+  /** Course being renamed — its own current name must not count as taken. */
+  excludeCourseId?: string
+): Promise<string> {
   const root = (base || "Course").replace(/ \(\d+\)$/, "");
-  const taken = new Set((await listRoadmapStates(user_id)).map((s) => s.name));
+  const taken = new Set(
+    (await listRoadmapStates(user_id))
+      .filter((s) => s.courseId !== excludeCourseId)
+      .map((s) => s.name)
+  );
   if (!taken.has(root)) return root;
   let n = 2;
   while (taken.has(`${root} (${n})`)) n++;
   return `${root} (${n})`;
+}
+
+// Name a course after the roadmap that was just generated for it.
+//
+// A course row is created the moment the learner answers the first calibration
+// question — before any content exists — so it starts out called after the bare
+// technology ("Python", or "Python (2)" if that was taken). Those are placeholders,
+// and once there is a curriculum we can do better.
+//
+// A name the learner typed themselves is never overwritten: only a name still in
+// the placeholder shape is replaced. That is the whole rule, and it is enforced
+// here rather than at the call site so every generation path inherits it.
+// A course name nobody has chosen: empty, the technology's own name, or that name
+// with the numeric suffix uniqueCourseName appends. Anything else is the learner's.
+export function isPlaceholderCourseName(current: string, skill: string): boolean {
+  const c = (current ?? "").trim();
+  const s = (skill ?? "").trim();
+  if (!c) return true;
+  if (!s) return false;
+  const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped}( \\(\\d+\\))?$`, "i").test(c);
+}
+
+export async function applyGeneratedName(
+  user_id: string,
+  course_id: string,
+  proposed: string
+): Promise<string | null> {
+  const course = await loadRoadmapState(user_id, course_id);
+  if (!course) return null;
+
+  const current = (course.name ?? "").trim();
+  if (!isPlaceholderCourseName(current, course.skill ?? "")) return current;
+
+  const name = await uniqueCourseName(user_id, proposed, course_id);
+  if (name === current) return current;
+  const ok = await saveRoadmapState(user_id, course_id, { name });
+  return ok ? name : null;
 }
 
 export async function duplicateCourse(user_id: string, course_id: string): Promise<string | null> {

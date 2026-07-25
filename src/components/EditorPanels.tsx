@@ -254,6 +254,26 @@ export default function EditorPanels({
   function handleRoadmap(r: Roadmap) {
     setRoadmap(r);
     setLeftView("roadmap");
+    void nameCourseFromContent(r);
+  }
+
+  // The course was created before it had any content, so it is still called after
+  // the bare technology. Now that there is a curriculum, offer its title as the
+  // name — the server applies it only if the learner hasn't named it themselves.
+  async function nameCourseFromContent(r: Roadmap) {
+    if (!userId || !r.title) return;
+    const cid = await ensureCourseId();
+    if (!cid) return;
+    fetch("/api/course", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "autoname",
+        user_id: userId,
+        course_id: cid,
+        name: r.title,
+      }),
+    }).catch(() => {});
   }
 
   // Generation failed → persist a course shell (level/goal, no tree) so the course
