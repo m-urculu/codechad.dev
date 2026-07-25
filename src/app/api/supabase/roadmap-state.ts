@@ -205,16 +205,20 @@ export async function deleteRoadmapState(user_id: string, course_id: string): Pr
   }
 }
 
-// Upsert by course_id. When no course_id is supplied a new course is created —
-// that is how a technology opened for the first time gets its row.
+// Save a course. With a course_id this is a partial UPDATE; without one a new
+// course is INSERTed.
+//
+// Deliberately not an upsert: PostgREST's upsert is an INSERT ... ON CONFLICT, and
+// Postgres validates the proposed INSERT row before it ever reaches the conflict
+// clause. A partial write (say, just `name`) therefore trips skill's NOT NULL
+// constraint and fails, even though the row exists and only needed updating.
 export async function saveRoadmapState(
   user_id: string,
   course_id: string | undefined,
   state: Partial<RoadmapState>
 ): Promise<string | null> {
   try {
-    const row: Record<string, unknown> = { user_id, updated_at: new Date().toISOString() };
-    if (course_id) row.course_id = course_id;
+    const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (state.skill !== undefined) row.skill = state.skill;
     if (state.module !== undefined) row.module = state.module;
     if (state.name !== undefined) row.name = state.name;
@@ -222,16 +226,34 @@ export async function saveRoadmapState(
     if (state.goal !== undefined) row.goal = state.goal;
     if (state.tree !== undefined) row.tree = state.tree;
     if (state.progress !== undefined) row.progress = state.progress;
+
+    if (course_id) {
+      // Matching on user_id too means a guessed course_id cannot touch someone
+      // else's course.
+      const { data, error } = await supabase
+        .from("user_roadmap_state")
+        .update(row)
+        .eq("user_id", user_id)
+        .eq("course_id", course_id)
+        .select("course_id")
+        .maybeSingle();
+      if (error) {
+        console.error("[roadmap-state] update error:", error.message);
+        return null;
+      }
+      return (data?.course_id as string) ?? null;
+    }
+
     const { data, error } = await supabase
       .from("user_roadmap_state")
-      .upsert(row, { onConflict: "course_id" })
+      .insert({ ...row, user_id })
       .select("course_id")
       .maybeSingle();
     if (error) {
-      console.error("[roadmap-state] save error:", error.message);
+      console.error("[roadmap-state] insert error:", error.message);
       return null;
     }
-    return (data?.course_id as string) ?? course_id ?? null;
+    return (data?.course_id as string) ?? null;
   } catch (e) {
     console.error("[roadmap-state] save exception:", e);
     return null;
