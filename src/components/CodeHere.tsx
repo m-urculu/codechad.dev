@@ -6,7 +6,7 @@ import type { OutLine } from "@/lib/runtimes/javascript";
 import { runWeb, type WebRunHandle } from "@/lib/runtimes/web";
 import { getRuntime } from "@/lib/runtimes/registry";
 import type { RunHandle } from "@/lib/runtimes/exec";
-import { CODEPATH_THEME, defineCodePathTheme } from "@/lib/monacoTheme";
+import { CODECHAD_THEME, defineCodeChadTheme } from "@/lib/monacoTheme";
 import { enrichLanguages } from "@/lib/monacoLanguages";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
@@ -207,9 +207,9 @@ export default function CodeHere({
               }}
               beforeMount={(monaco) => {
                 enrichLanguages(monaco);
-                defineCodePathTheme(monaco);
+                defineCodeChadTheme(monaco);
               }}
-              theme={CODEPATH_THEME}
+              theme={CODECHAD_THEME}
               options={{
                 fontSize: 13,
                 // Same face as the console, so code reads identically wherever it

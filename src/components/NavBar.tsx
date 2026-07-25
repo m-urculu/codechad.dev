@@ -12,14 +12,14 @@ export default function NavBar({ onHome }: { onHome?: () => void }) {
         <button
           type="button"
           onClick={onHome}
-          aria-label="CodePath home"
+          aria-label="CodeChad home"
           className="flex items-center gap-2.5 text-ink 
                      transition-opacity hover:opacity-80 text-xl font-bold tracking-tight drop-shadow-lg select-none"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- static SVG, no optimization needed */}
           <img src="/logo.svg" alt="" className="h-8 w-8 drop-shadow" />
           <span className="flex items-baseline space-x-[10px]">
-            <span>CodePath</span>
+            <span>CodeChad</span>
             <span className="text-sm font-normal">v{version} beta</span>
           </span>
         </button>
