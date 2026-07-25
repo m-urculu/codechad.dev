@@ -1071,7 +1071,7 @@ export default function ChatPanel({
                   onClick={restartLesson}
                   title="Reset progress and reload the starter code"
                   className="mt-2.5 inline-flex items-center gap-1.5 border border-line-strong bg-scrim px-2.5 py-1 text-meta 
-                             text-ink-muted leading-none transition-colors hover:bg-surface-2 hover:text-ink cursor-pointer"
+                             text-ink-muted leading-none transition-colors hover:bg-surface-2 hover:text-ink"
                 >
                   <RotateCcw className="h-3 w-3" />
                   Re-take lesson
@@ -1105,7 +1105,7 @@ export default function ChatPanel({
                         type="button"
                         disabled={loading}
                         onClick={() => answerCalibration(opt)}
-                        className="cursor-pointer border border-line-strong bg-scrim px-3 py-1.5 text-xs text-ink
+                        className="border border-line-strong bg-scrim px-3 py-1.5 text-xs text-ink
                                    leading-none transition-colors hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {opt}
@@ -1115,7 +1115,7 @@ export default function ChatPanel({
                       type="button"
                       disabled={loading}
                       onClick={() => textareaRef.current?.focus()}
-                      className="cursor-pointer border border-dashed border-line-strong bg-transparent px-3 py-1.5 text-xs text-ink-muted
+                      className="border border-dashed border-line-strong bg-transparent px-3 py-1.5 text-xs text-ink-muted
                                  leading-none transition-colors hover:border-line-active hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       Type my own…
@@ -1151,7 +1151,7 @@ export default function ChatPanel({
             />
             <button
               type="submit"
-              className="cursor-pointer px-4 py-2 bg-surface-3 hover:bg-surface-3 text-surface-0 font-normal leading-normal border border-line-strong transition-colors duration-150 flex items-center justify-center"
+              className="px-4 py-2 bg-surface-3 hover:bg-surface-3 text-surface-0 font-normal leading-normal border border-line-strong transition-colors duration-150 flex items-center justify-center"
               aria-label="Send"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">

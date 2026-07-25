@@ -66,7 +66,7 @@ export default function DocsPanel({
               onClick={() => setReloadKey((k) => k + 1)}
               title="Reload docs"
               aria-label="Reload docs"
-              className="flex h-7 w-7 items-center justify-center border border-line-strong bg-surface-0 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink cursor-pointer"
+              className="flex h-7 w-7 items-center justify-center border border-line-strong bg-surface-0 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
             >
               <RotateCcw className="h-3.5 w-3.5" />
             </button>

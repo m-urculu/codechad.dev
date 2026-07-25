@@ -258,6 +258,13 @@ against a square hairline frame, a moving panel reads as unstable.
 **Focus** is always visible: `outline-2 outline-line-active` with `outline-offset-1`.
 Never remove a focus ring without replacing it.
 
+**Cursor** is handled globally — do not add `cursor-pointer` to anything. Tailwind's
+preflight sets buttons to `cursor: default`, so `globals.css` restores the pointer for
+every `button`, `[role="button"]`, `[role="tab"]`, `[role="menuitem"]`, `summary`,
+`label[for]` and `a[href]`, and applies `not-allowed` to anything `:disabled` or
+`aria-disabled`. A new control gets the right cursor for free; a stray
+`cursor-pointer` class is redundant and will drift.
+
 Animation respects `prefers-reduced-motion`, which is handled globally in
 `globals.css` — you do not need to guard individual transitions.
 

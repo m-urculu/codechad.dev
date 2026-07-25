@@ -228,7 +228,7 @@ export default function CodeHere({
                 disabled={!spec.runnable}
                 title={spec.runnable ? "Run your code" : "No runtime for this module yet — use Submit"}
                 className={[
-                  "px-2 py-1 text-xs font-semibold transition-colors duration-150 cursor-pointer flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed",
+                  "px-2 py-1 text-xs font-semibold transition-colors duration-150 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed",
                   running
                     ? "bg-danger text-ink hover:bg-danger/80"
                     : "bg-ink text-surface-0 hover:bg-ink-muted",
@@ -254,7 +254,7 @@ export default function CodeHere({
                 onClick={submit}
                 disabled={running}
                 title="Send your code + output to the tutor"
-                className="px-2 py-1 bg-accent text-surface-0 hover:bg-accent-bright text-xs font-semibold transition-colors duration-150 cursor-pointer flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-2 py-1 bg-accent text-surface-0 hover:bg-accent-bright text-xs font-semibold transition-colors duration-150 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
@@ -263,7 +263,7 @@ export default function CodeHere({
               </button>
               <button
                 onClick={() => setOutput([])}
-                className="px-2 py-1 border border-line-strong text-ink-muted hover:bg-surface-2 hover:text-ink text-xs font-semibold transition-colors duration-150 cursor-pointer flex items-center gap-2"
+                className="px-2 py-1 border border-line-strong text-ink-muted hover:bg-surface-2 hover:text-ink text-xs font-semibold transition-colors duration-150 flex items-center gap-2"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -278,14 +278,14 @@ export default function CodeHere({
             <div className="flex items-center gap-1 border-t border-line px-2 py-1 text-meta">
               <button
                 onClick={() => setTab("console")}
-                className={`cursor-pointer px-2 py-0.5 ${tab === "console" ? "bg-surface-3 text-ink" : "text-ink-dim hover:text-ink"}`}
+                className={`px-2 py-0.5 ${tab === "console" ? "bg-surface-3 text-ink" : "text-ink-dim hover:text-ink"}`}
               >
                 Console
               </button>
               {hasDom && (
                 <button
                   onClick={() => setTab("preview")}
-                  className={`cursor-pointer px-2 py-0.5 ${tab === "preview" ? "bg-surface-3 text-ink" : "text-ink-dim hover:text-ink"}`}
+                  className={`px-2 py-0.5 ${tab === "preview" ? "bg-surface-3 text-ink" : "text-ink-dim hover:text-ink"}`}
                 >
                   Preview
                 </button>

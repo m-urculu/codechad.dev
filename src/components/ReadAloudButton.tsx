@@ -28,7 +28,7 @@ export default function ReadAloudButton({ id, text }: { id: string; text: string
       aria-label={active ? "Stop reading" : "Read aloud"}
       className={[
         "inline-flex items-center gap-1 border border-line bg-surface-0/40 px-1.5 py-0.5",
-        "text-micro leading-none transition-all cursor-pointer",
+        "text-micro leading-none transition-all ",
         // Hidden until the bubble is hovered/focused — but stays visible while active so it
         // can be stopped even if the pointer leaves.
         active
