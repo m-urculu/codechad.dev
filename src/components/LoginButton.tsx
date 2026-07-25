@@ -102,10 +102,16 @@ export function LoginButton() {
   return <GoogleSignIn onError={setSignInError} error={signInError} />;
 }
 
-// Google's own button, because Sign in with Google has to be presented as Google's
-// button. `filled_black` + `rectangular` is the closest of its presets to the rest
-// of the app: black fill, square corners, no radius to fight. It renders inside an
-// iframe, so app CSS cannot reach it — the preset is the only lever.
+// Google's own button, because Sign in with Google must be presented as Google's
+// button. It renders inside an accounts.google.com iframe, so app CSS cannot reach
+// it: no radius override, no font, no colours. `filled_black` + `rectangular` +
+// `medium` is the closest its presets get, and an explicit width stops it sizing
+// itself to the translated label — at default it stretched to 263px in Portuguese.
+//
+// What is left over — Google's own 4px corner rounding, Roboto, and the white logo
+// tile — is fixed by their branding terms. The frame below is the reconciliation:
+// the app's own hairline box around Google's button, so it reads as a control in
+// this UI rather than a widget dropped into it.
 function GoogleSignIn({
   onError,
   error,
@@ -152,6 +158,7 @@ function GoogleSignIn({
           text: "signin_with",
           shape: "rectangular",
           logo_alignment: "left",
+          width: 200,
         });
       } catch (e) {
         if (!cancelled) onError(e instanceof Error ? e.message : "Sign-in unavailable");
@@ -170,7 +177,11 @@ function GoogleSignIn({
           {error}
         </span>
       )}
-      <div ref={slot} />
+      {/* overflow-hidden crops Google's rounded corners back to square against the
+          app's frame; leading-none keeps the iframe from sitting on a text baseline. */}
+      <div className="flex items-center overflow-hidden border border-line-strong leading-none transition-colors duration-150 hover:border-line-active">
+        <div ref={slot} className="block" />
+      </div>
     </div>
   );
 }
