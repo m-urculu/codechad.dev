@@ -350,24 +350,47 @@ Monaco runs the `codepath` theme from `src/lib/monacoTheme.ts`, not `vs-dark` �
 stock vs-dark brings a `#1e1e1e` background, VS Code's blue/orange palette and its own
 mono face, all of which read as a foreign object here.
 
-The same rule as everywhere else applies: the canvas is monochrome and colour carries
-meaning.
+**The editor is the one place the monochrome rule does not apply.** Everywhere else
+hue is reserved for the accent; inside code, hue *is* the information — it is how you
+tell a class from a function from a literal without reading. The surface stays tied to
+the brand by keeping emerald for strings and sitting on the same true-black canvas.
 
-| Element | Tone |
-|---|---|
-| Background, gutter | `surface-0` (true black) |
-| Identifiers, code body | `ink` |
-| Keywords, tags | white **bold** — structure is weight, not hue |
-| Strings, regex, attribute values | `accent` — literal values the learner types and sees echoed in the console |
-| Numbers, types, constants | `info` |
-| Comments | `ink-faint`, italic |
-| Brackets, operators, delimiters | `ink-muted` |
-| Cursor, bracket match, find match | `accent` |
-| Unmatched bracket, invalid | `danger` |
+| Element | Colour | |
+|---|---|---|
+| Background, gutter | `#000000` | true black, as everywhere |
+| Plain identifiers | `#c8d3f5` | |
+| Control keywords — `if`, `for`, `return`, `import` | `#bb9af7` | violet |
+| Declarations — `class`, `def`, `function`, `local` | `#9d7cd8` | violet, italic |
+| **Class and type names, inheritance, annotations** | `#e0af68` | amber |
+| Function names and call sites | `#7aa2f7` | blue |
+| Builtins — `print`, `len`, `SUM`, `attr_reader` | `#2ac3de` | cyan |
+| Strings, attribute values | `#34d399` | the app accent, kept |
+| Numbers, constants, `True`/`None` | `#ff9e64` | orange |
+| `self` / `cls` / `this`, PHP `$vars`, JSX tags | `#f7768e` | coral, italic |
+| Operators, escapes, interpolation | `#89ddff` | |
+| Punctuation, brackets | `#8b95b8` | |
+| Comments | `#4d4d4d` | italic |
+| Invalid, unmatched bracket | `danger` | |
+
+A declaration's *name* is bolded (`class Basket`, `def total`) so the thing being
+introduced outranks its references.
+
+**Python needs an enriched grammar** (`src/lib/monacoLanguages.ts`). Monaco's stock
+Python tokenizer emits only keyword/identifier/number/string/delimiter — classes,
+functions, builtins, decorators, constants and `self` all collapse into `identifier`,
+so no theme can colour them. The replacement grammar distinguishes them. Other
+languages already carry enough structure (JS/TS `type.identifier`, Ruby
+`constructor`/`keyword.class`/`predefined`, SQL `predefined`, PHP `variable`).
+
+Before adding theme rules, check what a language *actually* emits:
+
+```js
+monaco.editor.tokenize(sourceString, "python")
+```
 
 Two defaults are deliberately suppressed: **bracket-pair rainbow colouring** (every
-level pinned to `ink-muted` in the theme, since the editor option alone is not honoured)
-and **ligatures** — learners must see `!=` and `=>` as the characters they typed.
+level pinned to the punctuation tone in the theme, since the editor option alone is not
+honoured) and **ligatures** — learners must see `!=` and `=>` as the characters they typed.
 
 Widgets (suggest, hover) take the panel treatment: black fill, `line-strong` hairline.
 
