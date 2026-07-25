@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import LegalPage, { A, type Section } from "@/components/LegalPage";
+import { CONTACT_EMAIL, SITE_HOST, SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "Terms of Service — CodePath",
@@ -8,7 +9,7 @@ export const metadata: Metadata = {
 };
 
 const UPDATED = "25 July 2026";
-const CONTACT = "marceloheoliveira@gmail.com";
+const CONTACT = CONTACT_EMAIL;
 
 const sections: Section[] = [
   {
@@ -17,8 +18,8 @@ const sections: Section[] = [
       {
         p: (
           <>
-            By using CodePath at{" "}
-            <A href="https://codepath-dev.vercel.app">codepath-dev.vercel.app</A> you agree to these
+            By using {SITE_NAME} at{" "}
+            <A href={SITE_URL}>{SITE_HOST}</A> you agree to these
             terms. If you do not agree with them, please do not use the service. They are a contract
             between you and the operator of CodePath, a solo developer based in Portugal, reachable
             at <A href={`mailto:${CONTACT}`}>{CONTACT}</A>.
