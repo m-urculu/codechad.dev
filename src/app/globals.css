@@ -2,7 +2,7 @@
 @import "tailwindcss";
 
 /* ==========================================================================
-   CodePath design tokens
+   CodeChad design tokens
    Single source of truth for colour, type, spacing and motion.
    See docs/design-system.md for the rules that govern these.
    Never hard-code a hex, an rgba() or an arbitrary size in a component —
@@ -11,7 +11,7 @@
 
 @theme {
   /* --- Corners -----------------------------------------------------------
-     CodePath is a sharp-cornered interface. Every radius token is 0 so that
+     CodeChad is a sharp-cornered interface. Every radius token is 0 so that
      any stray `rounded-*` utility (including ones inside vendored shadcn /
      Radix components) resolves to a square corner. The universal rule further
      down is the belt-and-braces enforcement for `rounded-full`, which Tailwind

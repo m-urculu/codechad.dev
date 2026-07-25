@@ -3,9 +3,9 @@ import LegalPage, { A, type Section } from "@/components/LegalPage";
 import { CONTACT_EMAIL, SITE_HOST, SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — CodePath",
+  title: "Privacy Policy — CodeChad",
   description:
-    "How CodePath handles your Google account information, your course data, and the code and messages you submit.",
+    "How CodeChad handles your Google account information, your course data, and the code and messages you submit.",
 };
 
 const UPDATED = "25 July 2026";
@@ -23,7 +23,7 @@ const sections: Section[] = [
             For anything in this policy, including requests about your data, write to{" "}
             <A href={`mailto:${CONTACT}`}>{CONTACT}</A> — that address reaches the operator
             directly. For the purposes of the EU General Data Protection Regulation, the operator
-            of CodePath is the data controller.
+            of CodeChad is the data controller.
           </>
         ),
       },
@@ -98,7 +98,7 @@ const sections: Section[] = [
       {
         p: (
           <>
-            CodePath&rsquo;s use and transfer to any other app of information received from Google
+            CodeChad&rsquo;s use and transfer to any other app of information received from Google
             APIs will adhere to the{" "}
             <A href="https://developers.google.com/terms/api-services-user-data-policy">
               Google API Services User Data Policy
@@ -123,7 +123,7 @@ const sections: Section[] = [
     heading: "Who processes your data",
     blocks: [
       {
-        p: "CodePath is built on a small number of services. Each one sees only what it needs to do its job.",
+        p: "CodeChad is built on a small number of services. Each one sees only what it needs to do its job.",
       },
       {
         list: [
@@ -217,7 +217,7 @@ const sections: Section[] = [
           <>
             To delete your account and everything attached to it, or to receive a copy of your data,
             email <A href={`mailto:${CONTACT}`}>{CONTACT}</A> from the address you signed up with.
-            We will action it within 30 days. You can also revoke CodePath&rsquo;s access to your
+            We will action it within 30 days. You can also revoke CodeChad&rsquo;s access to your
             Google account at any time from{" "}
             <A href="https://myaccount.google.com/permissions">
               your Google account permissions page
@@ -244,7 +244,7 @@ const sections: Section[] = [
     heading: "Children",
     blocks: [
       {
-        p: "CodePath is not intended for children under 16. We do not knowingly collect data from them. If you believe a child has given us data, email us and we will delete it.",
+        p: "CodeChad is not intended for children under 16. We do not knowingly collect data from them. If you believe a child has given us data, email us and we will delete it.",
       },
     ],
   },
@@ -271,7 +271,7 @@ export default function Privacy() {
       updated={UPDATED}
       intro={
         <>
-          CodePath is a learning app. You sign in with Google, describe what you want to learn, and
+          CodeChad is a learning app. You sign in with Google, describe what you want to learn, and
           it builds you a course you work through in the browser. This page explains exactly what
           that involves for your data — what we receive, what we do with it, who else sees it, and
           how to get rid of it.

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-  <!-- CodePath — double slash, white on transparent. The rear slash is ghosted
+  <!-- CodeChad — double slash, white on transparent. The rear slash is ghosted
        for depth; sharp parallelograms, no tile, no color. -->
   <polygon points="10,38 16.5,38 28.5,10 22,10" fill="#ffffff" opacity="0.4"/>
   <polygon points="22,38 28.5,38 40.5,10 34,10" fill="#ffffff"/>

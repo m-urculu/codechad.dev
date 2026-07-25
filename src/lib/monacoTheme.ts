@@ -1,4 +1,4 @@
-// Monaco theme built from the CodePath design tokens (see docs/design-system.md).
+// Monaco theme built from the CodeChad design tokens (see docs/design-system.md).
 //
 // Stock vs-dark reads as a foreign object in this app: a #1e1e1e background against
 // our true black, VS Code's blue/orange syntax palette against our monochrome +
@@ -16,7 +16,7 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export const CODEPATH_THEME = "codepath";
+export const CODECHAD_THEME = "codechad";
 
 // Token colours are hex WITHOUT the leading '#'; the `colors` map requires it.
 const INK = "c8d3f5";       // code body / plain identifiers
@@ -37,8 +37,8 @@ const INFO = "7dd3fc";
 const WARN = "fbbf24";
 const DANGER = "ef4444";
 
-export function defineCodePathTheme(monaco: any): void {
-  monaco.editor.defineTheme(CODEPATH_THEME, {
+export function defineCodeChadTheme(monaco: any): void {
+  monaco.editor.defineTheme(CODECHAD_THEME, {
     base: "vs-dark",
     inherit: true,
     rules: [

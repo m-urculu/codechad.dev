@@ -1,6 +1,6 @@
-# CodePath — Design System
+# CodeChad — Design System
 
-The reference for how CodePath looks and sounds. Every token lives in
+The reference for how CodeChad looks and sounds. Every token lives in
 `src/app/globals.css`; this document explains what they mean and when to reach for
 each one.
 
@@ -27,7 +27,7 @@ each one.
 
 ## 1. Theme & personality
 
-CodePath is a **terminal that teaches**. The visual language borrows from developer
+CodeChad is a **terminal that teaches**. The visual language borrows from developer
 tools rather than from courseware: black canvas, hairline frames, dense information,
 monospace output, one signal colour. It should feel precise and slightly severe — the
 opposite of a rounded, pastel, illustration-heavy learning app.
@@ -370,7 +370,7 @@ flex items-center gap-2 border-t border-line px-2 py-1 text-meta
 
 ### Code editor
 
-Monaco runs the `codepath` theme from `src/lib/monacoTheme.ts`, not `vs-dark` —
+Monaco runs the `codechad` theme from `src/lib/monacoTheme.ts`, not `vs-dark` —
 stock vs-dark brings a `#1e1e1e` background, VS Code's blue/orange palette and its own
 mono face, all of which read as a foreign object here.
 

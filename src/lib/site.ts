@@ -8,13 +8,14 @@
 //
 // SITE_NAME must match the "App name" field on the Google Auth Platform Branding
 // page CHARACTER FOR CHARACTER. Changing one without the other fails verification.
-export const SITE_NAME = "CodePath";
+export const SITE_NAME = "CodeChad";
 
-// Set NEXT_PUBLIC_SITE_URL in Vercel when a real domain is in place. The fallback
-// is the current deployment; note that Google rejects *.vercel.app for
-// verification, because a free hosting subdomain is not registered to you.
+// The canonical origin. Overridable per-environment via NEXT_PUBLIC_SITE_URL
+// (preview deployments), but the default is the real domain: Google rejects
+// *.vercel.app for verification, because a free hosting subdomain is not
+// registered to you.
 export const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL || "https://codepath-dev.vercel.app"
+  process.env.NEXT_PUBLIC_SITE_URL || "https://codechad.dev"
 ).replace(/\/$/, "");
 
 /** Host without the scheme, for display in prose. */

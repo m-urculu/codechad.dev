@@ -45,7 +45,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     runnable: true, allowDom: true, langName: "JavaScript", printHow: "console.log(...)",
     runNotes: JS_NOTES + " DOM lessons run against the lesson's HTML in a real document with a live Preview.",
     forbid: "js", badgeColor: "#F7DF1E",
-    defaultCode: '// Try it — edit and press Run\nconsole.log("Hello, CodePath!");',
+    defaultCode: '// Try it — edit and press Run\nconsole.log("Hello, CodeChad!");',
   },
   typescript: {
     id: "typescript", title: "TypeScript", monacoLang: "typescript", engine: "typescript",
@@ -54,7 +54,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
       JS_NOTES + " Code is transpiled to JavaScript before running (type annotations are erased; teach types, interfaces, generics — but remember runtime checks still need real JS logic).",
     forbid: "js", badgeColor: "#3178C6",
     defaultCode:
-      '// TypeScript — types are checked in the editor, erased at run time\nfunction greet(name: string): string {\n  return `Hello, ${name}!`;\n}\nconsole.log(greet("CodePath"));',
+      '// TypeScript — types are checked in the editor, erased at run time\nfunction greet(name: string): string {\n  return `Hello, ${name}!`;\n}\nconsole.log(greet("CodeChad"));',
   },
   python: {
     id: "python", title: "Python", monacoLang: "python", engine: "pyodide",
@@ -62,7 +62,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     runNotes:
       "Real CPython (Pyodide/WASM) in the browser. No network (requests/urllib/socket), no subprocess, no real files. Standard library logic, data structures, classes etc. all work.",
     forbid: "python", badgeColor: "#3776AB",
-    defaultCode: '# Python 3 — edit and press Run\nprint("Hello, CodePath!")',
+    defaultCode: '# Python 3 — edit and press Run\nprint("Hello, CodeChad!")',
     loadNote: "Loading Python (≈10 MB, first run only)…",
   },
   ruby: {
@@ -71,7 +71,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     runNotes:
       "Real CRuby (ruby.wasm) in the browser. No network (Net::HTTP/sockets), no shell (backticks/system), no real files. Core language + stdlib logic works.",
     forbid: "ruby", badgeColor: "#CC342D",
-    defaultCode: '# Ruby — edit and press Run\nputs "Hello, CodePath!"',
+    defaultCode: '# Ruby — edit and press Run\nputs "Hello, CodeChad!"',
     loadNote: "Loading Ruby (≈25 MB, first run only)…",
   },
   php: {
@@ -80,7 +80,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     runNotes:
       "Real PHP (php-wasm) in the browser. Code MUST start with <?php. No network (curl/file_get_contents on URLs), no exec/shell, no real files.",
     forbid: "php", badgeColor: "#777BB4",
-    defaultCode: '<?php\n// PHP — edit and press Run\necho "Hello, CodePath!\\n";',
+    defaultCode: '<?php\n// PHP — edit and press Run\necho "Hello, CodeChad!\\n";',
     loadNote: "Loading PHP (≈5 MB, first run only)…",
   },
   lua: {
@@ -89,7 +89,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     runNotes:
       "Real Lua VM (fengari) in the browser. No require, no io.*, no os.execute. Tables, functions, metatables, coroutines all work.",
     forbid: "lua", badgeColor: "#8895d9",
-    defaultCode: '-- Lua — edit and press Run\nprint("Hello, CodePath!")',
+    defaultCode: '-- Lua — edit and press Run\nprint("Hello, CodeChad!")',
   },
   postgres: {
     id: "postgres", title: "PostgreSQL", monacoLang: "sql", engine: "pglite",

@@ -37,7 +37,7 @@ export default function LegalPage({
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- static SVG */}
             <img src="/logo.svg" alt="" className="h-8 w-8" />
-            <span>CodePath</span>
+            <span>CodeChad</span>
           </Link>
         </div>
       </header>
@@ -93,7 +93,7 @@ export function LegalFooter() {
   return (
     <footer className="mt-14 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-5 text-meta text-ink-dim">
       <Link href="/" className="text-ink-dim transition-colors duration-150 hover:text-ink">
-        CodePath
+        CodeChad
       </Link>
       <Link href="/privacy" className="text-ink-dim transition-colors duration-150 hover:text-ink">
         Privacy
