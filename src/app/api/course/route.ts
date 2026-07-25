@@ -42,11 +42,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: !!id });
       }
       case "recalibrate": {
-        // Clearing the tree is what makes the workspace regenerate on next open.
+        // Emptying the tree is what makes the workspace regenerate on next open.
+        // It must be [] rather than null — the column is NOT NULL, and the client
+        // tests `tree?.topics?.length`, which an empty array fails just as well.
         const id = await saveRoadmapState(user_id, course_id, {
           level,
           goal,
-          tree: null,
+          tree: [],
           progress: {},
         });
         return NextResponse.json({ ok: !!id });
