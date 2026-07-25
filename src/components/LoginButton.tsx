@@ -102,16 +102,54 @@ export function LoginButton() {
   return <GoogleSignIn onError={setSignInError} error={signInError} />;
 }
 
-// Google's own button, because Sign in with Google must be presented as Google's
-// button. It renders inside an accounts.google.com iframe, so app CSS cannot reach
-// it: no radius override, no font, no colours. `filled_black` + `rectangular` +
-// `medium` is the closest its presets get, and an explicit width stops it sizing
-// itself to the translated label — at default it stretched to 263px in Portuguese.
+/** Google's four-colour "G", the one mark their branding terms allow. */
+function GoogleMark({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden focusable="false">
+      <path
+        fill="#4285F4"
+        d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M11.69 28.18c-.44-1.32-.69-2.73-.69-4.18s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24s.85 6.91 2.34 9.88l7.35-5.7z"
+      />
+      <path
+        fill="#EA4335"
+        d="M24 10.75c3.23 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"
+      />
+    </svg>
+  );
+}
+
+// Sign in with Google, wearing this app's clothes.
 //
-// What is left over — Google's own 4px corner rounding, Roboto, and the white logo
-// tile — is fixed by their branding terms. The frame below is the reconciliation:
-// the app's own hairline box around Google's button, so it reads as a control in
-// this UI rather than a widget dropped into it.
+// Google's rendered button lives inside an accounts.google.com iframe, so no app
+// CSS reaches it — its Roboto, its fill, its corner radius are all untouchable
+// from here. Framing it only produced a default-looking Google button in a box.
+//
+// So the app draws the button, and Google's real one is laid over it at zero
+// opacity to take the click. That is the supported shape of this: the iframe is
+// what carries the credential back, and the visible control keeps the mark and
+// the exact "Sign in with Google" wording their branding terms require.
+//
+// Consequences worth knowing:
+//   - The wrapper is a fixed box; Google's button is rendered LARGER than it and
+//     centred, so the invisible hit area always covers the visible one, corner
+//     rounding included. Keep BOX inside HIT on both axes if either is touched.
+//   - Hover and focus live on the wrapper, not the drawn button: the real focus
+//     target is the iframe, which :focus-within still sees.
+//   - The account chooser that opens next is Google's own page on their domain.
+//     Nothing here changes it; only the OAuth Branding fields do.
+const BOX = { width: 200, height: 38 };
+// Google renders at least this wide, and 44px tall at size "large" — an overhang
+// on every edge of BOX.
+const HIT_WIDTH = 240;
+
 function GoogleSignIn({
   onError,
   error,
@@ -151,14 +189,16 @@ function GoogleSignIn({
           },
         });
 
+        // Rendered only to be clicked through, never seen — but sized generously
+        // so its hit area outruns the drawn button on every side.
         id.renderButton(slot.current, {
           type: "standard",
           theme: "filled_black",
-          size: "medium",
+          size: "large",
           text: "signin_with",
           shape: "rectangular",
           logo_alignment: "left",
-          width: 200,
+          width: HIT_WIDTH,
         });
       } catch (e) {
         if (!cancelled) onError(e instanceof Error ? e.message : "Sign-in unavailable");
@@ -177,10 +217,27 @@ function GoogleSignIn({
           {error}
         </span>
       )}
-      {/* overflow-hidden crops Google's rounded corners back to square against the
-          app's frame; leading-none keeps the iframe from sitting on a text baseline. */}
-      <div className="flex items-center overflow-hidden border border-line-strong leading-none transition-colors duration-150 hover:border-line-active">
-        <div ref={slot} className="block" />
+      <div
+        className="group relative cursor-pointer overflow-hidden leading-none
+                   focus-within:outline focus-within:outline-2 focus-within:outline-line-active"
+        style={BOX}
+      >
+        {/* What the user sees. Inert: the click belongs to the layer above it. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2
+                     border border-line-strong bg-surface-1 text-meta font-medium text-ink-muted backdrop-blur-md
+                     transition-colors duration-150
+                     group-hover:border-line-active group-hover:bg-surface-2 group-hover:text-ink"
+        >
+          <GoogleMark />
+          Sign in with Google
+        </div>
+        {/* Google's real button: invisible, centred, larger than the box. */}
+        <div
+          ref={slot}
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0"
+        />
       </div>
     </div>
   );
