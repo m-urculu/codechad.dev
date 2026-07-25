@@ -6,6 +6,7 @@ import type { OutLine } from "@/lib/runtimes/javascript";
 import { runWeb, type WebRunHandle } from "@/lib/runtimes/web";
 import { getRuntime } from "@/lib/runtimes/registry";
 import type { RunHandle } from "@/lib/runtimes/exec";
+import { CODEPATH_THEME, defineCodePathTheme } from "@/lib/monacoTheme";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
@@ -169,14 +170,17 @@ export default function CodeHere({
     <div className="flex flex-1 min-w-0">
       <div className="h-full w-full min-w-0">
         <div className="h-full font-normal leading-normal border border-line-strong backdrop-blur-md flex flex-col gap-0 overflow-hidden">
-          {/* Module badge */}
-          <div className="absolute m-1 z-10 flex items-center gap-2 bg-opacity-80 px-2 py-1 shadow text-xs font-semibold select-none text-ink">
-            <span className="inline-block h-3 w-3" style={{ background: spec.badgeColor }} />
+          {/* Module header — a real bar rather than a floating badge, matching the
+              toolbar below it. */}
+          <div className="flex shrink-0 items-center gap-2 border-b border-line bg-surface-0 px-3 py-1.5 text-xs font-semibold text-ink select-none">
+            <span className="inline-block h-2.5 w-2.5 shrink-0" style={{ background: spec.badgeColor }} />
             {spec.title}
-            {!spec.runnable && <span className="font-normal text-ink-dim">(guided — no runtime yet)</span>}
+            {!spec.runnable && (
+              <span className="font-normal text-ink-dim">(guided — no runtime yet)</span>
+            )}
           </div>
 
-          <div className="flex-1 flex flex-col overflow-hidden pt-9 relative">
+          <div className="flex-1 flex flex-col overflow-hidden relative">
             <MonacoEditor
               height="100%"
               language={spec.monacoLang}
@@ -200,22 +204,50 @@ export default function CodeHere({
                 if (codeChangeTimer.current) clearTimeout(codeChangeTimer.current);
                 codeChangeTimer.current = setTimeout(() => onCodeChange?.(codeRef.current), 600);
               }}
-              theme="vs-dark"
+              beforeMount={defineCodePathTheme}
+              theme={CODEPATH_THEME}
               options={{
-                fontSize: 14,
+                fontSize: 13,
+                // Same face as the console, so code reads identically wherever it
+                // appears. Ligatures off: learners must see operators literally.
+                fontFamily: "var(--font-mono)",
+                fontLigatures: false,
+                lineHeight: 1.7,
+                letterSpacing: 0.2,
                 minimap: { enabled: false },
-                fontFamily: "Fira Mono, Menlo, Monaco, 'Liberation Mono', 'Courier New', monospace",
                 lineNumbers: "on",
+                lineNumbersMinChars: 3,
+                lineDecorationsWidth: 12,
+                glyphMargin: false,
+                folding: false,
+                padding: { top: 14, bottom: 14 },
                 scrollBeyondLastLine: false,
                 wordWrap: "on",
                 automaticLayout: true,
                 roundedSelection: false,
-                scrollbar: { vertical: "auto", horizontal: "auto", useShadows: false },
+                scrollbar: {
+                  vertical: "auto",
+                  horizontal: "auto",
+                  useShadows: false,
+                  verticalScrollbarSize: 8,
+                  horizontalScrollbarSize: 8,
+                },
                 overviewRulerLanes: 0,
-                renderLineHighlight: "all",
-                renderWhitespace: "boundary",
+                overviewRulerBorder: false,
+                hideCursorInOverviewRuler: true,
+                renderLineHighlight: "line",
+                renderWhitespace: "selection",
+                guides: { indentation: true, highlightActiveIndentation: false },
+                // Monaco colours nested brackets yellow/purple/blue by default,
+                // which fights the monochrome-plus-one-accent rule.
+                bracketPairColorization: { enabled: false },
+                matchBrackets: "near",
                 tabSize: 2,
                 cursorBlinking: "smooth",
+                cursorSmoothCaretAnimation: "on",
+                cursorWidth: 2,
+                smoothScrolling: true,
+                contextmenu: false,
               }}
             />
           </div>
