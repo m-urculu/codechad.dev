@@ -560,15 +560,17 @@ export default function Landing({
           C# · Node.js · Linux · Rust · Go · cloud tracks are coming as heavier runtimes land.
         </p>
 
-        {/* What the app is, and why it asks for a Google account. The hero above
-            carries the short version; this is the full one, including which Google
-            scopes are requested and why — the question an OAuth reviewer is actually
-            asking when they open the page signed out. */}
+        {/* What the app is. The hero above carries the one-line version; this is
+            the longer one. Deliberately no "why we ask for a Google account"
+            section: written for an OAuth reviewer, it read as defensive on a page
+            meant for learners — a list of things the app does not do answers
+            accusations nobody made. The scope disclosure lives in the privacy
+            policy, which is where someone actually looking for it goes. */}
         <section className="mt-12 border-t border-line pt-10">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-dim">
             {`About ${SITE_NAME}`}
           </h2>
-          <div className="mt-4 grid gap-6 sm:grid-cols-2">
+          <div className="mt-4 max-w-3xl">
             <div>
               <h3 className="text-sm font-bold text-ink">What it does</h3>
               <p className="mt-2 text-sm leading-relaxed text-ink-muted">
@@ -584,30 +586,6 @@ export default function Landing({
                 server executing your code. An AI tutor sits beside the editor to explain, hint
                 and review, and each exercise is graded by actually running it and checking the
                 output.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-ink">Why it asks you to sign in with Google</h3>
-              <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-                {`Signing in is what lets ${SITE_NAME} save your courses. Your roadmap, your
-                progress through it and your conversation with the tutor are stored against your
-                account, so you can close the tab and pick up where you left off on any device.`}
-              </p>
-              <p className="mt-3 text-sm leading-relaxed text-ink-muted">
-                {`We request only your basic profile and email address — the minimum needed to
-                identify your account. ${SITE_NAME} never asks for, and cannot read, your Gmail,
-                Drive, Calendar, Contacts or any other Google service. We do not sell your data,
-                show ads, or use it to train AI models.`}
-              </p>
-              <p className="mt-3 text-sm leading-relaxed text-ink-muted">
-                You can browse and try every technology above without an account. Read the{" "}
-                <Link
-                  href="/privacy"
-                  className="text-accent underline underline-offset-2 transition-colors duration-150 hover:text-accent-bright"
-                >
-                  Privacy Policy
-                </Link>{" "}
-                for the full detail, including how to have your data deleted.
               </p>
             </div>
           </div>
