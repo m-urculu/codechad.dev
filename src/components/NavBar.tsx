@@ -20,7 +20,7 @@ export default function NavBar({ onHome }: { onHome?: () => void }) {
           <img src="/logo.svg" alt="" className="h-8 w-8 drop-shadow" />
           <span className="flex items-baseline space-x-[10px]">
             <span>CodePath.AI</span>
-            <span className="text-sm font-thin">v{version} alpha</span>
+            <span className="text-sm font-thin">v{version} beta</span>
           </span>
         </button>
       </div>

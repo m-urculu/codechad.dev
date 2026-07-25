@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/version-0.1.0-34d399" />
-  <img alt="status" src="https://img.shields.io/badge/status-alpha-38bdf8" />
+  <img alt="version" src="https://img.shields.io/badge/version-0.2.0-34d399" />
+  <img alt="status" src="https://img.shields.io/badge/status-beta-38bdf8" />
   <img alt="license" src="https://img.shields.io/badge/license-MIT-white" />
 </p>
 
@@ -43,5 +43,5 @@ Next.js (App Router, Turbopack) · React · Tailwind · Monaco editor · Supabas
 
 ---
 
-<p align="center"><i>alpha — built as a hands-on exploration of AI-driven, execution-grounded learning.</i><br/>
+<p align="center"><i>beta — built as a hands-on exploration of AI-driven, execution-grounded learning.</i><br/>
 Released under the <a href="LICENSE">MIT License</a>.</p>
