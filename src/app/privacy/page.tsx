@@ -17,11 +17,12 @@ const sections: Section[] = [
       {
         p: (
           <>
-            CodePath is an independent, non-commercial learning app operated by Marcelo Alves
-            from Portugal, at <A href="https://codepath-dev.vercel.app">codepath-dev.vercel.app</A>.
+            CodePath is an independent, non-commercial learning app run by a solo developer based
+            in Portugal, at <A href="https://codepath-dev.vercel.app">codepath-dev.vercel.app</A>.
             For anything in this policy, including requests about your data, write to{" "}
-            <A href={`mailto:${CONTACT}`}>{CONTACT}</A>. For the purposes of the EU General Data
-            Protection Regulation, the operator is the data controller.
+            <A href={`mailto:${CONTACT}`}>{CONTACT}</A> — that address reaches the operator
+            directly. For the purposes of the EU General Data Protection Regulation, the operator
+            of CodePath is the data controller.
           </>
         ),
       },

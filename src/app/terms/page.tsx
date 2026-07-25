@@ -20,8 +20,8 @@ const sections: Section[] = [
             By using CodePath at{" "}
             <A href="https://codepath-dev.vercel.app">codepath-dev.vercel.app</A> you agree to these
             terms. If you do not agree with them, please do not use the service. They are a contract
-            between you and Marcelo Alves, who operates CodePath as an independent project from
-            Portugal.
+            between you and the operator of CodePath, a solo developer based in Portugal, reachable
+            at <A href={`mailto:${CONTACT}`}>{CONTACT}</A>.
           </>
         ),
       },
