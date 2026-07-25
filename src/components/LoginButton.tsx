@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Image from "next/image";
 import {
   DropdownMenu,
@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut } from "lucide-react";
 import { createClient, User } from "@supabase/supabase-js";
-import { GOOGLE_CLIENT_ID, loadGis, makeNonce } from "@/lib/googleAuth";
+import { completeGoogleRedirect, startGoogleRedirect } from "@/lib/googleAuth";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
@@ -23,12 +23,27 @@ export function LoginButton() {
   const [signInError, setSignInError] = useState<string | null>(null);
 
   useEffect(() => {
-    const getUser = async () => {
+    const start = async () => {
+      // A returning redirect has to be spent before asking who is signed in —
+      // otherwise getUser answers "nobody" for the tokenful load and the button
+      // flashes back before the session lands.
+      const back = completeGoogleRedirect();
+      if (back && "error" in back) {
+        setSignInError(back.error);
+      } else if (back) {
+        const { error } = await supabase.auth.signInWithIdToken({
+          provider: "google",
+          token: back.idToken,
+          nonce: back.nonce,
+        });
+        if (error) setSignInError(error.message);
+      }
+
       const { data } = await supabase.auth.getUser();
       setUser(data.user ?? null);
       setLoading(false);
     };
-    getUser();
+    start();
     // Listen for auth changes
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
@@ -102,38 +117,13 @@ export function LoginButton() {
   return <GoogleSignIn onError={setSignInError} error={signInError} />;
 }
 
-// Sign in with Google, wearing this app's clothes.
+// An ordinary button. Nothing of Google's is rendered here — no script, no
+// iframe, no popup — because the flow is a full-page redirect: this navigates
+// away to accounts.google.com and the app is remounted with an ID token in the
+// fragment, which the effect above spends.
 //
-// Google's rendered button lives inside an accounts.google.com iframe, so no app
-// CSS reaches it — its Roboto, its fill, its corner radius are all untouchable
-// from here. Framing it only produced a default-looking Google button in a box.
-//
-// So the app draws the button, and Google's real one is laid over it at zero
-// opacity to take the click. The iframe is what carries the credential back; the
-// visible control is entirely this app's.
-//
-// It carries neither Google's mark nor one of their approved strings ("Sign in
-// with Google", "Continue with Google", "Sign in") — a deliberate call, noted
-// here so it is not mistaken for an oversight. Restoring compliance means adding
-// the four-colour G and one of those labels back to the drawn button; nothing
-// about the sign-in mechanism below would change.
-//
-// Consequences worth knowing:
-//   - The wrapper is a fixed box; Google's button is rendered LARGER than it and
-//     centred, so the invisible hit area always covers the visible one, corner
-//     rounding included. Keep BOX inside HIT on both axes if either is touched.
-//   - GIS clamps its own width to a 200px minimum, so at a narrow BOX the click
-//     layer spills well past the button — overflow-hidden on the wrapper is what
-//     clips it, for hit-testing as well as for paint. It is load-bearing.
-//   - Hover and focus live on the wrapper, not the drawn button: the real focus
-//     target is the iframe, which :focus-within still sees.
-//   - The account chooser that opens next is Google's own page on their domain.
-//     Nothing here changes it; only the OAuth Branding fields do.
-const BOX = { width: 76, height: 38 };
-// Google renders 44px tall at size "large" and never narrower than 200 — an
-// overhang on every edge of BOX, which the wrapper then clips.
-const HIT_WIDTH = 240;
-
+// The one thing that is still Google's is the account chooser the browser lands
+// on. Only the OAuth Branding fields reach it.
 function GoogleSignIn({
   onError,
   error,
@@ -141,58 +131,19 @@ function GoogleSignIn({
   onError: (m: string | null) => void;
   error: string | null;
 }) {
-  const slot = useRef<HTMLDivElement | null>(null);
+  const [leaving, setLeaving] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        await loadGis();
-        if (cancelled || !slot.current) return;
-        const id = window.google?.accounts?.id;
-        if (!id) throw new Error("Google Identity Services unavailable");
-
-        // Google gets the hash, Supabase gets the raw value; see makeNonce.
-        const { raw, hashed } = await makeNonce();
-
-        id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          nonce: hashed,
-          cancel_on_tap_outside: true,
-          callback: async (res) => {
-            onError(null);
-            const { error: err } = await supabase.auth.signInWithIdToken({
-              provider: "google",
-              token: res.credential,
-              nonce: raw,
-            });
-            // The auth listener above picks the session up; only failure needs
-            // handling here.
-            if (err) onError(err.message);
-          },
-        });
-
-        // Rendered only to be clicked through, never seen — but sized generously
-        // so its hit area outruns the drawn button on every side.
-        id.renderButton(slot.current, {
-          type: "standard",
-          theme: "filled_black",
-          size: "large",
-          text: "signin_with",
-          shape: "rectangular",
-          logo_alignment: "left",
-          width: HIT_WIDTH,
-        });
-      } catch (e) {
-        if (!cancelled) onError(e instanceof Error ? e.message : "Sign-in unavailable");
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [onError]);
+  const go = async () => {
+    onError(null);
+    setLeaving(true);
+    try {
+      await startGoogleRedirect();
+    } catch (e) {
+      // Only reached if the redirect never happens; otherwise the page is gone.
+      setLeaving(false);
+      onError(e instanceof Error ? e.message : "Sign-in unavailable");
+    }
+  };
 
   return (
     <div className="flex items-center gap-2">
@@ -201,27 +152,19 @@ function GoogleSignIn({
           {error}
         </span>
       )}
-      <div
-        className="group relative cursor-pointer overflow-hidden leading-none
-                   focus-within:outline focus-within:outline-2 focus-within:outline-line-active"
-        style={BOX}
+      <button
+        type="button"
+        onClick={go}
+        disabled={leaving}
+        className="flex h-[38px] items-center justify-center border border-line-strong bg-surface-1 px-5
+                   text-meta font-medium text-ink-muted backdrop-blur-md
+                   transition-colors duration-150
+                   hover:border-line-active hover:bg-surface-2 hover:text-ink
+                   focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active
+                   disabled:opacity-60"
       >
-        {/* What the user sees. Inert: the click belongs to the layer above it. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 flex items-center justify-center
-                     border border-line-strong bg-surface-1 text-meta font-medium text-ink-muted backdrop-blur-md
-                     transition-colors duration-150
-                     group-hover:border-line-active group-hover:bg-surface-2 group-hover:text-ink"
-        >
-          Login
-        </div>
-        {/* Google's real button: invisible, centred, larger than the box. */}
-        <div
-          ref={slot}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 opacity-0"
-        />
-      </div>
+        {leaving ? "Redirecting…" : "Login"}
+      </button>
     </div>
   );
 }
