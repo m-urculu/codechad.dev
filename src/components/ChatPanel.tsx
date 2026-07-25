@@ -1044,7 +1044,7 @@ export default function ChatPanel({
     return (
       <div className={`flex my-4 justify-start`} data-chat-msg>
         <div
-          className="group bg-scrim px-4 py-2 text-sm border border-line-strong max-w-[100%] sm:max-w-[60%] font-normal leading-normal text-ink-muted text-left"
+          className="group bg-scrim px-4 py-2 text-sm border border-line-strong max-w-[100%] sm:max-w-[90%] font-normal leading-relaxed text-ink-muted text-left"
           onClick={handleDocClick}
         >
           <span>{rendered}</span>
@@ -1147,7 +1147,7 @@ export default function ChatPanel({
               )}
               {loading && (
                 <div className="flex justify-start">
-                  <div className="bg-surface-1 px-4 py-2 text-sm border border-line-strong max-w-[80%] font-normal leading-normal text-ink-muted text-left opacity-70 gemini-glow">
+                  <div className="bg-surface-1 px-4 py-2 text-sm border border-line-strong max-w-[100%] sm:max-w-[90%] font-normal leading-relaxed text-ink-muted text-left opacity-70 gemini-glow">
                     Thinking...
                   </div>
                 </div>
