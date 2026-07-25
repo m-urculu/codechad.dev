@@ -74,8 +74,19 @@ export type RoadmapSummary = {
   goal?: string;
   createdAt?: string;
   updatedAt: string;
-  doneCount: number;   // lesson points marked done
-  totalCount: number;  // lesson points currently in the (lazily-expanded) tree
+  doneCount: number;   // lesson points marked done — a real count, no denominator implied
+  /**
+   * Lesson points that EXIST IN THE TREE RIGHT NOW. The snowflake generator builds
+   * sub-topics and lessons lazily, one topic at a time, so this is the size of what
+   * has been generated — not the size of the course. Never show it as the
+   * denominator of a progress fraction: early on it is tiny, so "1/3 lessons" sits
+   * next to "4%", and it GROWS as the learner explores, which makes progress appear
+   * to move backwards. Use topicsDone/topicsTotal for that. Kept for the client's
+   * ratio fallback and for capacity checks.
+   */
+  totalCount: number;
+  topicsDone: number;  // topics whose every generated lesson is complete
+  topicsTotal: number; // topics in the roadmap — fixed at L1, so a stable denominator
   ratio: number;       // continuous completion in [0,1] — SAME metric as the roadmap tab
 };
 
@@ -98,24 +109,50 @@ function countPoints(tree: unknown): number {
 // ratios (a done lesson = 1, otherwise passed/total objectives). Ungenerated branches = 0.
 type TreeNode = { id?: string; kind?: string; children?: unknown };
 type ProgressVal = { done?: boolean; passed?: unknown; built?: { objectives?: unknown[] } };
-function computeRatio(tree: unknown, progress: Record<string, ProgressVal>): number {
-  const pointRatio = (id?: string): number => {
-    const e = id ? progress[id] : undefined;
-    if (!e) return 0;
-    if (e.done) return 1;
-    const total = Array.isArray(e.built?.objectives) ? e.built!.objectives!.length : 0;
-    const passed = Array.isArray(e.passed) ? e.passed.length : 0;
-    return total > 0 ? Math.min(1, passed / total) : 0;
-  };
-  const ratio = (node: TreeNode): number => {
-    if (node?.kind === "point") return pointRatio(node.id);
-    const children = node?.children;
-    if (!Array.isArray(children) || children.length === 0) return 0;
-    return (children as TreeNode[]).reduce((s, c) => s + ratio(c), 0) / children.length;
-  };
+
+function pointRatio(id: string | undefined, progress: Record<string, ProgressVal>): number {
+  const e = id ? progress[id] : undefined;
+  if (!e) return 0;
+  if (e.done) return 1;
+  const total = Array.isArray(e.built?.objectives) ? e.built!.objectives!.length : 0;
+  const passed = Array.isArray(e.passed) ? e.passed.length : 0;
+  return total > 0 ? Math.min(1, passed / total) : 0;
+}
+
+// Completion of one node in [0,1]. An unexpanded branch (children null/empty) is 0:
+// nothing under it can have been learned yet.
+function nodeRatio(node: TreeNode, progress: Record<string, ProgressVal>): number {
+  if (node?.kind === "point") return pointRatio(node.id, progress);
+  const children = node?.children;
+  if (!Array.isArray(children) || children.length === 0) return 0;
+  return (
+    (children as TreeNode[]).reduce((s, c) => s + nodeRatio(c, progress), 0) / children.length
+  );
+}
+
+function topLevelTopics(tree: unknown): TreeNode[] {
   const topics = (tree as { topics?: unknown })?.topics;
-  if (!Array.isArray(topics) || topics.length === 0) return 0;
-  return (topics as TreeNode[]).reduce((s, t) => s + ratio(t), 0) / topics.length;
+  return Array.isArray(topics) ? (topics as TreeNode[]) : [];
+}
+
+function computeRatio(tree: unknown, progress: Record<string, ProgressVal>): number {
+  const topics = topLevelTopics(tree);
+  if (topics.length === 0) return 0;
+  return topics.reduce((s, t) => s + nodeRatio(t, progress), 0) / topics.length;
+}
+
+// Progress counted in TOPICS, which is the only unit whose denominator is honest:
+// the topic list is generated up front and does not move, whereas the lesson count
+// only reflects the branches expanded so far.
+function topicCounts(
+  tree: unknown,
+  progress: Record<string, ProgressVal>
+): { done: number; total: number } {
+  const topics = topLevelTopics(tree);
+  // 0.999 rather than 1: the ratio is a mean of means, so a fully-complete topic
+  // can land a hair under 1 through floating point alone.
+  const done = topics.filter((t) => nodeRatio(t, progress) >= 0.999).length;
+  return { done, total: topics.length };
 }
 
 // All roadmaps for a user, newest first, with computed progress counts.
@@ -133,6 +170,7 @@ export async function listRoadmapStates(user_id: string): Promise<RoadmapSummary
     return (data ?? []).map((r) => {
       const progress = (r.progress ?? {}) as Record<string, ProgressVal>;
       const doneCount = Object.values(progress).filter((p) => p?.done).length;
+      const topics = topicCounts(r.tree, progress);
       return {
         courseId: r.course_id as string,
         skill: r.skill as string,
@@ -144,6 +182,8 @@ export async function listRoadmapStates(user_id: string): Promise<RoadmapSummary
         updatedAt: r.updated_at as string,
         doneCount,
         totalCount: countPoints(r.tree),
+        topicsDone: topics.done,
+        topicsTotal: topics.total,
         ratio: computeRatio(r.tree, progress),
       };
     });

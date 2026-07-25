@@ -100,7 +100,10 @@ export type RoadmapSummary = {
   createdAt?: string;
   updatedAt: string;
   doneCount: number;
+  /** Lessons generated so far, not the size of the course — never a denominator. */
   totalCount: number;
+  topicsDone: number;
+  topicsTotal: number;
   ratio?: number; // continuous completion [0,1] — matches the roadmap tab's overall bar
 };
 
@@ -288,7 +291,11 @@ function RoadmapCard({
       {meta && <div className="text-xs leading-snug text-ink-muted">{meta}</div>}
       <div className="mt-1 w-full">
         <div className="mb-1 flex items-center justify-between text-meta text-ink-dim">
-          <span>{r.totalCount > 0 ? `${r.doneCount}/${r.totalCount} lessons` : "Not started"}</span>
+          {/* Topics, not lessons: lessons are generated lazily, so their total is
+              the size of what has been explored, not the size of the course. */}
+          <span>
+            {r.topicsTotal > 0 ? `${r.topicsDone}/${r.topicsTotal} topics` : "Not started"}
+          </span>
           <span className="tabular-nums">{pct}%</span>
         </div>
         <div className="h-1.5 w-full overflow-hidden bg-surface-2">
