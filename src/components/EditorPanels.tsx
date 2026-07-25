@@ -147,13 +147,17 @@ export default function EditorPanels({
         setBoot("fresh");
         return;
       }
+      // No course id means the technology was opened from the landing grid, which
+      // always STARTS a new course. Resuming is what the "My courses" cards are for,
+      // and they always pass an explicit course id.
+      if (!initialCourseId) {
+        setBoot("fresh");
+        return;
+      }
       try {
-        // A specific course was chosen on the landing page; otherwise fall back to
-        // the most recent course for this technology.
-        const q = initialCourseId
-          ? `course_id=${encodeURIComponent(initialCourseId)}`
-          : `module=${encodeURIComponent(moduleId ?? "")}`;
-        const res = await fetch(`/api/roadmap/state?user_id=${uid}&${q}`);
+        const res = await fetch(
+          `/api/roadmap/state?user_id=${uid}&course_id=${encodeURIComponent(initialCourseId)}`
+        );
         const json = await res.json();
         const state = json.state as
           | { courseId?: string; level?: string; goal?: string; tree?: Roadmap; progress?: Progress }
