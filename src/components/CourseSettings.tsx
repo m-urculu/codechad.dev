@@ -313,10 +313,16 @@ export default function CourseSettings({
           </p>
 
           <div className="mt-5 flex items-center justify-between text-meta text-ink-dim">
+            {/* Topics carry the fraction because their count is fixed when the
+                roadmap is generated. Lessons appear only as a plain tally — their
+                total grows as topics are expanded, so it cannot be a denominator. */}
             <span>
-              {course.totalCount > 0
-                ? `${course.doneCount} / ${course.totalCount} lessons`
+              {course.topicsTotal > 0
+                ? `${course.topicsDone} / ${course.topicsTotal} topics`
                 : "Not started"}
+              {course.doneCount > 0
+                ? ` · ${course.doneCount} lesson${course.doneCount === 1 ? "" : "s"} done`
+                : ""}
             </span>
             <span className="font-mono tabular-nums">{overallPct}%</span>
           </div>
