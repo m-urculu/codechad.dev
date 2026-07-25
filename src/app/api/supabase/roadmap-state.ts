@@ -65,32 +65,6 @@ export async function loadRoadmapState(user_id: string, course_id: string): Prom
   }
 }
 
-// The user's most recent course for a module — used when opening a technology
-// from the landing grid without picking a specific course.
-export async function latestCourseForModule(
-  user_id: string,
-  module: string
-): Promise<RoadmapState | null> {
-  try {
-    const { data, error } = await supabase
-      .from("user_roadmap_state")
-      .select(COURSE_COLS)
-      .eq("user_id", user_id)
-      .eq("module", module)
-      .order("updated_at", { ascending: false })
-      .limit(1);
-    if (error) {
-      console.error("[roadmap-state] latest error:", error.message);
-      return null;
-    }
-    return data && data.length ? toState(data[0]) : null;
-  } catch (e) {
-    console.error("[roadmap-state] latest exception:", e);
-    return null;
-  }
-}
-
-// Summary of one stored roadmap for the "Continue learning" list on the main page.
 export type RoadmapSummary = {
   courseId: string;
   skill: string;
@@ -263,14 +237,23 @@ export async function saveRoadmapState(
 // Copy a course into a new one. The roadmap tree and calibration carry over so the
 // duplicate is immediately usable; progress and chat history deliberately do not —
 // the point of duplicating is to run the same curriculum again from zero.
+// "Python" -> "Python" when free, otherwise "Python (2)", "Python (3)", … so two
+// courses for the same technology stay tellable apart on the landing page.
+export async function uniqueCourseName(user_id: string, base: string): Promise<string> {
+  const root = (base || "Course").replace(/ \(\d+\)$/, "");
+  const taken = new Set((await listRoadmapStates(user_id)).map((s) => s.name));
+  if (!taken.has(root)) return root;
+  let n = 2;
+  while (taken.has(`${root} (${n})`)) n++;
+  return `${root} (${n})`;
+}
+
 export async function duplicateCourse(user_id: string, course_id: string): Promise<string | null> {
   const src = await loadRoadmapState(user_id, course_id);
   if (!src) return null;
-  const siblings = await listRoadmapStates(user_id);
+  // A duplicate always gets a suffix — the source already holds the plain name.
   const base = (src.name || src.skill || "Course").replace(/ \(\d+\)$/, "");
-  const taken = new Set(siblings.map((s) => s.name));
-  let name = `${base} (2)`;
-  for (let n = 2; taken.has(name); n++) name = `${base} (${n})`;
+  const name = await uniqueCourseName(user_id, base);
   return saveRoadmapState(user_id, undefined, {
     skill: src.skill,
     module: src.module,

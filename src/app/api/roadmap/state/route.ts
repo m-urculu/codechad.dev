@@ -1,6 +1,5 @@
 // Roadmap state persistence, keyed by course_id.
 //   GET    /api/roadmap/state?user_id=..&course_id=..            -> { state }
-//   GET    /api/roadmap/state?user_id=..&module=..               -> { state }  (most recent course for that technology)
 //   POST   /api/roadmap/state { user_id, course_id?, skill?, module?, name?, level?, goal?, tree?, progress? }
 //                                                                -> { ok, course_id }
 //   DELETE /api/roadmap/state?user_id=..&course_id=..            -> { ok }
@@ -11,22 +10,19 @@
 import { NextResponse } from "next/server";
 import {
   deleteRoadmapState,
-  latestCourseForModule,
   loadRoadmapState,
   saveRoadmapState,
+  uniqueCourseName,
 } from "@/app/api/supabase/roadmap-state";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const user_id = searchParams.get("user_id");
   const course_id = searchParams.get("course_id");
-  const moduleId = searchParams.get("module");
-  if (!user_id || (!course_id && !moduleId)) {
-    return NextResponse.json({ error: "user_id and course_id (or module) are required" }, { status: 400 });
+  if (!user_id || !course_id) {
+    return NextResponse.json({ error: "user_id and course_id are required" }, { status: 400 });
   }
-  const state = course_id
-    ? await loadRoadmapState(user_id, course_id)
-    : await latestCourseForModule(user_id, moduleId!);
+  const state = await loadRoadmapState(user_id, course_id);
   return NextResponse.json({ state });
 }
 
@@ -52,10 +48,13 @@ export async function POST(request: Request) {
     if (!course_id && !skill) {
       return NextResponse.json({ error: "skill is required when creating a course" }, { status: 400 });
     }
+    // Creating: give the course a name that doesn't collide with an existing one,
+    // so a second "Python" arrives as "Python (2)" rather than an identical card.
+    const finalName = course_id ? name : await uniqueCourseName(user_id, name || skill);
     const id = await saveRoadmapState(user_id, course_id, {
       skill,
       module: moduleId,
-      name,
+      name: finalName,
       level,
       goal,
       tree,
