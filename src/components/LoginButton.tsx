@@ -134,20 +134,26 @@ function GoogleMark({ size = 14 }: { size?: number }) {
 //
 // So the app draws the button, and Google's real one is laid over it at zero
 // opacity to take the click. That is the supported shape of this: the iframe is
-// what carries the credential back, and the visible control keeps the mark and
-// the exact "Sign in with Google" wording their branding terms require.
+// what carries the credential back, and the visible control keeps their mark.
+//
+// The label is the app's own "Login", not one of Google's approved strings
+// ("Sign in with Google", "Continue with Google", "Sign in") — a deliberate
+// call, noted here so it is not mistaken for an oversight.
 //
 // Consequences worth knowing:
 //   - The wrapper is a fixed box; Google's button is rendered LARGER than it and
 //     centred, so the invisible hit area always covers the visible one, corner
 //     rounding included. Keep BOX inside HIT on both axes if either is touched.
+//   - GIS clamps its own width to a 200px minimum, so at a narrow BOX the click
+//     layer spills well past the button — overflow-hidden on the wrapper is what
+//     clips it, for hit-testing as well as for paint. It is load-bearing.
 //   - Hover and focus live on the wrapper, not the drawn button: the real focus
 //     target is the iframe, which :focus-within still sees.
 //   - The account chooser that opens next is Google's own page on their domain.
 //     Nothing here changes it; only the OAuth Branding fields do.
-const BOX = { width: 200, height: 38 };
-// Google renders at least this wide, and 44px tall at size "large" — an overhang
-// on every edge of BOX.
+const BOX = { width: 96, height: 38 };
+// Google renders 44px tall at size "large" and never narrower than 200 — an
+// overhang on every edge of BOX, which the wrapper then clips.
 const HIT_WIDTH = 240;
 
 function GoogleSignIn({
@@ -231,7 +237,7 @@ function GoogleSignIn({
                      group-hover:border-line-active group-hover:bg-surface-2 group-hover:text-ink"
         >
           <GoogleMark />
-          Sign in with Google
+          Login
         </div>
         {/* Google's real button: invisible, centred, larger than the box. */}
         <div
