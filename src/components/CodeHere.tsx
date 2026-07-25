@@ -7,6 +7,7 @@ import { runWeb, type WebRunHandle } from "@/lib/runtimes/web";
 import { getRuntime } from "@/lib/runtimes/registry";
 import type { RunHandle } from "@/lib/runtimes/exec";
 import { CODEPATH_THEME, defineCodePathTheme } from "@/lib/monacoTheme";
+import { enrichLanguages } from "@/lib/monacoLanguages";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
@@ -204,7 +205,10 @@ export default function CodeHere({
                 if (codeChangeTimer.current) clearTimeout(codeChangeTimer.current);
                 codeChangeTimer.current = setTimeout(() => onCodeChange?.(codeRef.current), 600);
               }}
-              beforeMount={defineCodePathTheme}
+              beforeMount={(monaco) => {
+                enrichLanguages(monaco);
+                defineCodePathTheme(monaco);
+              }}
               theme={CODEPATH_THEME}
               options={{
                 fontSize: 13,
