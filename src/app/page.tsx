@@ -54,28 +54,22 @@ export default function Home() {
     }
   }, []);
 
-  // TEMPORARY, for the OAuth verification review. The WebGL background is switched
-  // off wholesale so it can be ruled out as the reason Google's checker reported
-  // the home page as unreadable. Measurements say it is not the cause — with WebGL
-  // denied entirely the page renders with zero JS errors and never mounts a canvas,
-  // and Google's own rendered HTML shows the post-hydration fallback class — but
-  // this makes the question unanswerable rather than argued.
-  //
-  // TO RESTORE: set this back to true. Nothing else changed.
-  const BACKGROUND_ENABLED = false;
-  const showBackground = BACKGROUND_ENABLED && gpuOk;
-
   return (
-    // Without the animated layer, fall back to the static dark base so the
-    // white-text UI stays readable. Never applied when the animation is active —
-    // the Background layer sits at z-index -1, and an opaque wrapper background
+    // When the WebGL background is disabled (software renderers), fall back to a static
+    // dark base so the white-text UI stays readable. Never applied when the animation is
+    // active — the Background layer sits at z-index -1, and an opaque wrapper background
     // would paint over it.
+    //
+    // The background was switched off entirely for one OAuth review round, to test
+    // whether it was why Google's checker reported the page as unreadable. The
+    // review came back with the same findings — and with one that had previously
+    // cleared — so it is not the cause, which is what measuring it had already said.
     <div
       className={`flex flex-col h-screen w-screen overflow-hidden ${
-        showBackground ? "" : "bg-[radial-gradient(ellipse_at_top,#0b1224_0%,#050810_65%)]"
+        gpuOk ? "" : "bg-[radial-gradient(ellipse_at_top,#0b1224_0%,#050810_65%)]"
       }`}
     >
-      {showBackground && <Background />}
+      {gpuOk && <Background />}
       <NavBar onHome={() => setView("landing")} />
       <div className="relative flex-1 min-h-0">
         {view === "landing" ? (
