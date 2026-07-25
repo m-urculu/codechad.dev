@@ -970,7 +970,7 @@ export default function ChatPanel({
     if (msg.role === 'user') {
       return (
         <div className={`flex my-4 justify-end`} data-chat-msg>
-          <div className="bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal text-white text-right">
+          <div className="bg-scrim px-4 py-2 text-sm border border-line-strong max-w-[100%] sm:max-w-[60%] font-normal leading-normal text-ink text-right">
             {msg.text}
           </div>
         </div>
@@ -1004,7 +1004,7 @@ export default function ChatPanel({
             <span className="hljs my-5 p-4 block min-h-full">
               <code className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: highlighted }} />
             </span>
-            <small className="bg-black/30 absolute top-0 right-0 uppercase font-bold text-xs px-2 py-1">
+            <small className="bg-surface-0/30 absolute top-0 right-0 uppercase font-bold text-xs px-2 py-1">
               <span className="sr-only">Language:</span>{lang ? lang.charAt(0).toUpperCase() + lang.slice(1) : 'Code'}
             </small>
           </pre>
@@ -1022,7 +1022,7 @@ export default function ChatPanel({
     return (
       <div className={`flex my-4 justify-start`} data-chat-msg>
         <div
-          className="group bg-black/70 px-4 py-2 text-sm border border-white/50 max-w-[100%] sm:max-w-[60%] font-mono font-normal leading-normal text-neutral-200 text-left"
+          className="group bg-scrim px-4 py-2 text-sm border border-line-strong max-w-[100%] sm:max-w-[60%] font-normal leading-normal text-ink-muted text-left"
           onClick={handleDocClick}
         >
           <span>{rendered}</span>
@@ -1035,18 +1035,18 @@ export default function ChatPanel({
   });
 
   return (
-    <div className="flex flex-col h-full w-full min-w-0 border border-white/50 backdrop-blur-md font-sans overflow-x-auto">
+    <div className="flex flex-col h-full w-full min-w-0 border border-line-strong backdrop-blur-md font-sans overflow-x-auto">
           {lesson && (
-            <div className="border-b border-white/40 px-4 py-2">
+            <div className="border-b border-line-strong px-4 py-2">
               <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-xs font-semibold text-white">{lesson.title}</span>
-                <span className="shrink-0 font-mono text-[11px] text-white/60">
+                <span className="truncate text-xs font-semibold text-ink">{lesson.title}</span>
+                <span className="shrink-0 text-meta text-ink-dim">
                   {lesson.passed.length}/{lesson.objectives.length} objectives
                 </span>
               </div>
-              <div className="mt-1.5 h-1.5 w-full overflow-hidden bg-white/10">
+              <div className="mt-1.5 h-1.5 w-full overflow-hidden bg-surface-2">
                 <div
-                  className="h-full bg-emerald-400 transition-all duration-300"
+                  className="h-full bg-accent transition-all duration-300"
                   style={{ width: `${(lesson.passed.length / Math.max(1, lesson.objectives.length)) * 100}%` }}
                 />
               </div>
@@ -1054,13 +1054,13 @@ export default function ChatPanel({
                 {lesson.objectives.map((o) => {
                   const done = lesson.passed.includes(o.id);
                   return (
-                    <li key={o.id} className="flex items-start gap-1.5 text-[11px] leading-snug">
+                    <li key={o.id} className="flex items-start gap-1.5 text-meta leading-snug">
                       {done ? (
-                        <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-400" />
+                        <Check className="mt-0.5 h-3 w-3 shrink-0 text-accent" />
                       ) : (
-                        <Circle className="mt-0.5 h-2.5 w-2.5 shrink-0 text-white/40" />
+                        <Circle className="mt-0.5 h-2.5 w-2.5 shrink-0 text-ink-faint" />
                       )}
-                      <span className={done ? "text-white/45 line-through" : "text-white/80"}>{o.description}</span>
+                      <span className={done ? "text-ink-dim line-through" : "text-ink-muted"}>{o.description}</span>
                     </li>
                   );
                 })}
@@ -1070,8 +1070,8 @@ export default function ChatPanel({
                   type="button"
                   onClick={restartLesson}
                   title="Reset progress and reload the starter code"
-                  className="mt-2.5 inline-flex items-center gap-1.5 border border-white/40 bg-black/70 px-2.5 py-1 text-[11px] font-mono
-                             text-white/80 leading-none transition-colors hover:bg-neutral-700 hover:text-white cursor-pointer"
+                  className="mt-2.5 inline-flex items-center gap-1.5 border border-line-strong bg-scrim px-2.5 py-1 text-meta 
+                             text-ink-muted leading-none transition-colors hover:bg-surface-2 hover:text-ink cursor-pointer"
                 >
                   <RotateCcw className="h-3 w-3" />
                   Re-take lesson
@@ -1080,16 +1080,16 @@ export default function ChatPanel({
             </div>
           )}
           <div ref={scrollRootRef} className="flex-1 min-h-0 flex">
-          <ScrollArea className="h-full w-full overflow-y-auto overflow-hidden px-6 space-y-2 font-mono font-normal leading-normal">
+          <ScrollArea className="h-full w-full overflow-y-auto overflow-hidden px-6 space-y-2 font-normal leading-normal">
             {/* highlight.js theme handles code styling */}
             <div className="space-y-5">
               {visibleCount < messages.length && (
-                <div className="pt-2 pb-1 text-center text-[11px] font-mono text-white/30">
+                <div className="pt-2 pb-1 text-center text-meta text-ink-faint">
                   Scroll up for earlier messages…
                 </div>
               )}
               {messages.length === 0 ? (
-                <div className="text-neutral-500 text-center mt-8 font-mono font-normal leading-normal">No messages yet. Start the conversation below!
+                <div className="text-ink-dim text-center mt-8 font-normal leading-normal">No messages yet. Start the conversation below!
                 </div>
               ) : (
                 (visibleCount >= messages.length ? messages : messages.slice(-visibleCount)).map((msg) => (
@@ -1105,8 +1105,8 @@ export default function ChatPanel({
                         type="button"
                         disabled={loading}
                         onClick={() => answerCalibration(opt)}
-                        className="cursor-pointer border border-white/50 bg-black/70 px-3 py-1.5 text-xs font-mono text-white
-                                   leading-none transition-colors hover:bg-neutral-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="cursor-pointer border border-line-strong bg-scrim px-3 py-1.5 text-xs text-ink
+                                   leading-none transition-colors hover:bg-surface-2 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {opt}
                       </button>
@@ -1115,8 +1115,8 @@ export default function ChatPanel({
                       type="button"
                       disabled={loading}
                       onClick={() => textareaRef.current?.focus()}
-                      className="cursor-pointer border border-dashed border-white/40 bg-transparent px-3 py-1.5 text-xs font-mono text-neutral-300
-                                 leading-none transition-colors hover:border-white/70 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="cursor-pointer border border-dashed border-line-strong bg-transparent px-3 py-1.5 text-xs text-ink-muted
+                                 leading-none transition-colors hover:border-line-active hover:text-ink disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       Type my own…
                     </button>
@@ -1125,7 +1125,7 @@ export default function ChatPanel({
               )}
               {loading && (
                 <div className="flex justify-start">
-                  <div className="bg-white/5 px-4 py-2 text-sm border border-white/50 max-w-[80%] font-mono font-normal leading-normal text-white-200 text-left opacity-70 gemini-glow">
+                  <div className="bg-surface-1 px-4 py-2 text-sm border border-line-strong max-w-[80%] font-normal leading-normal text-ink-muted text-left opacity-70 gemini-glow">
                     Thinking...
                   </div>
                 </div>
@@ -1136,12 +1136,12 @@ export default function ChatPanel({
           </ScrollArea>
           </div>
           <form
-            className="flex items-center gap-2 p-4 border-t border-white/50"
+            className="flex items-center gap-2 p-4 border-t border-line-strong"
             onSubmit={handleSend}
           >
             <Textarea
               ref={textareaRef}
-              className="flex-1 min-h-[40px] max-h-40 resize-none px-4 py-2 bg-black text-white placeholder:text-neutral-400 placeholder:font-mono placeholder:font-normal placeholder:leading-normal border border-white/50 focus:border-neutral-500 focus:outline-none font-mono font-normal leading-normal rounded-none overflow-y-auto overflow-x-auto"
+              className="flex-1 min-h-[40px] max-h-40 resize-none px-4 py-2 bg-surface-0 text-ink placeholder:text-ink-dim placeholder:placeholder:font-normal placeholder:leading-normal border border-line-strong focus:border-line-active focus:outline-none font-normal leading-normal overflow-y-auto overflow-x-auto"
               placeholder={calib.step !== "done" ? "Tap an option or type your answer…" : "Type a message..."}
               value={input}
               onChange={handleInput}
@@ -1151,7 +1151,7 @@ export default function ChatPanel({
             />
             <button
               type="submit"
-              className="cursor-pointer px-4 py-2 bg-neutral-400 hover:bg-neutral-300 text-neutral-900 font-mono font-normal leading-normal border border-white/50 transition-colors duration-150 flex items-center justify-center"
+              className="cursor-pointer px-4 py-2 bg-surface-3 hover:bg-surface-3 text-surface-0 font-normal leading-normal border border-line-strong transition-colors duration-150 flex items-center justify-center"
               aria-label="Send"
             >
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">

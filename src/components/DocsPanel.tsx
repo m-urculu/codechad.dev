@@ -48,13 +48,13 @@ export default function DocsPanel({
   }, [docTarget, rootUrl]);
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col border border-white/50 backdrop-blur-md font-sans">
-      <div className="flex items-center justify-between gap-2 border-b border-white/50 px-4 py-2.5">
+    <div className="flex h-full w-full min-w-0 flex-col border border-line-strong backdrop-blur-md font-sans">
+      <div className="flex items-center justify-between gap-2 border-b border-line-strong px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <BookOpen className="h-4 w-4 shrink-0 text-white/70" />
-          <span className="truncate text-sm font-bold leading-normal text-white">{title} docs</span>
+          <BookOpen className="h-4 w-4 shrink-0 text-ink-muted" />
+          <span className="truncate text-sm font-bold leading-normal text-ink">{title} docs</span>
           {src && (
-            <span className="hidden shrink-0 whitespace-nowrap font-mono text-[11px] leading-normal text-white/45 sm:inline">
+            <span className="hidden shrink-0 whitespace-nowrap text-meta leading-normal text-ink-dim sm:inline">
               · {src.label}
             </span>
           )}
@@ -66,7 +66,7 @@ export default function DocsPanel({
               onClick={() => setReloadKey((k) => k + 1)}
               title="Reload docs"
               aria-label="Reload docs"
-              className="flex h-7 w-7 items-center justify-center border border-white/40 bg-black text-white/70 transition-colors hover:bg-neutral-700 hover:text-white cursor-pointer"
+              className="flex h-7 w-7 items-center justify-center border border-line-strong bg-surface-0 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink cursor-pointer"
             >
               <RotateCcw className="h-3.5 w-3.5" />
             </button>
@@ -77,7 +77,7 @@ export default function DocsPanel({
               target="_blank"
               rel="noopener noreferrer"
               title="Open in a new tab"
-              className="flex items-center gap-1.5 border border-white/40 bg-black px-2.5 py-1 text-[11px] font-mono text-white/80 transition-colors hover:bg-neutral-700 hover:text-white"
+              className="flex items-center gap-1.5 border border-line-strong bg-surface-0 px-2.5 py-1 text-meta text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
             >
               Open <ExternalLink className="h-3 w-3" />
             </a>
@@ -86,7 +86,7 @@ export default function DocsPanel({
       </div>
 
       {!src ? (
-        <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-white/40">
+        <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-ink-faint">
           Pick a course to see its documentation here.
         </div>
       ) : src.kind === "devdocs" ? (
@@ -101,16 +101,16 @@ export default function DocsPanel({
       ) : (
         // DevDocs doesn't carry this one; its official site blocks embedding.
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
-          <BookOpen className="h-8 w-8 text-white/40" />
-          <p className="max-w-sm text-sm leading-relaxed text-white/60">
-            The official <span className="text-white/80">{title}</span> documentation can't be
+          <BookOpen className="h-8 w-8 text-ink-faint" />
+          <p className="max-w-sm text-sm leading-relaxed text-ink-dim">
+            The official <span className="text-ink-muted">{title}</span> documentation can't be
             embedded here, but it's one click away.
           </p>
           <a
             href={src.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 border border-white/50 bg-white/10 px-4 py-2 text-sm font-mono text-white transition-colors hover:bg-white/20"
+            className="flex items-center gap-2 border border-line-strong bg-surface-2 px-4 py-2 text-sm text-ink transition-colors hover:bg-surface-3"
           >
             {src.label} <ExternalLink className="h-4 w-4" />
           </a>

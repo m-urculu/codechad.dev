@@ -98,28 +98,28 @@ export default function RoadmapPanel({
           style={{ paddingLeft: 8 + depth * 16 }}
           className={[
             "group flex w-full items-center gap-2 border-l-2 py-2 pr-3 text-left transition-colors cursor-pointer",
-            active ? "border-white bg-white/[0.08]" : done ? "border-emerald-400/60" : "border-transparent hover:bg-white/[0.05]",
+            active ? "border-line-active bg-surface-2" : done ? "border-accent-line" : "border-transparent hover:bg-surface-1",
           ].join(" ")}
         >
           {/* expand / status glyph */}
           {loading ? (
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-white/60" />
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-ink-dim" />
           ) : expandable ? (
             open ? (
-              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-white/60" />
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-ink-dim" />
             ) : (
-              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/60" />
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-ink-dim" />
             )
           ) : done ? (
-            <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+            <Check className="h-3.5 w-3.5 shrink-0 text-accent" />
           ) : (
-            <Circle className="h-2 w-2 shrink-0 text-white/40" />
+            <Circle className="h-2 w-2 shrink-0 text-ink-faint" />
           )}
 
           <span
             className={[
               "min-w-0 flex-1 truncate",
-              node.kind === "topic" ? "text-sm font-semibold text-white" : "text-xs text-white/80",
+              node.kind === "topic" ? "text-sm font-semibold text-ink" : "text-xs text-ink-muted",
             ].join(" ")}
           >
             {node.title}
@@ -129,8 +129,8 @@ export default function RoadmapPanel({
           {showBar && (
             <span
               className={[
-                "shrink-0 font-mono text-[10px] tabular-nums",
-                complete ? "text-emerald-300" : "text-white/45",
+                "shrink-0 text-micro font-mono tabular-nums",
+                complete ? "text-accent" : "text-ink-dim",
               ].join(" ")}
             >
               {pct}%
@@ -141,11 +141,11 @@ export default function RoadmapPanel({
         {/* continuous progress bar under the expanding tab (or under an in-progress lesson) */}
         {showBar && (
           <div style={{ paddingLeft: 8 + depth * 16 + 22, paddingRight: 12 }} className="pb-1.5">
-            <div className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="h-1 w-full overflow-hidden bg-surface-2">
               <div
                 className={[
-                  "h-full rounded-full transition-all duration-300",
-                  complete ? "bg-emerald-400" : "bg-emerald-400/70",
+                  "h-full transition-all duration-300",
+                  complete ? "bg-accent" : "bg-accent",
                 ].join(" ")}
                 style={{ width: `${pct}%` }}
               />
@@ -159,7 +159,7 @@ export default function RoadmapPanel({
             {(node.summary || node.description) && (
               <p
                 style={{ paddingLeft: 8 + (depth + 1) * 16 }}
-                className="pb-2 pr-3 text-[11px] leading-relaxed text-white/55"
+                className="pb-2 pr-3 text-meta leading-relaxed text-ink-dim"
               >
                 {node.description || node.summary}
               </p>
@@ -171,14 +171,14 @@ export default function RoadmapPanel({
                 <button
                   type="button"
                   onClick={() => onActivateLesson(node)}
-                  className="flex cursor-pointer items-center gap-1.5 border border-white/50 bg-white/10 px-2.5 py-1 text-[11px] font-mono text-white transition-colors hover:bg-white/20"
+                  className="flex cursor-pointer items-center gap-1.5 border border-line-strong bg-surface-2 px-2.5 py-1 text-meta text-ink transition-colors hover:bg-surface-3"
                 >
                   <Play className="h-3 w-3" />
                   {done ? "Review lesson" : "Start lesson"}
                 </button>
                 {/* Completion is EARNED by passing all objectives — never toggled by hand. */}
                 {done && (
-                  <span className="flex items-center gap-1.5 text-[11px] font-mono text-emerald-300">
+                  <span className="flex items-center gap-1.5 text-meta text-accent">
                     <Check className="h-3 w-3" />
                     Completed
                   </span>
@@ -195,7 +195,7 @@ export default function RoadmapPanel({
               </div>
             )}
             {node.children && node.children.length === 0 && node.kind !== "point" && !loading && (
-              <p style={{ paddingLeft: 8 + (depth + 1) * 16 }} className="pb-2 text-[11px] text-white/40">
+              <p style={{ paddingLeft: 8 + (depth + 1) * 16 }} className="pb-2 text-meta text-ink-faint">
                 Nothing further to expand.
               </p>
             )}
@@ -206,29 +206,29 @@ export default function RoadmapPanel({
   }
 
   return (
-    <div className="flex h-full w-full min-w-0 flex-col border border-white/50 backdrop-blur-md font-sans">
-      <div className="border-b border-white/50 px-5 py-3">
+    <div className="flex h-full w-full min-w-0 flex-col border border-line-strong backdrop-blur-md font-sans">
+      <div className="border-b border-line-strong px-5 py-3">
         <div className="flex items-center justify-between gap-2">
-          <h2 className="truncate text-sm font-bold text-white">{roadmap ? roadmap.title : "Roadmap"}</h2>
+          <h2 className="truncate text-sm font-bold text-ink">{roadmap ? roadmap.title : "Roadmap"}</h2>
           {roadmap && roadmap.topics.length > 0 && (
             <span
               className={[
-                "shrink-0 font-mono text-[11px] tabular-nums",
-                overall >= 0.999 ? "text-emerald-300" : "text-white/55",
+                "shrink-0 text-meta font-mono tabular-nums",
+                overall >= 0.999 ? "text-accent" : "text-ink-dim",
               ].join(" ")}
             >
               {Math.round(overall * 100)}%
             </span>
           )}
         </div>
-        {roadmap?.summary && <p className="mt-1 text-xs leading-snug text-white/60">{roadmap.summary}</p>}
+        {roadmap?.summary && <p className="mt-1 text-xs leading-snug text-ink-dim">{roadmap.summary}</p>}
         {/* Overall course progress across all top-level topics. */}
         {roadmap && roadmap.topics.length > 0 && (
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div className="mt-2 h-1.5 w-full overflow-hidden bg-surface-2">
             <div
               className={[
-                "h-full rounded-full transition-all duration-300",
-                overall >= 0.999 ? "bg-emerald-400" : "bg-emerald-400/70",
+                "h-full transition-all duration-300",
+                overall >= 0.999 ? "bg-accent" : "bg-accent",
               ].join(" ")}
               style={{ width: `${Math.round(overall * 100)}%` }}
             />
@@ -237,7 +237,7 @@ export default function RoadmapPanel({
       </div>
 
       {!roadmap ? (
-        <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-white/40">
+        <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-ink-faint">
           Answer the intro questions in the chat and your learning roadmap will appear here.
         </div>
       ) : (
