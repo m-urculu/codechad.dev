@@ -1,5 +1,7 @@
-// Server utility for per-user, per-module chat persistence.
-// Table: public.user_chat_state (see supabase/migrations/0002_user_chat_state.sql).
+// Server utility for per-course chat persistence.
+// Table: public.user_chat_state (see supabase/migrations/0002_user_chat_state.sql
+// and 0003_course_id.sql, which re-keyed this table from module to course_id so
+// duplicated courses keep separate conversations).
 // Fail-soft: an unreachable project returns null/false, never breaks the UX.
 
 import { createClient } from "@supabase/supabase-js";
@@ -15,13 +17,13 @@ export type ChatState = { messages: ChatStateMsg[]; calib: ChatCalib };
 
 const MAX_MESSAGES = 200;
 
-export async function loadChatState(user_id: string, module: string): Promise<ChatState | null> {
+export async function loadChatState(user_id: string, course_id: string): Promise<ChatState | null> {
   try {
     const { data, error } = await supabase
       .from("user_chat_state")
       .select("messages, calib")
       .eq("user_id", user_id)
-      .eq("module", module)
+      .eq("course_id", course_id)
       .maybeSingle();
     if (error || !data) {
       if (error) console.error("[chat-state] load error:", error.message);
@@ -39,6 +41,7 @@ export async function loadChatState(user_id: string, module: string): Promise<Ch
 
 export async function saveChatState(
   user_id: string,
+  course_id: string,
   module: string,
   state: ChatState
 ): Promise<boolean> {
@@ -46,12 +49,13 @@ export async function saveChatState(
     const { error } = await supabase.from("user_chat_state").upsert(
       {
         user_id,
+        course_id,
         module,
         messages: state.messages.slice(-MAX_MESSAGES),
         calib: state.calib ?? {},
         updated_at: new Date().toISOString(),
       },
-      { onConflict: "user_id,module" }
+      { onConflict: "course_id" }
     );
     if (error) {
       console.error("[chat-state] save error:", error.message);
@@ -60,6 +64,26 @@ export async function saveChatState(
     return true;
   } catch (e) {
     console.error("[chat-state] save exception:", e);
+    return false;
+  }
+}
+
+// Wipe the conversation but keep the row (and its calibration), so the course
+// still knows the learner's level and goal and does not re-run onboarding.
+export async function clearChatMessages(user_id: string, course_id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from("user_chat_state")
+      .update({ messages: [], updated_at: new Date().toISOString() })
+      .eq("user_id", user_id)
+      .eq("course_id", course_id);
+    if (error) {
+      console.error("[chat-state] clear error:", error.message);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("[chat-state] clear exception:", e);
     return false;
   }
 }

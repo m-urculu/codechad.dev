@@ -4,7 +4,7 @@ import ChatPanel from "@/components/ChatPanel";
 import CodeHere from "@/components/CodeHere";
 import RoadmapPanel from "@/components/RoadmapPanel";
 import DocsPanel from "@/components/DocsPanel";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare, Map, Code2, BookOpen } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { getModuleMeta } from "@/lib/modules";
@@ -88,7 +88,15 @@ function setChildren(roadmap: Roadmap, nodeId: string, children: RoadmapNode[]):
   return { ...roadmap, topics: walk(roadmap.topics) };
 }
 
-export default function EditorPanels({ moduleId }: { moduleId?: string | null }) {
+export default function EditorPanels({
+  moduleId,
+  courseId: initialCourseId,
+}: {
+  moduleId?: string | null;
+  /** Open a specific stored course. When absent, the user's most recent course for
+   *  this technology is resumed, or a new one is created on first activity. */
+  courseId?: string | null;
+}) {
   const skill = getModuleMeta(moduleId)?.title ?? "";
 
   const [leftView, setLeftView] = useState<"chat" | "roadmap" | "docs">("chat");
@@ -105,6 +113,10 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
 
   // Persistence boot state + loaded values handed to the chat.
   const [userId, setUserId] = useState<string | null>(null);
+  const [courseId, setCourseId] = useState<string | null>(initialCourseId ?? null);
+  // Mirrors courseId for callbacks that must not close over a stale render.
+  const courseIdRef = useRef<string | null>(initialCourseId ?? null);
+  const ensureInFlight = useRef<Promise<string | null> | null>(null);
   const [boot, setBoot] = useState<BootState>("loading");
   const [savedLevel, setSavedLevel] = useState<string | undefined>();
   const [savedGoal, setSavedGoal] = useState<string | undefined>();
@@ -136,10 +148,22 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
         return;
       }
       try {
-        const res = await fetch(`/api/roadmap/state?user_id=${uid}&skill=${encodeURIComponent(skill)}`);
+        // A specific course was chosen on the landing page; otherwise fall back to
+        // the most recent course for this technology.
+        const q = initialCourseId
+          ? `course_id=${encodeURIComponent(initialCourseId)}`
+          : `module=${encodeURIComponent(moduleId ?? "")}`;
+        const res = await fetch(`/api/roadmap/state?user_id=${uid}&${q}`);
         const json = await res.json();
-        const state = json.state as { level?: string; goal?: string; tree?: Roadmap; progress?: Progress } | null;
-        if (!cancelled && state?.tree?.topics?.length) {
+        const state = json.state as
+          | { courseId?: string; level?: string; goal?: string; tree?: Roadmap; progress?: Progress }
+          | null;
+        if (cancelled) return;
+        if (state?.courseId) {
+          setCourseId(state.courseId);
+          courseIdRef.current = state.courseId;
+        }
+        if (state?.tree?.topics?.length) {
           const prog = state.progress ?? {};
           setRoadmap(state.tree);
           setProgress(prog);
@@ -150,7 +174,11 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
           setSavedGoal(state.goal);
           setLeftView("roadmap");
           setBoot("resumed");
-        } else if (!cancelled) {
+        } else {
+          // A course row with no tree (generation failed, or freshly recalibrated)
+          // still carries the calibration — hand it to the chat so it can retry.
+          setSavedLevel(state?.level);
+          setSavedGoal(state?.goal);
           setBoot("fresh");
         }
       } catch {
@@ -160,24 +188,64 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
     return () => {
       cancelled = true;
     };
-  }, [moduleId, skill]);
+  }, [moduleId, skill, initialCourseId]);
+
+  // Create the course row on first real activity (the learner answering calibration),
+  // rather than the moment a technology is opened — otherwise merely browsing a module
+  // would litter "My courses" with empty entries. Concurrent callers share one request.
+  const ensureCourseId = useCallback(async (): Promise<string | null> => {
+    if (courseIdRef.current) return courseIdRef.current;
+    if (!userId || !skill) return null;
+    if (ensureInFlight.current) return ensureInFlight.current;
+    ensureInFlight.current = (async () => {
+      try {
+        const res = await fetch("/api/roadmap/state", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: userId, skill, module: moduleId, name: skill }),
+        });
+        const { course_id } = await res.json();
+        if (course_id) {
+          courseIdRef.current = course_id;
+          setCourseId(course_id);
+        }
+        return course_id ?? null;
+      } catch {
+        return null;
+      } finally {
+        ensureInFlight.current = null;
+      }
+    })();
+    return ensureInFlight.current;
+  }, [userId, skill, moduleId]);
 
   // Debounced save when the tree or progress changes (logged-in only).
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!userId || !skill || !roadmap) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => {
+    saveTimer.current = setTimeout(async () => {
+      const cid = await ensureCourseId();
+      if (!cid) return;
       fetch("/api/roadmap/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, skill, level: roadmap.level, goal: roadmap.goal, tree: roadmap, progress }),
+        body: JSON.stringify({
+          user_id: userId,
+          course_id: cid,
+          skill,
+          module: moduleId,
+          level: roadmap.level,
+          goal: roadmap.goal,
+          tree: roadmap,
+          progress,
+        }),
       }).catch(() => {});
     }, 800);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [roadmap, progress, userId, skill]);
+  }, [roadmap, progress, userId, skill, moduleId, ensureCourseId]);
 
   function handleRoadmap(r: Roadmap) {
     setRoadmap(r);
@@ -186,12 +254,14 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
 
   // Generation failed → persist a course shell (level/goal, no tree) so the course
   // still shows up in "My courses", can be resumed for a retry, and can be deleted.
-  function handleRoadmapFailed(level: string, goal: string) {
+  async function handleRoadmapFailed(level: string, goal: string) {
     if (!userId || !skill) return;
+    const cid = await ensureCourseId();
+    if (!cid) return;
     fetch("/api/roadmap/state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId, skill, level, goal }),
+      body: JSON.stringify({ user_id: userId, course_id: cid, skill, module: moduleId, level, goal }),
     }).catch(() => {});
   }
 
@@ -307,6 +377,8 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
         <div className={leftView === "chat" ? "flex flex-1 min-w-0" : "hidden"}>
           <ChatPanel
             moduleId={moduleId}
+            courseId={courseId}
+            ensureCourseId={ensureCourseId}
             visible={leftView === "chat"}
             boot={boot}
             hasRoadmap={!!roadmap}

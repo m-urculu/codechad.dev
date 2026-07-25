@@ -2,13 +2,29 @@
 import EditorPanels from "@/components/EditorPanels";
 import NavBar from "@/components/NavBar";
 import Background from "@/components/Background/Background";
-import Landing from "@/components/Landing";
+import Landing, { type RoadmapSummary } from "@/components/Landing";
+import CourseSettings from "@/components/CourseSettings";
 import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
+  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
+);
 
 export default function Home() {
   const [gpuOk, setGpuOk] = useState(true);
-  const [view, setView] = useState<"landing" | "workspace">("landing");
+  const [view, setView] = useState<"landing" | "workspace" | "settings">("landing");
   const [moduleId, setModuleId] = useState<string | null>(null);
+  const [courseId, setCourseId] = useState<string | null>(null);
+  const [settingsCourse, setSettingsCourse] = useState<RoadmapSummary | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setUserId(s?.user?.id ?? null));
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     // Only run on client
@@ -53,13 +69,33 @@ export default function Home() {
       <div className="relative flex-1 min-h-0">
         {view === "landing" ? (
           <Landing
-            onSelect={(id) => {
+            onSelect={(id, cid) => {
               setModuleId(id);
+              setCourseId(cid ?? null);
               setView("workspace");
+            }}
+            onSettings={(course) => {
+              setSettingsCourse(course);
+              setView("settings");
+            }}
+          />
+        ) : view === "settings" && settingsCourse ? (
+          <CourseSettings
+            course={settingsCourse}
+            userId={userId}
+            onBack={() => setView("landing")}
+            onOpen={(id, cid) => {
+              setModuleId(id);
+              setCourseId(cid);
+              setView("workspace");
+            }}
+            onDeleted={() => {
+              setSettingsCourse(null);
+              setView("landing");
             }}
           />
         ) : (
-          <EditorPanels moduleId={moduleId} />
+          <EditorPanels moduleId={moduleId} courseId={courseId} />
         )}
       </div>
     </div>
