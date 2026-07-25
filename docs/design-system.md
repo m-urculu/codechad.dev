@@ -344,6 +344,33 @@ A 6px emerald square, not a circle. Reads as an LED or a live pixel.
 flex items-center gap-2 border-t border-line px-2 py-1 text-meta
 ```
 
+### Code editor
+
+Monaco runs the `codepath` theme from `src/lib/monacoTheme.ts`, not `vs-dark` —
+stock vs-dark brings a `#1e1e1e` background, VS Code's blue/orange palette and its own
+mono face, all of which read as a foreign object here.
+
+The same rule as everywhere else applies: the canvas is monochrome and colour carries
+meaning.
+
+| Element | Tone |
+|---|---|
+| Background, gutter | `surface-0` (true black) |
+| Identifiers, code body | `ink` |
+| Keywords, tags | white **bold** — structure is weight, not hue |
+| Strings, regex, attribute values | `accent` — literal values the learner types and sees echoed in the console |
+| Numbers, types, constants | `info` |
+| Comments | `ink-faint`, italic |
+| Brackets, operators, delimiters | `ink-muted` |
+| Cursor, bracket match, find match | `accent` |
+| Unmatched bracket, invalid | `danger` |
+
+Two defaults are deliberately suppressed: **bracket-pair rainbow colouring** (every
+level pinned to `ink-muted` in the theme, since the editor option alone is not honoured)
+and **ligatures** — learners must see `!=` and `=>` as the characters they typed.
+
+Widgets (suggest, hover) take the panel treatment: black fill, `line-strong` hairline.
+
 ### Empty state
 
 `text-ink-faint` at `text-sm`, one sentence, no illustration, no exclamation mark.
