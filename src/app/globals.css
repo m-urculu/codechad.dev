@@ -1,36 +1,178 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap");
 @import "tailwindcss";
 
-/* Make all links open in a new tab */
+/* ==========================================================================
+   CodePath design tokens
+   Single source of truth for colour, type, spacing and motion.
+   See docs/design-system.md for the rules that govern these.
+   Never hard-code a hex, an rgba() or an arbitrary size in a component —
+   add a token here instead.
+   ========================================================================== */
+
+@theme {
+  /* --- Corners -----------------------------------------------------------
+     CodePath is a sharp-cornered interface. Every radius token is 0 so that
+     any stray `rounded-*` utility (including ones inside vendored shadcn /
+     Radix components) resolves to a square corner. The universal rule further
+     down is the belt-and-braces enforcement for `rounded-full`, which Tailwind
+     computes rather than reading from a token. */
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
+
+  /* --- Typefaces ---------------------------------------------------------
+     Space Grotesk is the voice of the product: geometric, technical, a little
+     severe. JetBrains Mono is reserved for surfaces that represent *machine
+     output* — the editor, the console, code spans, and tabular numbers. */
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* --- Type scale --------------------------------------------------------
+     Seven steps, no exceptions. `micro` and `meta` fill the 10–11px gap that
+     the codebase previously spelled as arbitrary `text-[10px]` / `text-[11px]`. */
+  --text-micro: 0.625rem;      /* 10px — counters, corner badges */
+  --text-micro--line-height: 1.4;
+  --text-meta: 0.6875rem;      /* 11px — timestamps, captions, chips */
+  --text-meta--line-height: 1.45;
+
+  /* --- Surfaces ----------------------------------------------------------
+     The page is true black; panels are translucent white lifts over the
+     animated background. Four steps only. */
+  --color-surface-0: #000000;
+  --color-surface-1: rgba(255, 255, 255, 0.04);
+  --color-surface-2: rgba(255, 255, 255, 0.08);
+  --color-surface-3: rgba(255, 255, 255, 0.14);
+  --color-scrim: rgba(0, 0, 0, 0.85);
+
+  /* --- Lines -------------------------------------------------------------
+     Hairlines carry the structure in place of shadows. `line-strong` is the
+     signature panel frame; `line` divides content inside a panel. */
+  --color-line: rgba(255, 255, 255, 0.12);
+  --color-line-strong: rgba(255, 255, 255, 0.5);
+  --color-line-active: rgba(255, 255, 255, 0.85);
+
+  /* --- Text --------------------------------------------------------------
+     Four steps. Anything dimmer than `faint` is unreadable on this
+     background and fails contrast. */
+  --color-ink: #ffffff;
+  --color-ink-muted: rgba(255, 255, 255, 0.7);
+  --color-ink-dim: rgba(255, 255, 255, 0.45);
+  --color-ink-faint: rgba(255, 255, 255, 0.3);
+
+  /* --- Accent ------------------------------------------------------------
+     One accent, used only for progress, "live" affordances and the primary
+     action. Emerald matches the version badge in the README. */
+  --color-accent: #34d399;
+  --color-accent-bright: #6ee7b7;
+  --color-accent-wash: rgba(52, 211, 153, 0.14);
+  --color-accent-line: rgba(52, 211, 153, 0.35);
+
+  /* --- Status ------------------------------------------------------------ */
+  --color-danger: #ef4444;
+  --color-danger-wash: rgba(239, 68, 68, 0.15);
+  --color-info: #7dd3fc;
+  --color-warn: #fbbf24;
+
+  /* --- Motion ------------------------------------------------------------
+     Tailwind has no `--duration-*` theme namespace, so these are documentation
+     rather than utility generators: use `duration-150` for colour/opacity and
+     `duration-200` for anything positional. Nothing is slower. */
+  --default-transition-duration: 150ms;
+}
+
+/* --------------------------------------------------------------------------
+   Sharp corners, enforced.
+   This is deliberate and load-bearing: it flattens `rounded-full` and any
+   radius baked into third-party CSS (Radix, Monaco, highlight.js) that the
+   token layer above cannot reach.
+   -------------------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+}
+
+/* --------------------------------------------------------------------------
+   Base
+   -------------------------------------------------------------------------- */
+:root {
+  --background: var(--color-surface-0);
+  --foreground: var(--color-ink);
+  /* Body copy leading. Previously 0.1, which collapsed every element that did
+     not explicitly set its own line-height. */
+  --leading: 1.5;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  line-height: var(--leading);
+}
+
+/* Links inherit the info tone; the accent is reserved for actions. */
 a {
-  color: #668ee4;
+  color: var(--color-info);
   text-decoration: none;
-  transition: color 0.2s;
+  transition: color var(--duration-base);
 }
 a:hover {
-  color: #668ee4;
+  color: var(--color-info);
   text-decoration: underline;
 }
-a:not([target]) {
-  target-name: _blank;
-  rel: noopener noreferrer;
+
+/* Buttons are styled entirely by utilities; strip UA chrome but keep a
+   visible focus ring for keyboard users (removing it outright fails WCAG). */
+button:focus,
+button:active {
+  outline: none;
+  border-color: inherit;
 }
-/* Custom highlight.js transparent background */
-.hljs, .hljs code, pre.theme-atom-one-dark, pre.theme-atom-one-dark code {
+button:focus-visible {
+  outline: 2px solid var(--color-line-active);
+  outline-offset: 1px;
+}
+
+/* Code surfaces render as machine output, never as prose. */
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+}
+
+/* highlight.js: let the panel background show through. */
+.hljs,
+.hljs code,
+pre.theme-atom-one-dark,
+pre.theme-atom-one-dark code {
   background: transparent !important;
   box-shadow: none !important;
 }
-/* Remove all borders and outlines from buttons on focus/active/visited */
-button:focus, button:focus-visible, button:active {
-  outline: none !important;
-  border: none !important;
-  box-shadow: none !important;
+
+/* Native scrollbars are hidden app-wide; panels scroll without chrome. */
+* {
+  scrollbar-width: none !important;
 }
-/* Gemini is typing... left-to-right glowing font animation */
+*::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* --------------------------------------------------------------------------
+   Components
+   -------------------------------------------------------------------------- */
+
+/* "Gemini is typing…" — left-to-right glow sweep on the thinking bubble. */
 .gemini-glow {
   position: relative;
   background: none;
-  color: #fff;
+  color: var(--color-ink);
   background-image: linear-gradient(90deg, #fff 0%, #ffffff 40%, #fff 100%);
   background-size: 200% 100%;
   background-repeat: no-repeat;
@@ -58,52 +200,29 @@ button:focus, button:focus-visible, button:active {
   }
 }
 
-/* Hide all native scrollbars globally */
-* {
-  scrollbar-width: none !important;
-}
-*::-webkit-scrollbar {
-  display: none !important;
-}
-
-
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --leading: 0.1;
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: "Space Grotesk", sans-serif;
-  --font-mono: "Space Grotesk", sans-serif;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #000000;
-    --foreground: #ededed;
-  }
-}
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
-  line-height: var(--leading);
-}
-
-/* Inline documentation links the assistant emits as [text](doc:Term). Styled like a
-   subtle cross-reference: accent color + dotted underline, no page navigation (the chat
-   handles the click and opens the Docs tab at the referenced section). */
+/* Inline documentation cross-references the tutor emits as [text](doc:Term).
+   Accent-free by design: these navigate, they do not act. */
 .doc-link {
-  color: #7dd3fc; /* sky-300 */
+  color: var(--color-info);
   text-decoration: underline dotted;
   text-underline-offset: 2px;
   cursor: pointer;
 }
 .doc-link:hover {
-  color: #bae6fd; /* sky-200 */
+  color: var(--color-ink);
   text-decoration-style: solid;
 }
 .doc-link code {
   color: inherit;
+}
+
+/* Respect users who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

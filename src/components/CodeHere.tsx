@@ -12,11 +12,11 @@ const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false 
 type LoadCode = { code: string; html?: string; nonce: number } | null;
 
 const LINE_COLOR: Record<OutLine["kind"], string> = {
-  log: "text-green-400",
-  info: "text-sky-300",
-  warn: "text-yellow-300",
-  error: "text-red-400",
-  system: "text-white/50",
+  log: "text-ink-muted",
+  info: "text-info",
+  warn: "text-warn",
+  error: "text-danger",
+  system: "text-ink-dim",
 };
 
 export default function CodeHere({
@@ -168,12 +168,12 @@ export default function CodeHere({
   return (
     <div className="flex flex-1 min-w-0">
       <div className="h-full w-full min-w-0">
-        <div className="h-full font-mono font-normal leading-normal border border-white/50 backdrop-blur-md flex flex-col gap-0 overflow-hidden">
+        <div className="h-full font-normal leading-normal border border-line-strong backdrop-blur-md flex flex-col gap-0 overflow-hidden">
           {/* Module badge */}
-          <div className="absolute m-1 z-10 flex items-center gap-2 bg-opacity-80 px-2 py-1 shadow text-xs font-semibold select-none text-white">
-            <span className="inline-block h-3 w-3 rounded-sm" style={{ background: spec.badgeColor }} />
+          <div className="absolute m-1 z-10 flex items-center gap-2 bg-opacity-80 px-2 py-1 shadow text-xs font-semibold select-none text-ink">
+            <span className="inline-block h-3 w-3" style={{ background: spec.badgeColor }} />
             {spec.title}
-            {!spec.runnable && <span className="font-thin text-white/50">(guided — no runtime yet)</span>}
+            {!spec.runnable && <span className="font-normal text-ink-dim">(guided — no runtime yet)</span>}
           </div>
 
           <div className="flex-1 flex flex-col overflow-hidden pt-9 relative">
@@ -221,15 +221,17 @@ export default function CodeHere({
           </div>
 
           {/* Button row */}
-          <div className="flex items-center justify-start gap-3 py-1 border-t border-white/10">
+          <div className="flex items-center justify-start gap-3 py-1 border-t border-line">
             <div className="flex items-center justify-start gap-3 py-1 ml-4">
               <button
                 onClick={running ? stop : run}
                 disabled={!spec.runnable}
                 title={spec.runnable ? "Run your code" : "No runtime for this module yet — use Submit"}
                 className={[
-                  "px-2 py-1 font-semibold text-xs font-thin transition-colors cursor-pointer flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed",
-                  running ? "bg-red-400 hover:bg-red-300 text-neutral-900" : "bg-neutral-600 hover:bg-neutral-300 text-neutral-900",
+                  "px-2 py-1 text-xs font-semibold transition-colors duration-150 cursor-pointer flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed",
+                  running
+                    ? "bg-danger text-ink hover:bg-danger/80"
+                    : "bg-ink text-surface-0 hover:bg-ink-muted",
                 ].join(" ")}
               >
                 {running ? (
@@ -252,7 +254,7 @@ export default function CodeHere({
                 onClick={submit}
                 disabled={running}
                 title="Send your code + output to the tutor"
-                className="px-2 py-1 bg-white text-neutral-900 hover:bg-neutral-200 font-semibold text-xs font-thin transition-colors cursor-pointer flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-2 py-1 bg-accent text-surface-0 hover:bg-accent-bright text-xs font-semibold transition-colors duration-150 cursor-pointer flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
@@ -261,7 +263,7 @@ export default function CodeHere({
               </button>
               <button
                 onClick={() => setOutput([])}
-                className="px-2 py-1 bg-neutral-600 hover:bg-neutral-300 text-neutral-900 font-semibold text-xs font-thin transition-colors cursor-pointer flex items-center gap-2"
+                className="px-2 py-1 border border-line-strong text-ink-muted hover:bg-surface-2 hover:text-ink text-xs font-semibold transition-colors duration-150 cursor-pointer flex items-center gap-2"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -273,17 +275,17 @@ export default function CodeHere({
 
           {/* Output area with Console | Preview tabs */}
           <div className="flex-1 flex flex-col min-h-0">
-            <div className="flex items-center gap-1 border-t border-white/10 px-2 py-1 text-[11px]">
+            <div className="flex items-center gap-1 border-t border-line px-2 py-1 text-meta">
               <button
                 onClick={() => setTab("console")}
-                className={`cursor-pointer px-2 py-0.5 ${tab === "console" ? "bg-white/15 text-white" : "text-white/50 hover:text-white"}`}
+                className={`cursor-pointer px-2 py-0.5 ${tab === "console" ? "bg-surface-3 text-ink" : "text-ink-dim hover:text-ink"}`}
               >
                 Console
               </button>
               {hasDom && (
                 <button
                   onClick={() => setTab("preview")}
-                  className={`cursor-pointer px-2 py-0.5 ${tab === "preview" ? "bg-white/15 text-white" : "text-white/50 hover:text-white"}`}
+                  className={`cursor-pointer px-2 py-0.5 ${tab === "preview" ? "bg-surface-3 text-ink" : "text-ink-dim hover:text-ink"}`}
                 >
                   Preview
                 </button>
@@ -292,9 +294,9 @@ export default function CodeHere({
 
             {/* Console pane */}
             <div className={`${tab === "console" ? "flex" : "hidden"} flex-1 min-h-0 flex-col`}>
-              <div className="h-full p-4 bg-black/80 border border-white/10 text-xs font-mono overflow-auto custom-scrollbar shadow-inner">
+              <div className="h-full p-4 bg-surface-0 border-t border-line font-mono text-xs leading-normal overflow-auto custom-scrollbar">
                 {output.length === 0 && !running ? (
-                  <span className="opacity-60 text-green-400">
+                  <span className="text-ink-faint">
                     {spec.runnable ? "Console output will appear here…" : `No runtime for ${spec.title} yet — Submit sends your code to the tutor.`}
                   </span>
                 ) : (
@@ -304,13 +306,13 @@ export default function CodeHere({
                     </div>
                   ))
                 )}
-                {running && <div className="text-white/40">running…</div>}
+                {running && <div className="text-ink-faint">running…</div>}
               </div>
             </div>
 
             {/* Preview pane */}
             {hasDom && (
-              <div className={`${tab === "preview" ? "flex" : "hidden"} flex-1 min-h-0 flex-col border border-white/10`}>
+              <div className={`${tab === "preview" ? "flex" : "hidden"} flex-1 min-h-0 flex-col border border-line`}>
                 <iframe ref={iframeRef} sandbox="allow-scripts" title="Preview" className="h-full w-full bg-white" />
               </div>
             )}

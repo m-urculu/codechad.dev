@@ -188,10 +188,10 @@ function RoadmapCard({
           onSelect(id);
         }
       }}
-      className={`group relative flex flex-col items-start gap-3 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.06] px-5 py-4.5 text-left leading-relaxed
-                 shadow-lg shadow-black/40 backdrop-blur-xl
-                 transition-all duration-200 hover:-translate-y-1 hover:border-emerald-300/40 hover:bg-emerald-400/[0.12]
-                 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300/40
+      className={`group relative flex flex-col items-start gap-3 border border-accent-line bg-accent-wash p-4 text-left leading-relaxed
+                 backdrop-blur-md
+                 transition-colors duration-150 hover:border-accent hover:bg-surface-2
+                 focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active
                  ${id ? "cursor-pointer" : "cursor-not-allowed opacity-50"}`}
     >
       {/* Course settings — revealed on hover, like the read-aloud button in chat */}
@@ -202,43 +202,43 @@ function RoadmapCard({
           e.stopPropagation();
           setConfirming(true);
         }}
-        className="absolute right-3 top-3 z-10 rounded-md p-1 text-white/40 opacity-0 transition-opacity
-                   hover:bg-white/10 hover:text-white/90 focus-visible:opacity-100 group-hover:opacity-100"
+        className="absolute right-3 top-3 z-10 p-1 text-ink-dim opacity-0 transition-opacity
+                   hover:bg-surface-2 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100"
       >
         <FiSettings size={14} />
       </button>
 
-      <div className="flex w-full items-center gap-2.5 pr-7">
-        {mod && <mod.Icon size={18} color={mod.color} className="shrink-0 drop-shadow" />}
+      <div className="flex w-full items-center gap-2 pr-7">
+        {mod && <mod.Icon size={18} color={mod.color} className="shrink-0" />}
         <div className="min-w-0">
-          <div className="truncate text-sm font-bold text-white">{r.skill}</div>
-          <span className="text-[10px] text-white/50">{relativeTime(r.updatedAt)}</span>
+          <div className="truncate text-sm font-bold text-ink">{r.skill}</div>
+          <span className="text-micro text-ink-dim">{relativeTime(r.updatedAt)}</span>
         </div>
       </div>
-      {meta && <div className="text-xs leading-snug text-white/70">{meta}</div>}
+      {meta && <div className="text-xs leading-snug text-ink-muted">{meta}</div>}
       <div className="mt-1 w-full">
-        <div className="mb-1 flex items-center justify-between text-[11px] text-white/60">
+        <div className="mb-1 flex items-center justify-between text-meta text-ink-dim">
           <span>{r.totalCount > 0 ? `${r.doneCount}/${r.totalCount} lessons` : "Not started"}</span>
-          <span>{pct}%</span>
+          <span className="tabular-nums">{pct}%</span>
         </div>
-        <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-          <div className="h-full rounded-full bg-emerald-400/80 transition-all" style={{ width: `${pct}%` }} />
+        <div className="h-1.5 w-full overflow-hidden bg-surface-2">
+          <div className="h-full bg-accent transition-all duration-200" style={{ width: `${pct}%` }} />
         </div>
       </div>
-      <span className="mt-1 text-[11px] font-medium text-emerald-300/90 group-hover:text-emerald-200">
+      <span className="mt-1 text-meta font-medium text-accent group-hover:text-accent-bright">
         {id ? "Resume →" : "Module unavailable"}
       </span>
 
       {/* Settings overlay: delete with explicit confirm — destructive, so never one-click */}
       {confirming && (
         <div
-          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-xl bg-slate-950/90 p-4 text-center backdrop-blur-sm"
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-scrim p-4 text-center backdrop-blur-sm"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="text-xs leading-relaxed text-white/85">
-            Delete <span className="font-bold text-white">{r.skill}</span>?
+          <div className="text-xs leading-relaxed text-ink-muted">
+            Delete <span className="font-bold text-ink">{r.skill}</span>?
             <br />
-            <span className="text-white/60">Roadmap, progress and chat history will be erased.</span>
+            <span className="text-ink-dim">Roadmap, progress and chat history will be erased.</span>
           </div>
           <div className="flex gap-2">
             <button
@@ -247,7 +247,7 @@ function RoadmapCard({
                 e.stopPropagation();
                 onDelete();
               }}
-              className="rounded-md bg-red-500/90 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-red-500"
+              className="bg-danger px-3 py-1.5 text-xs font-semibold text-ink transition-colors duration-150 hover:bg-danger/80"
             >
               Delete course
             </button>
@@ -257,7 +257,7 @@ function RoadmapCard({
                 e.stopPropagation();
                 setConfirming(false);
               }}
-              className="rounded-md border border-white/20 px-3 py-1.5 text-xs text-white/80 transition-colors hover:bg-white/10"
+              className="border border-line-strong px-3 py-1.5 text-xs text-ink-muted transition-colors duration-150 hover:bg-surface-2 hover:text-ink"
             >
               Cancel
             </button>
@@ -311,28 +311,28 @@ function MyCourses({
     <section className="mb-10">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
         <div>
-          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/60">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-ink-dim">
+            <span className="h-1.5 w-1.5 bg-accent" />
             My courses
-            <span className="rounded-full border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-white/60">
+            <span className="border border-line px-1.5 py-0.5 text-micro font-medium normal-case tracking-normal text-ink-dim">
               {roadmaps.length}
             </span>
           </h2>
-          <p className="mt-1.5 text-[11px] text-white/45">
+          <p className="mt-1.5 text-meta text-ink-dim">
             {lessonsDone} lesson{lessonsDone === 1 ? "" : "s"} completed · {avgPct}% average progress
           </p>
         </div>
         {roadmaps.length > 1 && (
-          <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 p-0.5 backdrop-blur-md">
+          <div className="flex items-center gap-1 border border-line bg-surface-1 p-0.5 backdrop-blur-md">
             {(Object.keys(SORT_LABELS) as SortMode[]).map((mode) => (
               <button
                 key={mode}
                 type="button"
                 onClick={() => setSortPersist(mode)}
-                className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                className={`px-2.5 py-1 text-meta font-medium transition-colors duration-150 ${
                   sort === mode
-                    ? "bg-emerald-400/15 text-emerald-200"
-                    : "text-white/55 hover:bg-white/10 hover:text-white/85"
+                    ? "bg-accent-wash text-accent"
+                    : "text-ink-dim hover:bg-surface-2 hover:text-ink"
                 }`}
               >
                 {SORT_LABELS[mode]}
@@ -352,8 +352,8 @@ function MyCourses({
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="mx-auto mt-3 flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-[11px] font-medium text-white/70 backdrop-blur-md
-                     transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white"
+          className="mx-auto mt-3 flex items-center gap-1.5 border border-line-strong bg-surface-1 px-4 py-1.5 text-meta font-medium text-ink-muted backdrop-blur-md
+                     transition-colors duration-150 hover:border-line-active hover:bg-surface-2 hover:text-ink"
         >
           {expanded ? (
             <>
@@ -376,23 +376,19 @@ function ModuleCard({ m, onSelect }: { m: Module; onSelect: (id: string) => void
     <button
       type="button"
       onClick={() => onSelect(m.id)}
-      className="group relative flex cursor-pointer flex-col items-start gap-3 rounded-xl border border-white/15 bg-white/[0.10] p-4 text-left
-                 shadow-lg shadow-black/40 backdrop-blur-xl
-                 transition-all duration-200 hover:-translate-y-1 hover:border-white/30 hover:bg-white/[0.16]
-                 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/40"
+      className="group relative flex cursor-pointer flex-col items-start gap-3 border border-line-strong bg-surface-1 p-4 text-left
+                 backdrop-blur-md
+                 transition-colors duration-150 hover:border-line-active hover:bg-surface-2
+                 focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active"
     >
-      <Icon
-        size={30}
-        color={m.color}
-        className="drop-shadow transition-transform duration-200 group-hover:scale-110"
-      />
+      <Icon size={30} color={m.color} className="shrink-0" />
       <div className="min-w-0">
-        <div className="text-sm font-bold text-white">{m.title}</div>
-        <div className="mt-0.5 text-xs leading-snug text-white/75">{m.blurb}</div>
+        <div className="text-sm font-bold text-ink">{m.title}</div>
+        <div className="mt-0.5 text-xs leading-snug text-ink-muted">{m.blurb}</div>
       </div>
       <span
         title="Runs live in your browser"
-        className="absolute right-3 top-3 h-1.5 w-1.5 rounded-full bg-emerald-400/80 shadow-[0_0_8px] shadow-emerald-400/60"
+        className="absolute right-3 top-3 h-1.5 w-1.5 bg-accent"
       />
     </button>
   );
@@ -405,14 +401,14 @@ export default function Landing({ onSelect }: { onSelect: (id: string) => void }
       <div className="mx-auto flex max-w-5xl flex-col px-6 py-12 sm:py-16">
         {/* Hero */}
         <header className="mb-10 text-center">
-          <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[11px] font-medium uppercase leading-none tracking-wider text-white/80 backdrop-blur-md">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+          <span className="inline-flex items-center gap-2 border border-line-strong bg-surface-1 px-3 py-1.5 text-meta font-medium uppercase leading-none tracking-wider text-ink-muted backdrop-blur-md">
+            <span className="h-1.5 w-1.5 bg-accent" />
             Runs live in your browser — no installs
           </span>
-          <h1 className="mt-5 text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl">
+          <h1 className="mt-5 text-3xl font-bold leading-tight tracking-tight text-ink sm:text-4xl">
             Learn by doing.
           </h1>
-          <p className="mx-auto mt-3 max-w-xl text-sm text-white/75 sm:text-base">
+          <p className="mx-auto mt-3 max-w-xl text-sm text-ink-muted sm:text-base">
             Pick a technology below and we run it live, right here — real code, real
             databases, real output, with an AI tutor beside you.
           </p>
@@ -427,7 +423,7 @@ export default function Landing({ onSelect }: { onSelect: (id: string) => void }
         <div className="flex flex-col gap-8">
           {SECTIONS.map((section) => (
             <section key={section.label}>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/60">
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-dim">
                 {section.label}
               </h2>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
@@ -440,7 +436,7 @@ export default function Landing({ onSelect }: { onSelect: (id: string) => void }
         </div>
 
         {/* Footnote */}
-        <p className="mt-10 text-center text-[11px] text-white/45">
+        <p className="mt-10 text-center text-meta text-ink-dim">
           C# · Node.js · Linux · Rust · Go · cloud tracks are coming as heavier runtimes land.
         </p>
       </div>

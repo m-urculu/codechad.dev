@@ -285,13 +285,13 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
     [
       "flex h-10 w-10 items-center justify-center border transition-colors cursor-pointer",
       active
-        ? "border-white/70 bg-white/15 text-white"
-        : "border-white/40 bg-black text-white/70 hover:bg-neutral-700 hover:text-white",
+        ? "border-line-active bg-surface-3 text-ink"
+        : "border-line-strong bg-surface-0 text-ink-muted hover:bg-surface-2 hover:text-ink",
     ].join(" ");
 
   return (
     <div className="flex h-full min-h-0">
-      <div className="flex shrink-0 flex-col items-center gap-2 border-r border-white/30 px-2 py-4">
+      <div className="flex shrink-0 flex-col items-center gap-2 border-r border-line-strong px-2 py-4">
         <button className={railBtn(leftView === "chat")} onClick={() => setLeftView("chat")} title="Chat" aria-label="Show chat">
           <MessageSquare className="h-5 w-5" />
         </button>
@@ -345,7 +345,7 @@ export default function EditorPanels({ moduleId }: { moduleId?: string | null })
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-col items-center gap-2 border-l border-white/30 px-2 py-4">
+      <div className="flex shrink-0 flex-col items-center gap-2 border-l border-line-strong px-2 py-4">
         <button className={railBtn(codeOpen)} onClick={() => setCodeOpen((v) => !v)} title="Editor" aria-label="Toggle editor">
           <Code2 className="h-5 w-5" />
         </button>

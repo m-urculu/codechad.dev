@@ -27,13 +27,13 @@ export default function ReadAloudButton({ id, text }: { id: string; text: string
       title={active ? "Stop" : "Read aloud"}
       aria-label={active ? "Stop reading" : "Read aloud"}
       className={[
-        "inline-flex items-center gap-1 border border-white/25 bg-black/40 px-1.5 py-0.5",
-        "text-[10px] font-mono leading-none transition-all cursor-pointer",
+        "inline-flex items-center gap-1 border border-line bg-surface-0/40 px-1.5 py-0.5",
+        "text-micro leading-none transition-all cursor-pointer",
         // Hidden until the bubble is hovered/focused — but stays visible while active so it
         // can be stopped even if the pointer leaves.
         active
-          ? "text-emerald-300 border-emerald-400/40 opacity-100"
-          : "text-white/45 hover:text-white hover:border-white/50 opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+          ? "text-accent border-accent-line opacity-100"
+          : "text-ink-dim hover:text-ink hover:border-line-strong opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
       ].join(" ")}
     >
       {loading ? (
