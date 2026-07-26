@@ -46,6 +46,30 @@ function hit(store: Map<string, Window>, key: string, limit: number, span: numbe
   return true;
 }
 
+// Account creation is cheap for us and cheap for a script, so it gets its own,
+// much tighter bucket: a person makes one account, occasionally two.
+const SIGNUP_PER_HOUR = 8;
+const signups = new Map<string, Window>();
+
+/**
+ * Returns a 429 when one address has created enough accounts for an hour.
+ *
+ * Separate from the trial allowance on purpose — spending a trial should not
+ * make signing up impossible, and a signup script should not be handed the
+ * trial's 60 calls before it is noticed.
+ */
+export function signupRateLimit(request: Request): Response | null {
+  if (hit(signups, clientIp(request), SIGNUP_PER_HOUR, HOUR)) return null;
+
+  return new Response(
+    JSON.stringify({ error: "Too many accounts from here. Try again in an hour." }),
+    {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": String(HOUR / 1000) },
+    }
+  );
+}
+
 /** The caller's address as far as the platform will tell us. */
 function clientIp(request: Request): string {
   const fwd = request.headers.get("x-forwarded-for");
