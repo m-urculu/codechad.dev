@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseBrowser";
 import { startGoogleRedirect } from "@/lib/googleAuth";
 
 /** Google's four-colour "G" — the only mark their branding terms allow. */
@@ -40,18 +40,35 @@ function GitHubMark({ size = 15 }: { size?: number }) {
 
 type Mode = "signin" | "signup";
 
+/**
+ * Hands the credentials that just worked to the browser's password manager.
+ *
+ * Only call this AFTER a successful sign-in — offering to save a password that
+ * was rejected is how managers end up storing typos.
+ *
+ * Chrome and Edge take this explicitly; Firefox and Safari do not implement the
+ * Credential Management API and infer the save from the submitted form instead,
+ * which is why the fields below stay a real <form> with real autocomplete and
+ * name attributes rather than loose inputs. Both paths need that markup.
+ */
+async function rememberCredentials(email: string, password: string): Promise<void> {
+  try {
+    const ctor = (window as unknown as {
+      PasswordCredential?: new (d: { id: string; password: string }) => Credential;
+    }).PasswordCredential;
+    if (!ctor || !navigator.credentials?.store) return;
+    await navigator.credentials.store(new ctor({ id: email, password }));
+  } catch {
+    // Storing is a convenience. It must never turn a good sign-in into an error.
+  }
+}
+
 // One panel, three ways in. Google leaves via our own redirect (see googleAuth —
 // the consent screen has to name codechad.dev, which only works when the
 // authorize request comes from here). GitHub goes through Supabase's broker,
 // which is fine: GitHub names the app after the OAuth app's own title, not after
 // the callback's domain, so nothing leaks the supabase.co host to the user.
-export default function LoginModal({
-  supabase,
-  onClose,
-}: {
-  supabase: SupabaseClient;
-  onClose: () => void;
-}) {
+export default function LoginModal({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -141,6 +158,7 @@ export default function LoginModal({
         setBusy(null);
         return;
       }
+      await rememberCredentials(email, password);
       // The auth listener in LoginButton picks the session up and closes this.
       onClose();
       return;
@@ -157,9 +175,14 @@ export default function LoginModal({
       return;
     }
     // With confirmations on, Supabase returns a user but no session — the account
-    // is not usable until the emailed link is followed.
-    if (data.session) onClose();
-    else setNotice("Check your email to confirm the account, then sign in.");
+    // is not usable until the emailed link is followed, so there is nothing worth
+    // saving yet.
+    if (data.session) {
+      await rememberCredentials(email, password);
+      onClose();
+    } else {
+      setNotice("Check your email to confirm the account, then sign in.");
+    }
   };
 
   const providerClass =
@@ -229,8 +252,10 @@ export default function LoginModal({
           <input
             ref={firstField}
             type="email"
+            id="login-email"
+            name="email"
             required
-            autoComplete="email"
+            autoComplete="username"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -239,6 +264,8 @@ export default function LoginModal({
           />
           <input
             type="password"
+            id="login-password"
+            name="password"
             required
             minLength={6}
             autoComplete={mode === "signin" ? "current-password" : "new-password"}

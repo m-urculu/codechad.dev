@@ -22,7 +22,7 @@ hljs.registerLanguage('html', xml);
 // Local UI components
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from "@/lib/supabaseBrowser";
 import { LEVELS, getModuleMeta } from "@/lib/modules";
 import { getRuntime } from "@/lib/runtimes/registry";
 import { gradeSubmission } from "@/lib/agents/grade";
@@ -114,10 +114,6 @@ type Calib = { step: CalibStep; level?: string; goal?: string };
 type ActiveLesson = { pointId: string; title: string; objectives: Objective[]; passed: string[] };
 type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[]; solution?: string };
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
-);
 
 export default function ChatPanel({
   moduleId,

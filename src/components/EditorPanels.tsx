@@ -6,17 +6,13 @@ import RoadmapPanel from "@/components/RoadmapPanel";
 import DocsPanel from "@/components/DocsPanel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare, Map, Code2, BookOpen } from "lucide-react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseBrowser";
 import { getModuleMeta } from "@/lib/modules";
 import { getDocSource } from "@/lib/docs";
 import { resolveDocUrl } from "@/lib/docs-index";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
-);
 
 type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[] };
 type ProgressEntry = { built?: BuiltLesson; passed: string[]; done: boolean; code?: string };
