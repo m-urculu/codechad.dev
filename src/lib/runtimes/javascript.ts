@@ -4,39 +4,20 @@
 // hard-terminated (infinite-loop protection). console.* / alert / errors are captured
 // and streamed back as output lines. Async / top-level await is supported.
 
+import { CONSOLE_FMT_SRC } from "./consoleFormat";
+
 export type OutKind = "log" | "info" | "warn" | "error" | "system";
 export type OutLine = { kind: OutKind; text: string };
 
 export type RunHandle = { promise: Promise<void>; cancel: () => void };
 
 // Worker source (stringified — instantiated from a Blob so no separate file/build step).
+// The console formatter is injected from consoleFormat, shared with the DOM runtime and
+// with the server-side sandbox that validates lessons: a private copy here is what made
+// a correct answer print something no generated check could match.
 const WORKER_SRC = `
-function safeStringify(v){
-  var seen = new WeakSet();
-  try {
-    return JSON.stringify(v, function(k, val){
-      if (typeof val === 'object' && val !== null){
-        if (seen.has(val)) return '[Circular]';
-        seen.add(val);
-      }
-      if (typeof val === 'bigint') return val.toString() + 'n';
-      if (typeof val === 'function') return '[Function ' + (val.name || 'anonymous') + ']';
-      return val;
-    }, 2);
-  } catch(e){ return String(v); }
-}
-function fmt(v){
-  if (typeof v === 'string') return v;
-  if (typeof v === 'undefined') return 'undefined';
-  if (v === null) return 'null';
-  if (v instanceof Error) return (v.stack || (v.name + ': ' + v.message));
-  if (typeof v === 'function') return v.toString();
-  if (typeof v === 'bigint') return v.toString() + 'n';
-  if (typeof v === 'symbol') return v.toString();
-  if (typeof v === 'object') return safeStringify(v);
-  return String(v);
-}
-function fmtAll(args){ return Array.prototype.map.call(args, fmt).join(' '); }
+${CONSOLE_FMT_SRC}
+var fmt = __fmt, fmtAll = __fmtAll;
 function post(kind, text){ self.postMessage({ kind: kind, text: text }); }
 self.addEventListener('unhandledrejection', function(e){ post('error', 'Uncaught (in promise) ' + fmt(e.reason)); });
 self.onmessage = async function(e){

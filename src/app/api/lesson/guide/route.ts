@@ -37,6 +37,9 @@ export async function POST(request: Request) {
       `Deterministic checks have ALREADY decided which objectives pass or fail — treat this as ground truth and NEVER contradict it or claim an objective passed/failed differently.\n\n` +
       `OBJECTIVE RESULTS:\n${lines}\n\n` +
       `THEIR CODE:\n${code ?? ""}\n\nRUN OUTPUT:\n${(output ?? "").trim() || "(no output)"}\n\n` +
+      `HOW GRADING WORKS — do not misstate it: a check looks for its expected line(s) INSIDE the run output, so extra printing NEVER causes a failure. ` +
+      `Never tell the learner to remove a console statement, to print less, or that their output has something "extra" — that is not why anything failed, and following it costs them an objective they had already passed. ` +
+      `Objectives are graded independently and stay passed once passed; the only useful advice is what to ADD or CHANGE for a FAILED one.\n\n` +
       `Write 1–3 sentences of guidance: pinpoint the specific gap behind the FIRST failed objective and nudge them toward fixing it, using the failure details. ` +
       `NEVER include the exact code/expression/statement that satisfies an objective — not the exercise's identifiers combined into the answer. If a snippet helps, illustrate the same syntax pattern on DIFFERENT, unrelated data (different table/variable names and values) and let them transfer it. No pleasantries, no restating what passed.` +
       docLinks;
