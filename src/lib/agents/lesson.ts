@@ -230,6 +230,41 @@ function buildPrompt(
     );
   }
 
+  // Styling modules: the editor holds a stylesheet or markup, the result is a rendered
+  // page, and NOTHING reaches the console. Left to the generic prompt, the model writes
+  // stdout checks against a runtime that can never print, and every objective fails.
+  if (spec.codeIs === "css" || spec.codeIs === "html") {
+    const isCss = spec.codeIs === "css";
+    return (
+      head +
+      `THIS MODULE RENDERS — IT DOES NOT PRINT. The learner's work is judged by what the page LOOKS like, ` +
+      `and a rendered page produces no console output, so:\n` +
+      `- EVERY objective's check MUST be {"type":"code_matches","value":"<JS regexp source>"} matching what the ` +
+      `learner had to write. NEVER stdout_equals or stdout_includes — there is no stdout to match.\n` +
+      `- Write each regexp to survive normal formatting: allow flexible whitespace (\\\\s*), don't anchor to line ` +
+      `starts, and match the declaration or class itself rather than the learner's exact spacing or ordering.\n` +
+      (isCss
+        ? `- "starterCode" is the STYLESHEET in the learner's editor — plain CSS, no <style> tags around it.\n` +
+          `- "html" is the markup it styles, and it is REQUIRED and never empty. Every selector the objectives ` +
+          `ask for must have something to select: the classes and elements must already exist in the markup.\n` +
+          `- The starter must set up the scene (the layout that exists, the rules already written) and LEAVE THE ` +
+          `OBJECTIVE UNDONE — a \`/* TODO */\` where the learner writes the rule, never the answer.\n`
+        : `- "starterCode" is the MARKUP itself, with Tailwind utility classes on it. It is the whole exercise.\n` +
+          `- "html" is ALWAYS "" for this module — the starterCode already IS the page.\n` +
+          `- The starter must ship the elements with their structural classes present and LEAVE THE OBJECTIVE ` +
+          `UNDONE: the utility the learner must add is missing, marked by an HTML comment, never pre-written.\n` +
+          `- Teach with real Tailwind utilities, never hand-written CSS in a <style> block.\n`) +
+      `- "intro": markdown teaching text, instructional voice, no pleasantries. First a PRACTICAL, TECHNICAL ` +
+      `explanation — what the property or utility actually does, how it interacts with the box model or the ` +
+      `parent layout, and when it is the right tool; THEN describe the starter the learner sees and what to change. ` +
+      `Tell them to press Run and LOOK at the Preview.\n` +
+      `- "objectives": 2 to 4 concrete tasks, each naming the exact declaration or class to write ` +
+      `("give .card a 12px gap", "make the button full width below sm"). No aesthetic judgement calls.\n` +
+      `- "solution": the complete ${spec.langName} with every objective applied, and it must satisfy every ` +
+      `code_matches check — the checks are validated against it.`
+    );
+  }
+
   const sql = spec.forbid === "sql";
   return (
     head +

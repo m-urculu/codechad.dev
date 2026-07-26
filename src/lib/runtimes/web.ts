@@ -53,10 +53,14 @@ function ensureDomTargets(js: string, html: string): string {
   return /<\/body>/i.test(html) ? html.replace(/<\/body>/i, `${injected}\n</body>`) : `${html}\n${injected}`;
 }
 
-export type WebLibs = "react" | "vue" | "three";
+export type WebLibs = "react" | "vue" | "three" | "tailwind";
 
 // CDN assets per library preset (pinned majors).
 const LIB_HEAD: Record<WebLibs, string> = {
+  // Tailwind's official browser build compiles the utility classes it finds in the
+  // DOM at runtime, which is the whole module: the learner writes markup, and the
+  // stylesheet is generated from it. Pinned like the rest (4.3.3, verified 2026-07).
+  tailwind: `<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3/dist/index.global.js"><\/script>`,
   react:
     `<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"><\/script>` +
     `<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"><\/script>` +
@@ -69,11 +73,14 @@ export function runWeb(opts: {
   iframe: HTMLIFrameElement;
   html: string;
   js: string;
+  /** Author-written CSS, for a module whose editor holds a stylesheet rather than a
+   *  script. Injected LAST in the head so it wins over anything a scaffold shipped. */
+  css?: string;
   libs?: WebLibs;
   onLine: (line: OutLine) => void;
   onDone?: () => void;
 }): WebRunHandle {
-  const { iframe, html, js, libs, onLine, onDone } = opts;
+  const { iframe, html, js, css, libs, onLine, onDone } = opts;
 
   // Don't let `</script>` in user/lesson code terminate our injected script.
   const safeJs = js.replace(/<\/script>/gi, "<\\/script>");
@@ -101,6 +108,9 @@ export function runWeb(opts: {
     `<style>html,body{font-family:system-ui,sans-serif;color:#111;background:#fff;margin:0;padding:12px}</style>` +
     `<script>(function(){\n${SHIM}\n})();<\/script>` +
     (libs ? LIB_HEAD[libs] : "") +
+    // `</style>` in the learner's CSS would otherwise end the block and dump the rest
+    // of their stylesheet into the page as text.
+    (css ? `<style>\n${css.replace(/<\/style>/gi, "<\\/style>")}\n</style>` : "") +
     `</head><body>\n${safeHtml}\n` +
     runner +
     // 'done' fires on window load (after deferred/module/babel scripts have executed).

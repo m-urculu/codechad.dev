@@ -21,6 +21,8 @@ const DOCS: Record<string, DocSource> = {
   lua: { kind: "devdocs", slug: "lua~5.4", label: "Lua 5.4" },
   postgres: { kind: "devdocs", slug: "postgresql~16", label: "PostgreSQL 16" },
   sqlite: { kind: "devdocs", slug: "sqlite", label: "SQLite" },
+  css: { kind: "devdocs", slug: "css", label: "CSS (MDN)" },
+  tailwind: { kind: "devdocs", slug: "tailwindcss", label: "Tailwind CSS" },
   react: { kind: "devdocs", slug: "react", label: "React" },
   vue: { kind: "devdocs", slug: "vue~3", label: "Vue 3" },
   // No DevDocs coverage → official docs (these block framing), open externally.
