@@ -27,6 +27,32 @@ type ProgressEntry = { built?: BuiltLesson; passed: string[]; done: boolean; cod
 type Progress = Record<string, ProgressEntry>;
 export type BootState = "loading" | "fresh" | "resumed";
 
+/** The four things that can occupy the workspace. On mobile, one at a time. */
+type Pane = "chat" | "roadmap" | "docs" | "code";
+
+const PANES: { id: Pane; label: string; Icon: typeof MessageSquare }[] = [
+  { id: "chat", label: "Chat", Icon: MessageSquare },
+  { id: "roadmap", label: "Roadmap", Icon: Map },
+  { id: "docs", label: "Docs", Icon: BookOpen },
+  { id: "code", label: "Editor", Icon: Code2 },
+];
+
+// Tailwind's md breakpoint. The layout itself is pure CSS; this is only for the
+// two decisions JS has to make — see where it is used.
+function useIsDesktop() {
+  const [desktop, setDesktop] = useState(
+    () => typeof window === "undefined" || window.matchMedia("(min-width: 768px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setDesktop(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return desktop;
+}
+
 // Compact outline of the WHOLE module tree — fed to every generation call so new
 // content can dedup against everything that exists and respect progression.
 // "◀ CURRENT" marks the node being expanded/taught; "✓done" marks completed points.
@@ -105,6 +131,16 @@ export default function EditorPanels({
 
   const [leftView, setLeftView] = useState<"chat" | "roadmap" | "docs">("chat");
   const [codeOpen, setCodeOpen] = useState(false);
+  const isDesktop = useIsDesktop();
+
+  // Bringing a left pane forward has to actually land. On mobile the editor
+  // occupies the same slot, so this closes it — otherwise the app switches tab
+  // behind a screen that is still showing code, and the learner sees nothing
+  // happen. On desktop the two sit side by side on purpose, so nothing closes.
+  function showLeft(view: "chat" | "roadmap" | "docs") {
+    setLeftView(view);
+    if (!isDesktop) setCodeOpen(false);
+  }
 
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
@@ -272,7 +308,7 @@ export default function EditorPanels({
 
   function handleRoadmap(r: Roadmap) {
     setRoadmap(r);
-    setLeftView("roadmap");
+    showLeft("roadmap");
     void nameCourseFromContent(r);
   }
 
@@ -339,7 +375,7 @@ export default function EditorPanels({
     // lesson asks for an account before they have been given anything.
     pendingNext.current = null; // a lesson picked by hand outranks the queued one
     setActiveNodeId(node.id);
-    setLeftView("chat");
+    showLeft("chat");
     setLessonRequest({
       node,
       outline: roadmap ? treeOutline(roadmap, node.id, progress) : undefined,
@@ -407,7 +443,7 @@ export default function EditorPanels({
   }
 
   function handleSubmitCode(code: string, output: string) {
-    setLeftView("chat");
+    showLeft("chat");
     setSubmitRequest({ code, output, nonce: Date.now() });
   }
 
@@ -418,7 +454,11 @@ export default function EditorPanels({
 
   function handleLoadCode(code: string, html?: string) {
     setLoadCode({ code, html, nonce: Date.now() });
-    setCodeOpen(true);
+    // Desktop shows the editor beside the chat, so revealing it costs nothing.
+    // On mobile it would replace the lesson brief the tutor has just posted with
+    // a wall of starter code, before the learner has read what to do with it.
+    // The code is loaded either way; they open the Editor tab when ready.
+    if (isDesktop) setCodeOpen(true);
   }
 
   // A doc link was clicked in the chat. Switch to the Docs tab IMMEDIATELY (so it never
@@ -428,7 +468,7 @@ export default function EditorPanels({
   async function handleOpenDoc(term: string) {
     const src = getDocSource(moduleId);
     if (!src || src.kind !== "devdocs") return;
-    setLeftView("docs"); // instant tab switch — resolution can take a beat on first click
+    showLeft("docs"); // instant tab switch — resolution can take a beat on first click
     const url = await resolveDocUrl(moduleId, term);
     if (url) setDocTarget({ url, nonce: Date.now() });
   }
@@ -441,9 +481,61 @@ export default function EditorPanels({
         : "border-line-strong bg-surface-0 text-ink-muted hover:bg-surface-2 hover:text-ink",
     ].join(" ");
 
+  // On a phone there is room for exactly one pane, so the editor stops being an
+  // independent toggle and becomes a fourth peer of chat/roadmap/docs. codeOpen
+  // doubles as "the editor is the selected tab", which is why the mobile buttons
+  // clear it and the desktop rails — where the editor sits BESIDE a left pane on
+  // purpose — still do not.
+  const mobilePane: Pane = codeOpen ? "code" : leftView;
+
+  function selectPane(pane: Pane) {
+    if (pane === "code") {
+      setCodeOpen(true);
+      return;
+    }
+    setLeftView(pane);
+    setCodeOpen(false);
+  }
+
+  // Mobile shows the selected tab only; desktop keeps the existing rules, where
+  // a left pane and the editor are deliberately on screen together.
+  const paneClass = (pane: Pane) =>
+    [
+      mobilePane === pane ? "flex" : "hidden",
+      (pane === "code" ? codeOpen : leftView === pane) ? "md:flex" : "md:hidden",
+      "flex-1 min-w-0",
+    ].join(" ");
+
   return (
-    <div className="flex h-full min-h-0">
-      <div className="flex shrink-0 flex-col items-center gap-2 border-r border-line-strong px-2 py-4">
+    <div className="flex h-full min-h-0 flex-col md:flex-row">
+      {/* Mobile: one tab bar for all four panes. Two vertical rails would eat a
+          third of a phone's width between them, and the editor being a separate
+          toggle is what let chat and code share a screen too narrow for both. */}
+      <nav className="flex shrink-0 border-b border-line-strong md:hidden">
+        {PANES.map(({ id, label, Icon }) => {
+          const active = mobilePane === id;
+          return (
+            <button
+              key={id}
+              onClick={() => selectPane(id)}
+              aria-label={`Show ${label.toLowerCase()}`}
+              aria-current={active ? "true" : undefined}
+              className={[
+                "flex flex-1 flex-col items-center gap-1 border-b-2 py-2 text-micro font-medium uppercase",
+                "tracking-wider transition-colors",
+                active
+                  ? "border-accent bg-surface-1 text-ink"
+                  : "border-transparent text-ink-muted hover:text-ink",
+              ].join(" ")}
+            >
+              <Icon className="h-4 w-4" />
+              {label}
+            </button>
+          );
+        })}
+      </nav>
+
+      <div className="hidden shrink-0 flex-col items-center gap-2 border-r border-line-strong px-2 py-4 md:flex">
         <button className={railBtn(leftView === "chat")} onClick={() => setLeftView("chat")} title="Chat" aria-label="Show chat">
           <MessageSquare className="h-5 w-5" />
         </button>
@@ -455,13 +547,13 @@ export default function EditorPanels({
         </button>
       </div>
 
-      <div className="flex flex-1 min-h-0 min-w-0 gap-4 p-4">
-        <div className={leftView === "chat" ? "flex flex-1 min-w-0" : "hidden"}>
+      <div className="flex flex-1 min-h-0 min-w-0 gap-4 p-3 md:p-4">
+        <div data-pane="chat" className={paneClass("chat")}>
           <ChatPanel
             moduleId={moduleId}
             courseId={courseId}
             ensureCourseId={ensureCourseId}
-            visible={leftView === "chat"}
+            visible={isDesktop ? leftView === "chat" : mobilePane === "chat"}
             boot={boot}
             hasRoadmap={!!roadmap}
             savedLevel={savedLevel}
@@ -481,7 +573,7 @@ export default function EditorPanels({
             onOpenDoc={handleOpenDoc}
           />
         </div>
-        <div className={leftView === "roadmap" ? "flex flex-1 min-w-0" : "hidden"}>
+        <div data-pane="roadmap" className={paneClass("roadmap")}>
           <RoadmapPanel
             roadmap={roadmap}
             activeNodeId={activeNodeId}
@@ -491,15 +583,15 @@ export default function EditorPanels({
             onActivateLesson={handleActivateLesson}
           />
         </div>
-        <div className={leftView === "docs" ? "flex flex-1 min-w-0" : "hidden"}>
+        <div data-pane="docs" className={paneClass("docs")}>
           <DocsPanel moduleId={moduleId} docTarget={docTarget} />
         </div>
-        <div className={codeOpen ? "flex flex-1 min-w-0" : "hidden"}>
+        <div data-pane="code" className={paneClass("code")}>
           <CodeHere moduleId={moduleId} onSubmit={handleSubmitCode} onCodeChange={handleCodeChange} loadCode={loadCode} />
         </div>
       </div>
 
-      <div className="flex shrink-0 flex-col items-center gap-2 border-l border-line-strong px-2 py-4">
+      <div className="hidden shrink-0 flex-col items-center gap-2 border-l border-line-strong px-2 py-4 md:flex">
         <button className={railBtn(codeOpen)} onClick={() => setCodeOpen((v) => !v)} title="Editor" aria-label="Toggle editor">
           <Code2 className="h-5 w-5" />
         </button>
