@@ -30,6 +30,7 @@ import {
   SiPhp,
   SiC,
   SiGit,
+  SiLinux,
   SiGo,
   SiLua,
   SiPostgresql,
@@ -80,6 +81,7 @@ const SECTIONS: Section[] = [
     label: "Tools",
     modules: [
       { id: "git", title: "Git", blurb: "A real repo in your browser", Icon: SiGit, color: "#F05032" },
+      { id: "linux", title: "Linux", blurb: "A shell, pipes and permissions", Icon: SiLinux, color: "#FCC624" },
     ],
   },
   {

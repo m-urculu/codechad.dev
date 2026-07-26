@@ -99,6 +99,10 @@ export async function startRun(spec: RuntimeSpec, code: string, onLine: OnLine):
       const h = runGo(code, onLine, spec.loadNote);
       return { done: h.done, cancel: h.cancel };
     }
+    case "shell": {
+      const { runLinux } = await import("./engineLinux");
+      return { done: runLinux(code, onLine, spec.loadNote), cancel: () => {} };
+    }
     case "git": {
       const { runGit } = await import("./engineGit");
       return { done: runGit(code, onLine, spec.loadNote), cancel: () => {} };
