@@ -6,6 +6,7 @@ export type EngineKind =
   | "worker-js"   // Web Worker JS sandbox (hard-killable)
   | "typescript"  // sucrase transpile -> worker-js
   | "clang"       // real Clang/LLD in WASM -> WASI (CDN)
+  | "yaegi"       // Go interpreter in WASM, in a Worker (CDN)
   | "pyodide"     // CPython in WASM (main thread, CDN)
   | "sqljs"       // SQLite in WASM (CDN)
   | "pglite"      // Postgres in WASM (CDN)
@@ -17,7 +18,7 @@ export type EngineKind =
   | "ml"          // transformers.js (CDN; downloads models)
   | "none";       // no client runtime — guided lessons only
 
-export type ForbidLang = "js" | "python" | "sql" | "ruby" | "lua" | "php" | "c" | "none";
+export type ForbidLang = "js" | "python" | "sql" | "ruby" | "lua" | "php" | "c" | "go" | "none";
 
 export type RuntimeSpec = {
   id: string;
@@ -128,6 +129,24 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     defaultCode:
       '#include <stdio.h>\n#include <stdlib.h>\n\nint main() {\n  int *nums = malloc(sizeof(int) * 3);\n  for (int i = 0; i < 3; i++) nums[i] = i * i;\n  printf("%d %d %d\\n", nums[0], nums[1], nums[2]);\n  free(nums);\n  return 0;\n}',
     loadNote: "Loading the C compiler (≈23 MB, first run only)…",
+  },
+  go: {
+    id: "go", title: "Go", monacoLang: "go", engine: "yaegi",
+    runnable: true, allowDom: false, langName: "Go", printHow: "fmt.Println(...)",
+    outputFormat:
+      "Go's own fmt verbs — %v, %+v, %d, %s. Slices print as [1 2 3] and maps as map[a:1], " +
+      "with no commas and no quotes, which is NOT JSON. Write stdout checks the way fmt prints, not the way JSON does.",
+    runNotes:
+      "Real Go via the Yaegi interpreter (compiled to WebAssembly), running in a Web Worker. " +
+      "Structs, methods, interfaces, slices, maps, errors, goroutines with channels/WaitGroup, and generics all work. " +
+      "It is an INTERPRETER, not `go build`: there is one file and no packages of your own, no `go.mod`, no imports beyond the " +
+      "standard library, and no network, files, os/exec or syscall. A program must finish on its own — an endless server loop is " +
+      "killed after 10 seconds. One measured quirk: %T prints the structural type (struct { W float64 }) rather than main.Rect, " +
+      "so never write a check that depends on %T output.",
+    forbid: "go", badgeColor: "#00ADD8",
+    defaultCode:
+      'package main\n\nimport "fmt"\n\nfunc main() {\n\tnums := []int{1, 2, 3}\n\tsum := 0\n\tfor _, n := range nums {\n\t\tsum += n\n\t}\n\tfmt.Println("sum:", sum)\n}',
+    loadNote: "Loading the Go interpreter (≈8 MB, first run only)…",
   },
   postgres: {
     id: "postgres", title: "PostgreSQL", monacoLang: "sql", engine: "pglite",

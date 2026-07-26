@@ -94,6 +94,11 @@ export async function startRun(spec: RuntimeSpec, code: string, onLine: OnLine):
       const { runC } = await import("./engineC");
       return { done: runC(code, onLine, spec.loadNote), cancel: () => {} };
     }
+    case "yaegi": {
+      const { runGo } = await import("./engineGo");
+      const h = runGo(code, onLine, spec.loadNote);
+      return { done: h.done, cancel: h.cancel };
+    }
     case "pyodide": {
       const { runPython } = await import("./enginePyodide");
       return { done: runPython(code, onLine, spec.loadNote), cancel: () => {} };
