@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare, Map, Code2, BookOpen } from "lucide-react";
 import { supabase } from "@/lib/supabaseBrowser";
 import { getModuleMeta } from "@/lib/modules";
-import { getPath, pathRoadmap } from "@/lib/paths";
+import { getPath, getPathByTitle, pathRoadmap } from "@/lib/paths";
 import { getDocSource } from "@/lib/docs";
 import { resolveDocUrl } from "@/lib/docs-index";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
@@ -134,7 +134,6 @@ export default function EditorPanels({
   /** Start a fixed career-path curriculum instead of generating one. */
   pathId?: string | null;
 }) {
-  const path = getPath(pathId);
 
   const [leftView, setLeftView] = useState<"chat" | "roadmap" | "docs">("chat");
   const [codeOpen, setCodeOpen] = useState(false);
@@ -150,6 +149,14 @@ export default function EditorPanels({
   }
 
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
+
+  // `pathId` is only set when a path is STARTED from the landing page. Resuming one —
+  // a reload, or re-opening it from "My courses" — arrives without it, and the
+  // workspace would forget the course is a path at all: the cold-start would then
+  // fall back to the two-question generated-course flow and offer to build a
+  // curriculum over the fixed one. The stored tree carries the path's title as its
+  // skill, so recognise it from there.
+  const path = getPath(pathId) ?? getPathByTitle(roadmap?.skill);
 
   // What this course is ABOUT, which for a path is the path rather than the module it
   // happens to open in ("Backend Developer", not "Python") — it is the persisted

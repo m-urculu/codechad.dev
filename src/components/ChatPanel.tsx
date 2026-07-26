@@ -171,6 +171,20 @@ export default function ChatPanel({
   const [userId, setUserId] = useState<string | null>(null);
   const [calib, setCalib] = useState<Calib>({ step: "done" });
   const [lesson, setLesson] = useState<ActiveLesson | null>(null);
+
+  // Is the cold-start genuinely still running? Not the same as "calibration is
+  // unfinished": calibration can be abandoned — the learner ignores the question and
+  // starts a lesson from the roadmap — and it then sits pending forever, ready to
+  // swallow a message meant for the tutor. It owns the input only while there is no
+  // curriculum yet, or while a PATH is asking its single level question (a path seeds
+  // its whole tree up front, so it has a roadmap from the very first frame).
+  // An OPEN LESSON always wins: someone working through objectives who types
+  // "how do I find the full name?" is asking about the lesson, never volunteering
+  // their experience level. That is the exact message the reported bug swallowed.
+  const calibrating =
+    calib.step !== "done" &&
+    !lesson &&
+    (!hasRoadmap || (!!pathTitle && calib.step === "level"));
   const lessonRef = useRef<ActiveLesson | null>(null);
   useEffect(() => {
     lessonRef.current = lesson;
@@ -779,6 +793,16 @@ export default function ChatPanel({
     } else if (calib.step === "goal") {
       const level = calib.level ?? "Some experience";
       setCalib((c) => ({ ...c, step: "done", goal: v }));
+      // NEVER generate over a curriculum that already exists. Calibration can be
+      // left unfinished — the learner ignores the question and starts a lesson from
+      // the roadmap, which is a perfectly sensible thing to do — and it is then
+      // still "pending" days later. Reaching this branch with a roadmap already on
+      // screen used to REPLACE it, which on a career path threw away the entire
+      // fixed curriculum and handed back a generated single-technology one.
+      if (hasRoadmap) {
+        pushMessage("bot", `Noted — *${v}*. I'll pitch your lessons at that. Your roadmap is unchanged.`);
+        return;
+      }
       await generateFirstLesson(level, v);
     }
   }
@@ -792,10 +816,20 @@ export default function ChatPanel({
       textareaRef.current.style.height = "auto";
     }
 
-    // During cold-start, a typed message answers the current calibration step.
-    if (calib.step !== "done") {
+    // During cold-start, a typed message answers the current calibration step —
+    // but ONLY while cold-start is genuinely what is happening. Once a roadmap
+    // exists the learner is working, not being onboarded, and "how do I find the
+    // full name?" is a question about the open lesson, not their experience level.
+    // Answering it as calibration is how a lesson question ended up two messages
+    // later regenerating the curriculum.
+    if (calibrating) {
       answerCalibration(text);
       return;
+    }
+    // Calibration was abandoned mid-way and the learner moved on. Close it out
+    // silently rather than leaving it pending forever, waiting to swallow a message.
+    if (calib.step !== "done") {
+      setCalib((c) => ({ ...c, step: "done" }));
     }
 
     // Calibrated but no roadmap (an earlier generation failed) → any message retries
@@ -1211,7 +1245,7 @@ export default function ChatPanel({
                   <MessageBubble key={msg.id} msg={msg} />
                 ))
               )}
-              {calib.step !== "done" && !loading && (
+              {calibrating && !loading && (
                 <div className="flex justify-start">
                   <div className="flex max-w-[100%] flex-wrap gap-2 sm:max-w-[60%]">
                     {(calib.step === "level" ? [...LEVELS] : (meta?.goals ?? [])).map((opt) => (
@@ -1260,7 +1294,7 @@ export default function ChatPanel({
             <Textarea
               ref={textareaRef}
               className="flex-1 min-h-[40px] max-h-40 resize-none px-4 py-2 bg-surface-0 text-ink placeholder:text-ink-dim placeholder:placeholder:font-normal placeholder:leading-normal border border-line-strong focus:border-line-active focus:outline-none font-normal leading-normal overflow-y-auto overflow-x-auto"
-              placeholder={calib.step !== "done" ? "Tap an option or type your answer…" : "Type a message..."}
+              placeholder={calibrating ? "Tap an option or type your answer…" : "Type a message..."}
               value={input}
               onChange={handleInput}
               onKeyDown={handleKeyDown}
