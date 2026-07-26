@@ -8,10 +8,14 @@
 import { NextResponse } from "next/server";
 import { geminiText } from "@/lib/agents/llm";
 import { getDocSource } from "@/lib/docs";
+import { requireUser } from "@/lib/apiAuth";
 
 type Item = { id: string; description: string; passed: boolean; detail?: string };
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   try {
     const { pointTitle, language, code, output, results, moduleId } = await request.json();
     const items: Item[] = Array.isArray(results) ? results : [];

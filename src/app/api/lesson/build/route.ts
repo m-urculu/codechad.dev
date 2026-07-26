@@ -3,8 +3,12 @@
 
 import { NextResponse } from "next/server";
 import { buildLesson } from "@/lib/agents/lesson";
+import { requireUser } from "@/lib/apiAuth";
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   try {
     const { skill, level, goal, pointTitle, pointSummary, moduleId, treeOutline } = await request.json();
     if (!skill || !pointTitle) {

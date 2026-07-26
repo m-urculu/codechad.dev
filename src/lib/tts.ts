@@ -1,8 +1,11 @@
 // Text-to-speech for the chat. Primary path: natural NEURAL voices via our /api/tts route
 // (Microsoft Edge's free online voices) — audio is synthesized server-side and streamed to
 // the browser as MP3, so it's natural on any machine with no model download or CPU load.
-// If that endpoint is unavailable, we fall back to the browser's native (robotic) voice so
-// read-aloud still works. A tiny external store lets read-aloud buttons share one playback.
+// If that endpoint is unavailable — including for a signed-out visitor, since it now
+// requires a token — we fall back to the browser's native (robotic) voice so read-aloud
+// still works. A tiny external store lets read-aloud buttons share one playback.
+
+import { apiFetch } from "@/lib/apiFetch";
 
 export type TTSStatus = "idle" | "loading" | "generating" | "speaking";
 export type TTSState = { status: TTSStatus; activeId: string | null };
@@ -91,7 +94,7 @@ export async function speak(id: string, text: string) {
   // Primary: neural voice from the server route.
   try {
     abort = new AbortController();
-    const res = await fetch("/api/tts", {
+    const res = await apiFetch("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: clean, voice: EDGE_VOICE }),

@@ -3,8 +3,12 @@
 
 import { NextResponse } from "next/server";
 import { evaluateSubmission, type Objective } from "@/lib/agents/lesson";
+import { requireUser } from "@/lib/apiAuth";
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   try {
     const body = await request.json();
     const { pointTitle, objectives, code, output, alreadyPassed, language } = body as {

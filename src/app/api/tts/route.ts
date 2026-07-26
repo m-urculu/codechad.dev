@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import WebSocket from "ws";
+import { requireUser } from "@/lib/apiAuth";
 
 export const runtime = "nodejs";
 
@@ -126,6 +127,13 @@ function synthesize(text: string, voice: string): Promise<Buffer> {
 }
 
 export async function POST(request: Request) {
+  // Signed out this 401s, and the client falls back to the browser's own voice —
+  // read-aloud keeps working, it just doesn't run through us. Without the guard
+  // the route is an open, unauthenticated proxy to Microsoft's endpoint, billed
+  // in our reputation with them rather than in tokens.
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   try {
     const { text, voice } = await request.json();
     if (!text || typeof text !== "string") {
