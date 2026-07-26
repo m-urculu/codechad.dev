@@ -14,6 +14,7 @@
 // still put any user_id they like in the body — it is simply ignored.
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
+import { anonRateLimit } from "@/lib/rateLimit";
 
 // Verification only: this client never reads a table, so the anon key is right
 // here. Using the service role would give a forged token more room to matter.
@@ -60,6 +61,32 @@ export async function requireUser(request: Request): Promise<Caller> {
 export async function optionalUser(request: Request): Promise<string | null> {
   const who = await requireUser(request);
   return "error" in who ? null : who.userId;
+}
+
+export type Trial = { userId: string | null } | { error: Response };
+
+/**
+ * The signed-in user, or an anonymous trial visitor who still has allowance left.
+ *
+ * For the generation routes, which the free trial has to reach before there is an
+ * account to charge them to. Same call shape as requireUser, but userId can be
+ * null — so anything that touches a table must branch on it rather than assume:
+ *
+ *   const who = await userOrTrial(request);
+ *   if ("error" in who) return who.error;
+ *   const siblings = who.userId ? await siblingCourses(who.userId, …) : [];
+ *
+ * A signed-in caller is never rate limited; an anonymous one is, because the
+ * "one lesson" boundary is drawn in the browser and cannot be trusted here.
+ */
+export async function userOrTrial(request: Request): Promise<Trial> {
+  const userId = await optionalUser(request);
+  if (userId) return { userId };
+
+  const limited = anonRateLimit(request);
+  if (limited) return { error: limited };
+
+  return { userId: null };
 }
 
 function unauthorized(message: string): Response {

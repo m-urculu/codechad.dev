@@ -328,13 +328,40 @@ export default function ChatPanel({
     getUserAndHistory();
   }, [moduleId]);
 
+  // Same reason as in EditorPanels: the conversation is only persisted when there
+  // is a userId, so signing in mid-run has to reach this component or the trial
+  // chat stays unsaved until a reload.
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setUserId(session?.user?.id ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
   // Boot the conversation: restore the saved chat (logged-in) or start fresh.
   const chatBootKey = useRef<string | null>(null);
   const chatRestored = useRef(false);
+  // Set once a trial conversation has been carried into a signed-in session.
+  const adoptedTrial = useRef(false);
   useEffect(() => {
     if (!meta || boot === "loading") return;
     const key = `${courseId ?? moduleId}|${userId ?? "anon"}`;
     if (chatBootKey.current === key) return;
+
+    // Signing in changes this key (anon → uid, then again once the course row
+    // exists), but the conversation on screen is the very thing being saved.
+    // Re-booting would drop a finished trial run back to the cold-start greeting.
+    // Adopt it instead, and stop re-booting for the rest of the mount.
+    if (adoptedTrial.current) {
+      chatBootKey.current = key;
+      return;
+    }
+    if (userId && chatBootKey.current?.endsWith("|anon")) {
+      adoptedTrial.current = true;
+      chatBootKey.current = key;
+      return;
+    }
+
     chatBootKey.current = key;
     (async () => {
       // 1) Saved conversation? Restore it verbatim (messages + calibration).
@@ -450,11 +477,18 @@ export default function ChatPanel({
     }
   }
 
+  // Message keys. `Date.now() + random(0..999)` collided in practice — the random
+  // part is wide enough to overlap the next millisecond's base, so two messages
+  // pushed a moment apart could land on the same id and React would drop one.
+  // A counter cannot collide within a mount, which is all the key has to survive.
+  const nextMessageId = useRef(Date.now());
+  const newId = () => ++nextMessageId.current;
+
   function pushMessage(role: 'user' | 'bot', text: string) {
     // A message the learner sent should always bring the view to the bottom, even if they
     // were scrolled up reading history.
     if (role === "user") pendingBottomRef.current = true;
-    setMessages((msgs) => [...msgs, { id: Date.now() + Math.floor(Math.random() * 1000), text, role }]);
+    setMessages((msgs) => [...msgs, { id: newId(), text, role }]);
   }
 
   // Show a lesson orientation message (intro / resume recap). Persisted but deduped per
@@ -465,7 +499,7 @@ export default function ChatPanel({
     pendingBottomRef.current = true;
     setMessages((msgs) => {
       const base = append ? msgs : msgs.filter((m) => m.lessonId !== lessonId);
-      return [...base, { id: Date.now() + Math.floor(Math.random() * 1000), text, role: 'bot' as const, lessonId }];
+      return [...base, { id: newId(), text, role: "bot" as const, lessonId }];
     });
   }
 
@@ -667,14 +701,21 @@ export default function ChatPanel({
         pushMessage(
           "bot",
           (data.error || "I couldn't build the roadmap just now.") +
-            " Your course is saved — send any message here and I'll retry generating it."
+            // Nothing is stored for a trial visitor, so promising a saved course
+            // would be a lie they'd discover on the next page load.
+            (userId
+              ? " Your course is saved — send any message here and I'll retry generating it."
+              : " Send any message here and I'll retry.")
         );
       }
     } catch {
       onRoadmapFailed?.(level, goal);
       pushMessage(
         "bot",
-        "I couldn't reach the roadmap service. Your course is saved — send any message here and I'll retry."
+        "I couldn't reach the roadmap service." +
+          (userId
+            ? " Your course is saved — send any message here and I'll retry."
+            : " Send any message here and I'll retry.")
       );
     } finally {
       setLoading(false);

@@ -522,6 +522,13 @@ export default function Landing({
             roadmap, then teaches it lesson by lesson with an AI tutor — running your real code
             live in the page, with nothing to install.`}
           </p>
+          {/* The trial is worth naming: a visitor who knows the first lesson costs
+              nothing is far likelier to start one, and starting one is the whole
+              funnel. Bounded in EditorPanels, capped server-side in rateLimit.ts. */}
+          <p className="mt-4 text-sm text-ink-muted">
+            Pick a track below and start straight away — your first lesson is free, no account
+            needed.
+          </p>
         </header>
 
 

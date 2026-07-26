@@ -68,7 +68,15 @@ async function rememberCredentials(email: string, password: string): Promise<voi
 // authorize request comes from here). GitHub goes through Supabase's broker,
 // which is fine: GitHub names the app after the OAuth app's own title, not after
 // the callback's domain, so nothing leaks the supabase.co host to the user.
-export default function LoginModal({ onClose }: { onClose: () => void }) {
+export default function LoginModal({
+  onClose,
+  reason,
+}: {
+  onClose: () => void;
+  /** Why the modal opened, shown above the providers. Absent for the nav button,
+   *  which needs no explanation. */
+  reason?: string | null;
+}) {
   const [mode, setMode] = useState<Mode>("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -226,10 +234,14 @@ export default function LoginModal({ onClose }: { onClose: () => void }) {
 
         <h2
           id="login-title"
-          className="mb-5 text-meta font-medium uppercase tracking-wider text-ink-muted"
+          className={`text-meta font-medium uppercase tracking-wider text-ink-muted ${
+            reason ? "mb-2" : "mb-5"
+          }`}
         >
           {mode === "signin" ? "Login" : "Create account"}
         </h2>
+
+        {reason && <p className="mb-5 text-sm leading-normal text-ink">{reason}</p>}
 
         <div className="flex flex-col gap-2">
           <button type="button" onClick={google} disabled={busy !== null} className={providerClass}>
