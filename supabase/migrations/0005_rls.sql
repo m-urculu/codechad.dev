@@ -1,6 +1,8 @@
 -- Row Level Security.
 --
--- DO NOT RUN THIS YET. It will break the app in its current shape. Read on.
+-- Ready to apply: the three things it depended on are done (see below). It was
+-- held back until they were, because applying it first would have returned zero
+-- rows to every server route.
 --
 -- The problem it fixes. The anon key is not a secret — it ships inside the
 -- browser bundle, and anyone can read it out of the page. Today it is enough to
@@ -13,12 +15,13 @@
 -- all rows to an unauthenticated caller. That is harmless while you are the only
 -- account and becomes a data breach on the day a second person signs up.
 --
--- Why it cannot be applied yet. The server routes also authenticate with the
--- anon key (api/supabase/*.ts, api/sys-manager/route.ts, api/functions/roadmap).
+-- What it depended on. The server routes used to authenticate with the anon key
+-- too (api/supabase/*.ts, api/sys-manager/route.ts, api/functions/roadmap).
 -- Under the policies below, anon carries no auth.uid(), so every one of those
--- queries would start returning zero rows. The routes must first be switched to
--- SUPABASE_SERVICE_ROLE_KEY, which bypasses RLS by design and must only ever be
--- read server-side — never NEXT_PUBLIC_, never imported into a component.
+-- queries would have started returning zero rows. They were moved onto
+-- SUPABASE_SERVICE_ROLE_KEY first, which bypasses RLS by design and must only
+-- ever be read server-side — never NEXT_PUBLIC_, never imported into a
+-- component. See src/lib/supabaseAdmin.ts.
 --
 -- Order of operations:
 --   1. apply 0004                                                        [done]
