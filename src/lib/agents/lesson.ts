@@ -88,6 +88,11 @@ const FORBIDDEN_BY_LANG: Record<ForbidLang, Rule[]> = {
     { re: /\b(system|popen|fork|exec[lv])\s*\(/, name: "system/fork/exec" },
     { re: /^\s*#include\s*<(unistd|sys\/socket|netinet|pthread|dlfcn)\.h>/m, name: "process/network/thread header" },
   ],
+  go: [
+    { re: /"net\/http"|"net"|"os\/exec"|"syscall"|"os\/signal"/, name: "network/process import" },
+    { re: /\bos\.(Open|Create|ReadFile|WriteFile|Remove)\b/, name: "os file access" },
+    { re: /^\s*package\s+(?!main\b)/m, name: "package other than main" },
+  ],
   none: [],
 };
 
@@ -102,6 +107,7 @@ const SYNTAX_BY_LANG: Record<ForbidLang, Syntax> = {
   lua: { line: ["--"], block: [["--[[", "]]"]], strings: ["'", '"'] },
   php: { line: ["//", "#"], block: [["/*", "*/"]], strings: ["'", '"'] },
   c: { line: ["//"], block: [["/*", "*/"]], strings: ["'", '"'] },
+  go: { line: ["//"], block: [["/*", "*/"]], strings: ["'", '"', "`"] },
   none: { line: [], block: [], strings: [] },
 };
 
