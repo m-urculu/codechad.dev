@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server';
 import { registerUserStepFulfillment } from '@/app/api/supabase/user-steps';
+import { requireUser } from '@/lib/apiAuth';
 
+// The user_id that used to arrive in the body is ignored; it was the only thing
+// this route trusted.
 export async function POST(req: Request) {
+  const who = await requireUser(req);
+  if ("error" in who) return who.error;
+
   try {
-    const { user_id } = await req.json();
-    if (!user_id) {
-      return NextResponse.json({ error: 'Missing user_id' }, { status: 400 });
-    }
-    await registerUserStepFulfillment(user_id);
+    await registerUserStepFulfillment(who.userId);
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     let message = 'Unknown error';

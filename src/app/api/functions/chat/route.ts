@@ -4,13 +4,16 @@
 import { callGemini } from '@/lib/gemini';
 import { NextResponse } from 'next/server';
 import { insertChatMessage } from "@/app/api/supabase/chat-message";
+import { optionalUser } from "@/lib/apiAuth";
 
 
 // Gemini chat function
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { prompt, user_id, previousMessages, userSteps } = body;
+    const { prompt, previousMessages, userSteps } = body;
+    // Derived, never taken from the body.
+    const user_id = await optionalUser(request);
 
     if (!prompt || typeof prompt !== 'string') {
       return NextResponse.json({ error: 'Prompt is required in the request body.' }, { status: 400 });

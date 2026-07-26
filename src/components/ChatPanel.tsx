@@ -30,6 +30,7 @@ import ReadAloudButton from "@/components/ReadAloudButton";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
 import { Check, Circle, RotateCcw } from "lucide-react";
+import { apiFetch } from "@/lib/apiFetch";
 
 marked.setOptions({ breaks: false });
 
@@ -303,10 +304,10 @@ export default function ChatPanel({
       setUserId(uid);
       if (uid && !moduleId) {
         try {
-          const res = await fetch("/api/functions/chat/history", {
+          const res = await apiFetch("/api/functions/chat/history", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ user_id: uid, limit: 50 })
+            body: JSON.stringify({ limit: 50 })
           });
           const result = await res.json();
           if (Array.isArray(result.messages) && result.messages.length > 0) {
@@ -340,7 +341,7 @@ export default function ChatPanel({
       //    Only a course that already exists can have one.
       if (userId && courseId) {
         try {
-          const res = await fetch(`/api/chat/state?user_id=${userId}&course_id=${encodeURIComponent(courseId)}`);
+          const res = await apiFetch(`/api/chat/state?course_id=${encodeURIComponent(courseId)}`);
           const { state } = await res.json();
           if (state?.messages?.length) {
             setMessages(
@@ -401,12 +402,11 @@ export default function ChatPanel({
       // said, so create it now and key the conversation to it.
       const cid = courseId ?? (await ensureCourseId?.());
       if (!cid) return;
-      fetch("/api/chat/state", {
+      apiFetch("/api/chat/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
-          course_id: cid,
+                    course_id: cid,
           module: moduleId,
           // Persist everything, carrying the lesson tag so orientation messages stay deduped.
           messages: messages.map((m) => ({ role: m.role, text: m.text, ...(m.lessonId ? { lessonId: m.lessonId } : {}) })),
@@ -428,7 +428,7 @@ export default function ChatPanel({
       .slice(-10)
       .map((m) => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
     try {
-      const res = await fetch("/api/agent", {
+      const res = await apiFetch("/api/agent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -440,8 +440,7 @@ export default function ChatPanel({
           hasRoadmap,
           activeLesson: lessonRef.current?.title,
           history,
-          user_id: userId,
-        }),
+                  }),
       });
       const data = await res.json();
       if (data.error) return { response: data.error + (data.details ? `\n${data.details}` : "") };
@@ -518,7 +517,7 @@ export default function ChatPanel({
       }
       if (!err) break; // runs clean AND passes its checks
       try {
-        const res = await fetch("/api/lesson/fix-solution", {
+        const res = await apiFetch("/api/lesson/fix-solution", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -554,7 +553,7 @@ export default function ChatPanel({
         if (!probe.error) {
           const g = gradeSubmission(rec.built.objectives, solution, probe.output);
           if (g.gradable && !g.allPassed) {
-            const res = await fetch("/api/lesson/fix-checks", {
+            const res = await apiFetch("/api/lesson/fix-checks", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -594,7 +593,7 @@ export default function ChatPanel({
       const probe = await findRuntimeErrors(spec, b.starterCode, b.html);
       const g = gradeSubmission(b.objectives, b.starterCode, probe.output);
       if (!g.gradable || !g.allPassed) return; // a real gap exists → nothing to fix
-      const res = await fetch("/api/lesson/fix-starter", {
+      const res = await apiFetch("/api/lesson/fix-starter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -643,7 +642,7 @@ export default function ChatPanel({
     setLoading(true);
     try {
       // L1: grounded overview (snowflake). The tree is generated on demand from here.
-      const res = await fetch("/api/roadmap/generate", {
+      const res = await apiFetch("/api/roadmap/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // user_id + moduleId let the generator see the learner's OTHER courses for
@@ -653,8 +652,7 @@ export default function ChatPanel({
           level,
           goal,
           moduleId: moduleId ?? undefined,
-          user_id: userId ?? undefined,
-          course_id: courseId ?? undefined,
+                    course_id: courseId ?? undefined,
         }),
       });
       const data = await res.json();
@@ -787,7 +785,7 @@ export default function ChatPanel({
           try {
             setLoading(true);
             const passedSet = new Set(cached.passed);
-            const res = await fetch("/api/lesson/explain", {
+            const res = await apiFetch("/api/lesson/explain", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -815,7 +813,7 @@ export default function ChatPanel({
       setLoading(true);
       try {
         // L4: grounded lesson — intro + starter code + FIXED objectives.
-        const res = await fetch("/api/lesson/build", {
+        const res = await apiFetch("/api/lesson/build", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -893,7 +891,7 @@ export default function ChatPanel({
             passed = Array.from(new Set([...active.passed, ...grade.results.filter((r) => r.passed).map((r) => r.id)]));
           } else {
             // Legacy lesson with no machine checks → fall back to the LLM grader.
-            const res = await fetch("/api/lesson/evaluate", {
+            const res = await apiFetch("/api/lesson/evaluate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -932,7 +930,7 @@ export default function ChatPanel({
             // 2) GUIDANCE (the LLM's real job): only when something failed, fed the
             // deterministic results so it teaches the actual gap instead of re-judging.
             try {
-              const gres = await fetch("/api/lesson/guide", {
+              const gres = await apiFetch("/api/lesson/guide", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

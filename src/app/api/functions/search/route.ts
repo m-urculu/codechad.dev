@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server';
 import { GoogleGenAI } from "@google/genai";
 import { insertChatMessage } from "@/app/api/supabase/chat-message";
 import { GEMINI_MODEL } from "@/lib/agents/models";
+import { optionalUser } from "@/lib/apiAuth";
 
 // Gemini search function using GoogleGenAI with grounding (real search)
 async function geminiSearch(query: string) {
@@ -56,7 +57,8 @@ async function geminiSearch(query: string) {
 // POST /api/gemini/search
 export async function POST(request: Request) {
   try {
-    const { query, user_id } = await request.json();
+    const { query } = await request.json();
+    const user_id = await optionalUser(request);
     if (!query || typeof query !== 'string') {
       return NextResponse.json({ error: 'Missing or invalid query' }, { status: 400 });
     }

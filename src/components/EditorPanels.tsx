@@ -12,6 +12,7 @@ import { getDocSource } from "@/lib/docs";
 import { resolveDocUrl } from "@/lib/docs-index";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
+import { apiFetch } from "@/lib/apiFetch";
 
 
 type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[] };
@@ -151,8 +152,7 @@ export default function EditorPanels({
         return;
       }
       try {
-        const res = await fetch(
-          `/api/roadmap/state?user_id=${uid}&course_id=${encodeURIComponent(initialCourseId)}`
+        const res = await apiFetch(`/api/roadmap/state?course_id=${encodeURIComponent(initialCourseId)}`
         );
         const json = await res.json();
         const state = json.state as
@@ -199,10 +199,10 @@ export default function EditorPanels({
     if (ensureInFlight.current) return ensureInFlight.current;
     ensureInFlight.current = (async () => {
       try {
-        const res = await fetch("/api/roadmap/state", {
+        const res = await apiFetch("/api/roadmap/state", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user_id: userId, skill, module: moduleId, name: skill }),
+          body: JSON.stringify({ skill, module: moduleId, name: skill }),
         });
         const { course_id } = await res.json();
         if (course_id) {
@@ -227,12 +227,11 @@ export default function EditorPanels({
     saveTimer.current = setTimeout(async () => {
       const cid = await ensureCourseId();
       if (!cid) return;
-      fetch("/api/roadmap/state", {
+      apiFetch("/api/roadmap/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
-          course_id: cid,
+                    course_id: cid,
           skill,
           module: moduleId,
           level: roadmap.level,
@@ -260,13 +259,12 @@ export default function EditorPanels({
     if (!userId || !r.title) return;
     const cid = await ensureCourseId();
     if (!cid) return;
-    fetch("/api/course", {
+    apiFetch("/api/course", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "autoname",
-        user_id: userId,
-        course_id: cid,
+                course_id: cid,
         name: r.title,
       }),
     }).catch(() => {});
@@ -278,17 +276,17 @@ export default function EditorPanels({
     if (!userId || !skill) return;
     const cid = await ensureCourseId();
     if (!cid) return;
-    fetch("/api/roadmap/state", {
+    apiFetch("/api/roadmap/state", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user_id: userId, course_id: cid, skill, module: moduleId, level, goal }),
+      body: JSON.stringify({ course_id: cid, skill, module: moduleId, level, goal }),
     }).catch(() => {});
   }
 
   async function handleExpand(node: RoadmapNode, path: string[]) {
     if (!roadmap || node.children !== null) return;
     try {
-      const res = await fetch("/api/roadmap/expand", {
+      const res = await apiFetch("/api/roadmap/expand", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

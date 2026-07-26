@@ -1,5 +1,5 @@
 // Course management actions used by the course settings view.
-//   POST /api/course { action: "duplicate", user_id, course_id }  -> { ok, course_id }
+//   POST /api/course { action: "duplicate", course_id }  -> { ok, course_id }
 //   POST /api/course { action: "reset",     user_id, course_id }  -> { ok }
 //   POST /api/course { action: "rename",    user_id, course_id, name } -> { ok }
 //   POST /api/course { action: "autoname",  user_id, course_id, name } -> { ok, name }
@@ -20,6 +20,7 @@ import {
   resetCourseProgress,
   saveRoadmapState,
 } from "@/app/api/supabase/roadmap-state";
+import { requireUser } from "@/lib/apiAuth";
 
 type TopicEdit = { id?: string; title: string };
 type Node = { id?: string; title?: string; kind?: string; children?: Node[] | null };
@@ -35,10 +36,14 @@ function collectIds(nodes: Node[] | undefined | null, out: Set<string> = new Set
 }
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   try {
-    const { action, user_id, course_id, name, level, goal, topics } = await request.json();
-    if (!user_id || !course_id) {
-      return NextResponse.json({ error: "user_id and course_id are required" }, { status: 400 });
+    const { action, course_id, name, level, goal, topics } = await request.json();
+    const user_id = who.userId;
+    if (!course_id) {
+      return NextResponse.json({ error: "course_id is required" }, { status: 400 });
     }
 
     switch (action) {

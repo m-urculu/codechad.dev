@@ -6,6 +6,7 @@ import * as roadmapHandlers from '@/app/api/functions/roadmap/index';
 import { callGemini } from '@/lib/gemini';
 import { getUserChatMessages, insertChatMessage } from '@/app/api/supabase/chat-message';
 import { supabaseAdmin as supabase } from "@/lib/supabaseAdmin";
+import { requireUser } from "@/lib/apiAuth";
 
 const functionMap: Record<string, (request: Request) => Promise<Response>> = {
   chat: chatHandler,
@@ -30,9 +31,14 @@ async function getUserStepFulfillment(user_id: string) {
 }
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
+
   try {
     const body = await request.json();
-    const { user_input, user_id } = body;
+    const { user_input } = body;
+    const user_id = who.userId;
     if (!user_input || typeof user_input !== 'string') {
       return NextResponse.json({ error: 'Missing or invalid user_input' }, { status: 400 });
     }

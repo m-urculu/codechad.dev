@@ -1,8 +1,11 @@
 // Roadmap state persistence, keyed by course_id.
-//   GET    /api/roadmap/state?user_id=..&course_id=..            -> { state }
-//   POST   /api/roadmap/state { user_id, course_id?, skill?, module?, name?, level?, goal?, tree?, progress? }
+//   GET    /api/roadmap/state?course_id=..                       -> { state }
+//   POST   /api/roadmap/state { course_id?, skill?, module?, name?, level?, goal?, tree?, progress? }
 //                                                                -> { ok, course_id }
-//   DELETE /api/roadmap/state?user_id=..&course_id=..            -> { ok }
+//   DELETE /api/roadmap/state?course_id=..                       -> { ok }
+//
+// The user is resolved from the Authorization header; a user_id in the request
+// is ignored.
 //
 // Fails soft: a paused/unreachable Supabase project returns null/ok:false, never 5xx,
 // so the in-memory experience keeps working.
@@ -14,44 +17,49 @@ import {
   saveRoadmapState,
   uniqueCourseName,
 } from "@/app/api/supabase/roadmap-state";
+import { requireUser } from "@/lib/apiAuth";
 
 export async function GET(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   const { searchParams } = new URL(request.url);
-  const user_id = searchParams.get("user_id");
   const course_id = searchParams.get("course_id");
-  if (!user_id || !course_id) {
-    return NextResponse.json({ error: "user_id and course_id are required" }, { status: 400 });
+  if (!course_id) {
+    return NextResponse.json({ error: "course_id is required" }, { status: 400 });
   }
-  const state = await loadRoadmapState(user_id, course_id);
+  const state = await loadRoadmapState(who.userId, course_id);
   return NextResponse.json({ state });
 }
 
 // Erases the course: roadmap, progress and its chat history.
 export async function DELETE(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   const { searchParams } = new URL(request.url);
-  const user_id = searchParams.get("user_id");
   const course_id = searchParams.get("course_id");
-  if (!user_id || !course_id) {
-    return NextResponse.json({ error: "user_id and course_id are required" }, { status: 400 });
+  if (!course_id) {
+    return NextResponse.json({ error: "course_id is required" }, { status: 400 });
   }
-  const ok = await deleteRoadmapState(user_id, course_id);
+  const ok = await deleteRoadmapState(who.userId, course_id);
   return NextResponse.json({ ok });
 }
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   try {
-    const { user_id, course_id, skill, module: moduleId, name, level, goal, tree, progress } =
+    const { course_id, skill, module: moduleId, name, level, goal, tree, progress } =
       await request.json();
-    if (!user_id) {
-      return NextResponse.json({ error: "user_id is required" }, { status: 400 });
-    }
     if (!course_id && !skill) {
       return NextResponse.json({ error: "skill is required when creating a course" }, { status: 400 });
     }
     // Creating: give the course a name that doesn't collide with an existing one,
     // so a second "Python" arrives as "Python (2)" rather than an identical card.
-    const finalName = course_id ? name : await uniqueCourseName(user_id, name || skill);
-    const id = await saveRoadmapState(user_id, course_id, {
+    const finalName = course_id ? name : await uniqueCourseName(who.userId, name || skill);
+    const id = await saveRoadmapState(who.userId, course_id, {
       skill,
       module: moduleId,
       name: finalName,

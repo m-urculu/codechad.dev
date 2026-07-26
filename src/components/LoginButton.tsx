@@ -12,6 +12,7 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseBrowser";
 import { completeGoogleRedirect } from "@/lib/googleAuth";
 import LoginModal from "@/components/LoginModal";
+import { apiFetch } from "@/lib/apiFetch";
 
 
 export function LoginButton() {
@@ -51,10 +52,10 @@ export function LoginButton() {
         setModalOpen(false);
         // Call API route to register user in user_step_fulfillment
         try {
-          await fetch('/api/user-steps/register', {
+          await apiFetch('/api/user-steps/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ user_id: session.user.id })
+            body: JSON.stringify({})
           });
         } catch {
           // Optionally handle/log error

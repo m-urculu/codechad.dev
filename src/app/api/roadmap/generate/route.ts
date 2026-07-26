@@ -1,5 +1,5 @@
 // POST /api/roadmap/generate — L1 grounded overview.
-// Body: { skill, level?, goal?, moduleId?, user_id?, course_id?, draftTopics?, guidance? }
+// Body: { skill, level?, goal?, moduleId?, course_id?, draftTopics?, guidance? }
 //   -> Roadmap (topics only; children lazy)
 //
 // When user_id + moduleId are supplied, the learner's OTHER courses for the same
@@ -10,17 +10,22 @@ import { NextResponse } from "next/server";
 import { generateOverview } from "@/lib/agents/snowflake";
 import { getRuntime } from "@/lib/runtimes/registry";
 import { siblingCourses } from "@/app/api/supabase/roadmap-state";
+import { requireUser } from "@/lib/apiAuth";
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
+
   try {
-    const { skill, level, goal, moduleId, user_id, course_id, draftTopics, guidance } =
+    const { skill, level, goal, moduleId, course_id, draftTopics, guidance } =
       await request.json();
     if (!skill || typeof skill !== "string") {
       return NextResponse.json({ error: "skill is required" }, { status: 400 });
     }
     const runtimeNotes = moduleId ? getRuntime(moduleId).runNotes : undefined;
     const siblings =
-      user_id && moduleId ? await siblingCourses(user_id, moduleId, course_id) : [];
+      moduleId ? await siblingCourses(who.userId, moduleId, course_id) : [];
     const roadmap = await generateOverview({
       skill,
       level,
