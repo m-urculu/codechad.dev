@@ -113,8 +113,11 @@ export default function CodeHere({
       await new Promise<void>((resolve) => {
         webRef.current = runWeb({
           iframe: iframeRef.current!,
-          html: htmlRef.current,
-          js: codeRef.current,
+          // Which slot the editor's buffer fills is the module's call: a script for
+          // most, a stylesheet for CSS, the markup itself for Tailwind.
+          html: spec.codeIs === "html" ? codeRef.current : htmlRef.current,
+          js: spec.codeIs && spec.codeIs !== "js" ? "" : codeRef.current,
+          css: spec.codeIs === "css" ? codeRef.current : undefined,
           libs: spec.iframeLibs,
           onLine: collect,
           onDone: () => {

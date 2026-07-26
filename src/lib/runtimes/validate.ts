@@ -42,7 +42,17 @@ export async function findRuntimeErrors(
               resolve();
             }
           };
-          runWeb({ iframe, html, js: code, libs: spec.iframeLibs, onLine, onDone: finish });
+          // Same slot routing as the real editor (see CodeHere) — validating a CSS
+          // solution as if it were a script would report every lesson as broken.
+          runWeb({
+            iframe,
+            html: spec.codeIs === "html" ? code : html,
+            js: spec.codeIs && spec.codeIs !== "js" ? "" : code,
+            css: spec.codeIs === "css" ? code : undefined,
+            libs: spec.iframeLibs,
+            onLine,
+            onDone: finish,
+          });
           setTimeout(finish, SAFETY_MS); // don't hang if the run never signals done
         });
       } finally {

@@ -23,6 +23,8 @@ export const MODULE_META: Record<string, ModuleMeta> = {
   postgres: { id: "postgres", title: "PostgreSQL", goals: ["Analytics & queries", "Backend/app dev", "Coding interviews"] },
   sqlite: { id: "sqlite", title: "SQLite", goals: ["App storage", "Learning SQL", "Coding interviews"] },
   duckdb: { id: "duckdb", title: "DuckDB", goals: ["Data analytics", "CSV/Parquet crunching", "Just exploring"] },
+  css: { id: "css", title: "CSS", goals: ["Layouts that hold up", "Responsive design", "Animation & polish", "Just the language"] },
+  tailwind: { id: "tailwind", title: "Tailwind CSS", goals: ["Building UI fast", "Design systems", "Responsive & dark mode"] },
   react: { id: "react", title: "React", goals: ["UI components", "Full apps", "Coding interviews"] },
   vue: { id: "vue", title: "Vue", goals: ["UI components", "Full apps", "Just exploring"] },
   wasm: { id: "wasm", title: "WebAssembly", goals: ["Run native code on the web", "Performance work", "Just exploring"] },

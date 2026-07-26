@@ -29,9 +29,18 @@ export type RuntimeSpec = {
   engine: EngineKind;
   runnable: boolean;
   allowDom: boolean;            // lessons may ship HTML + live Preview
-  iframeLibs?: "react" | "vue" | "three";
+  iframeLibs?: "react" | "vue" | "three" | "tailwind";
   langName: string;             // how lessons name the language
   printHow: string;             // the output mechanism lessons teach
+  /**
+   * What the EDITOR holds. "js" (the default) for every scripting module; "css" for a
+   * stylesheet the lesson's markup is styled by; "html" for a module where the markup
+   * itself is the exercise (Tailwind — the classes ARE the answer).
+   *
+   * Only the iframe engine reads this, and it decides which slot the learner's buffer
+   * is passed in as. Without it a CSS lesson would be injected into a <script> tag.
+   */
+  codeIs?: "js" | "css" | "html";
   // How this runtime renders a printed value, stated to the lesson generator so the
   // expected output it writes into a check is the output the learner will actually
   // see. Omitted where the language's own printing is unsurprising.
@@ -241,6 +250,41 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     defaultCode:
       'Vue.createApp({\n  data() {\n    return { count: 0 };\n  },\n  template: `<button @click="count++">Clicked {{ count }} times</button>`,\n}).mount("#app");',
     defaultHtml: '<div id="app"></div>',
+  },
+  css: {
+    id: "css", title: "CSS", monacoLang: "css", engine: "iframe-web",
+    runnable: true, allowDom: true, codeIs: "css",
+    langName: "CSS", printHow: "the rendered Preview",
+    runNotes:
+      "The editor holds a STYLESHEET, not a script: whatever the learner writes is injected as the page's " +
+      "CSS and the result is shown in the live Preview. The lesson ships the markup it styles in \"html\". " +
+      "Real browser CSS — the cascade, specificity, the box model, flexbox, grid, custom properties, " +
+      "transitions, media queries and container queries all behave exactly as they do on any page. " +
+      "There is no build step, no preprocessor (no Sass/Less), no @import of external stylesheets and no " +
+      "web fonts — system fonts only. Nothing prints to the console, so an objective can never be checked " +
+      "against output: check the DECLARATION the learner had to write.",
+    forbid: "none", badgeColor: "#663399",
+    defaultCode:
+      ".card {\n  display: flex;\n  gap: 12px;\n  align-items: center;\n  padding: 16px;\n  border: 1px solid #d8dae5;\n  border-radius: 10px;\n  background: #fff;\n}\n\n.avatar {\n  width: 44px;\n  height: 44px;\n  border-radius: 50%;\n  background: linear-gradient(135deg, #6d5efc, #22d3ee);\n}\n\n.name {\n  font-weight: 700;\n}\n\n.role {\n  color: #6b7280;\n  font-size: 14px;\n}",
+    defaultHtml:
+      '<div class="card">\n  <div class="avatar"></div>\n  <div>\n    <div class="name">Ada Lovelace</div>\n    <div class="role">Author of the first algorithm</div>\n  </div>\n</div>',
+  },
+  tailwind: {
+    id: "tailwind", title: "Tailwind CSS", monacoLang: "html", engine: "iframe-web",
+    runnable: true, allowDom: true, codeIs: "html", iframeLibs: "tailwind",
+    langName: "HTML with Tailwind utility classes", printHow: "the rendered Preview",
+    runNotes:
+      "The editor holds the MARKUP, and the utility classes on it ARE the exercise — Tailwind's official " +
+      "browser build compiles the classes it finds in the DOM, so the Preview is really styled by Tailwind. " +
+      "Tailwind v4: utilities, arbitrary values (w-[37px]), state variants (hover:, focus:, disabled:), " +
+      "responsive prefixes (sm: md: lg:), dark:, group-hover:, flex/grid utilities, spacing and colour scales. " +
+      "NOT available: a tailwind.config.js, @apply in a separate file, plugins, custom fonts, or any build step " +
+      "— theme customisation is done inline with @theme in a <style> block if a lesson needs it. " +
+      "Nothing prints to the console, so check the CLASSES the learner had to write, never output.",
+    forbid: "none", badgeColor: "#38BDF8",
+    defaultCode:
+      '<div class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">\n  <div class="h-11 w-11 rounded-full bg-gradient-to-br from-indigo-500 to-cyan-400"></div>\n  <div>\n    <p class="font-bold text-slate-900">Ada Lovelace</p>\n    <p class="text-sm text-slate-500">Author of the first algorithm</p>\n  </div>\n  <button class="ml-auto rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500">\n    Follow\n  </button>\n</div>',
+    loadNote: "Loading Tailwind…",
   },
   wasm: {
     id: "wasm", title: "WebAssembly", monacoLang: "javascript", engine: "worker-js",

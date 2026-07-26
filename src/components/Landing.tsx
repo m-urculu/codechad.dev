@@ -39,6 +39,8 @@ import {
   SiDuckdb,
   SiReact,
   SiVuedotjs,
+  SiCss,
+  SiTailwindcss,
   SiWebassembly,
   SiThreedotjs,
   SiHuggingface,
@@ -59,10 +61,22 @@ type Section = { label: string; modules: Module[] };
 //
 // ORDER IS DELIBERATE: sections, and modules within them, run most to least
 // profitable for the learner — expected earnings, which is pay AND how many jobs
-// actually exist, not pay alone. That is why AI/ML is not first despite paying the
-// most per role (few roles, and most want a research background), and why PHP sits
-// above Lua despite the lower median (a large, live hiring market). Keep new
-// modules in rank rather than appending, or the grid stops meaning anything.
+// actually exist, not pay alone.
+//
+// It is also RESEARCHED, not guessed: the figures, the reasoning and the sources
+// are in docs/module-ordering.md (July 2026). The short version —
+//   • Languages first: best paid ($155-175k) and the largest hiring surface.
+//   • Tools second: Linux leads to the highest-paid IC role measured (cloud
+//     infrastructure engineer, $189k) and Docker is the most-used technology of
+//     all at 73.8%. An earlier ordering had this group fourth on the guess that
+//     nobody is hired for Linux; the survey says the opposite.
+//   • Databases fourth despite SQL/Postgres being on ~60% of professional stacks:
+//     as a PRIMARY skill they pay analyst money. Hired WITH, not hired AS.
+//   • Graphics & AI last despite the best pay per role — the market is thin, and
+//     our module teaches in-browser inference, not the PyTorch work those
+//     postings hire for.
+// Keep new modules in rank rather than appending, or the grid stops meaning
+// anything — and when you do, update the doc with the number that justified it.
 const SECTIONS: Section[] = [
   {
     label: "Languages",
@@ -78,10 +92,19 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+    label: "Tools",
+    modules: [
+      { id: "linux", title: "Linux", blurb: "A shell, pipes and permissions", Icon: SiLinux, color: "#FCC624" },
+      { id: "git", title: "Git", blurb: "A real repo in your browser", Icon: SiGit, color: "#F05032" },
+    ],
+  },
+  {
     label: "Web & Runtimes",
     modules: [
       { id: "react", title: "React", blurb: "Build apps with live preview", Icon: SiReact, color: "#61DAFB" },
       { id: "vue", title: "Vue", blurb: "Build apps with live preview", Icon: SiVuedotjs, color: "#42B883" },
+      { id: "css", title: "CSS", blurb: "Style a real page, live", Icon: SiCss, color: "#663399" },
+      { id: "tailwind", title: "Tailwind CSS", blurb: "Utility classes, compiled in-tab", Icon: SiTailwindcss, color: "#38BDF8" },
       { id: "wasm", title: "WebAssembly", blurb: "Run C / C++ / Rust / Go output", Icon: SiWebassembly, color: "#654FF0" },
     ],
   },
@@ -91,13 +114,6 @@ const SECTIONS: Section[] = [
       { id: "postgres", title: "PostgreSQL", blurb: "Real Postgres via PGlite", Icon: SiPostgresql, color: "#4169E1" },
       { id: "duckdb", title: "DuckDB", blurb: "Analytics on CSV / Parquet", Icon: SiDuckdb, color: "#FFF000" },
       { id: "sqlite", title: "SQLite", blurb: "Real DB via sql.js", Icon: SiSqlite, color: "#7ac5e8" },
-    ],
-  },
-  {
-    label: "Tools",
-    modules: [
-      { id: "linux", title: "Linux", blurb: "A shell, pipes and permissions", Icon: SiLinux, color: "#FCC624" },
-      { id: "git", title: "Git", blurb: "A real repo in your browser", Icon: SiGit, color: "#F05032" },
     ],
   },
   {
