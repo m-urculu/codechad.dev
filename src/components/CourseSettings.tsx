@@ -17,6 +17,7 @@ import {
 } from "react-icons/fi";
 import type { RoadmapSummary } from "@/components/Landing";
 import { apiFetch } from "@/lib/apiFetch";
+import { getPathByTitle, pathModules } from "@/lib/paths";
 
 type Progress = Record<string, { done?: boolean; passed?: unknown; built?: { objectives?: unknown[] } }>;
 type TreeNode = { id?: string; kind?: string; title?: string; children?: TreeNode[] | null };
@@ -126,6 +127,10 @@ export default function CourseSettings({
   onOpen: (moduleId: string, courseId: string) => void;
   onDeleted: () => void;
 }) {
+  // The career path this course came from, if any — recognised by its skill, which is
+  // the path title. A path course is edited like any other; it just has to keep its
+  // runtimes when the curriculum is rebuilt.
+  const coursePath = getPathByTitle(course.skill);
   const [name, setName] = useState(course.name);
   // The name as last persisted. Distinct from the draft above, because regenerating
   // can rename the course from under the learner and the heading has to follow.
@@ -236,6 +241,10 @@ export default function CourseSettings({
           moduleId: course.module,
           level,
           goal,
+          // A career path is taught across a dozen runtimes. Without this the model
+          // returns untagged topics, every lesson falls back to the module the path
+          // opened in, and a Go chapter would hand the learner a Python editor.
+          modules: coursePath ? pathModules(coursePath) : undefined,
                     course_id: course.courseId,
           draftTopics: topics.map((t) => t.title.trim()).filter(Boolean),
           guidance: guidance.trim() || undefined,

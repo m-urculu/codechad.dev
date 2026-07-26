@@ -90,10 +90,16 @@ export default function RoadmapPanel({
     const complete = expandable ? hasStructure(node) && r >= 0.999 : done;
 
     return (
-      <div>
+      // Every open point renders its own "Start lesson", so the row has to be
+      // identifiable as a whole — not just its header button.
+      <div data-node-row={node.id}>
         <button
           type="button"
           data-node-kind={node.kind}
+          // Titles repeat across a path ("Setup" opens three different courses), so the
+          // id is the only thing that identifies a row from the outside.
+          data-node-id={node.id}
+          data-node-module={node.module ?? ""}
           onClick={() => toggle(node, here)}
           style={{ paddingLeft: 8 + depth * 16 }}
           className={[

@@ -28,6 +28,18 @@ export const MODULE_META: Record<string, ModuleMeta> = {
   wasm: { id: "wasm", title: "WebAssembly", goals: ["Run native code on the web", "Performance work", "Just exploring"] },
   graphics: { id: "graphics", title: "Three.js / WebGPU", goals: ["3D on the web", "Data visualization", "Creative coding"] },
   ml: { id: "ml", title: "AI / ML", goals: ["Run models in-browser", "Understand the fundamentals", "Build AI features"] },
+
+  // Path-only modules (see src/lib/paths.ts). They are never opened from the landing
+  // grid — a path node names them — but a lesson on one still asks for the module's
+  // title (the docs pane header) and its goals (a recalibration in course settings).
+  docker: { id: "docker", title: "Docker", goals: ["Containerising an app", "Local dev environments", "Shipping images"] },
+  kubernetes: { id: "kubernetes", title: "Kubernetes", goals: ["Deploying services", "Operating a cluster", "Understanding the objects"] },
+  aws: { id: "aws", title: "AWS", goals: ["Hosting an app", "Storage & CDNs", "IAM & security"] },
+  cicd: { id: "cicd", title: "CI/CD", goals: ["Testing every PR", "Automating deploys", "Pipeline security"] },
+  rabbitmq: { id: "rabbitmq", title: "RabbitMQ", goals: ["Decoupling services", "Work queues", "Event-driven design"] },
+  powerbi: { id: "powerbi", title: "Power BI", goals: ["Building dashboards", "Modeling & DAX", "Reporting for stakeholders"] },
+  pygame: { id: "pygame", title: "Pygame", goals: ["Building a game loop", "2D games", "Just exploring"] },
+  career: { id: "career", title: "Career", goals: ["Landing a first job", "Portfolio & resume", "Interview prep"] },
 };
 
 export function getModuleMeta(id?: string | null): ModuleMeta | null {

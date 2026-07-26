@@ -39,7 +39,10 @@ export async function POST(request: Request) {
       parentId,
       path: Array.isArray(path) ? path : [title],
       treeOutline: typeof treeOutline === "string" ? treeOutline : undefined,
-      runtimeNotes: moduleId ? getRuntime(moduleId).runNotes : undefined,
+      // The node's OWN runtime decides what can be practiced under it. On a path the
+      // course module is only the fallback — decomposing a Docker topic against
+      // Python's sandbox rules is how you get children that teach the wrong thing.
+      runtimeNotes: nodeModule || moduleId ? getRuntime(nodeModule || moduleId).runNotes : undefined,
       // The node's own runtime when a path gave it one, so its children inherit it.
       module: typeof nodeModule === "string" ? nodeModule : undefined,
     });

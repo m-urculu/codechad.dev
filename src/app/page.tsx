@@ -14,6 +14,9 @@ export default function Home() {
   const [view, setView] = useState<"landing" | "workspace" | "settings" | "account">("landing");
   const [moduleId, setModuleId] = useState<string | null>(null);
   const [courseId, setCourseId] = useState<string | null>(null);
+  // Set only when a career path is STARTED from the landing page. Resuming one needs
+  // nothing here — the stored tree already is the path.
+  const [pathId, setPathId] = useState<string | null>(null);
   const [settingsCourse, setSettingsCourse] = useState<RoadmapSummary | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -71,9 +74,10 @@ export default function Home() {
       <div className="relative flex-1 min-h-0">
         {view === "landing" ? (
           <Landing
-            onSelect={(id, cid) => {
+            onSelect={(id, cid, pid) => {
               setModuleId(id);
               setCourseId(cid ?? null);
+              setPathId(pid ?? null);
               setView("workspace");
             }}
             onSettings={(course) => {
@@ -91,6 +95,7 @@ export default function Home() {
             onOpen={(id, cid) => {
               setModuleId(id);
               setCourseId(cid);
+              setPathId(null); // an existing course carries its own tree
               setView("workspace");
             }}
             onDeleted={() => {
@@ -99,7 +104,7 @@ export default function Home() {
             }}
           />
         ) : (
-          <EditorPanels moduleId={moduleId} courseId={courseId} />
+          <EditorPanels moduleId={moduleId} courseId={courseId} pathId={pathId} />
         )}
       </div>
     </div>

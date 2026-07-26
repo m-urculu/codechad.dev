@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare, Map, Code2, BookOpen } from "lucide-react";
 import { supabase } from "@/lib/supabaseBrowser";
 import { getModuleMeta } from "@/lib/modules";
+import { getPath, pathRoadmap } from "@/lib/paths";
 import { getDocSource } from "@/lib/docs";
 import { resolveDocUrl } from "@/lib/docs-index";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
@@ -124,13 +125,16 @@ function setChildren(roadmap: Roadmap, nodeId: string, children: RoadmapNode[]):
 export default function EditorPanels({
   moduleId,
   courseId: initialCourseId,
+  pathId,
 }: {
   moduleId?: string | null;
   /** Open a specific stored course. When absent, the user's most recent course for
    *  this technology is resumed, or a new one is created on first activity. */
   courseId?: string | null;
+  /** Start a fixed career-path curriculum instead of generating one. */
+  pathId?: string | null;
 }) {
-  const skill = getModuleMeta(moduleId)?.title ?? "";
+  const path = getPath(pathId);
 
   const [leftView, setLeftView] = useState<"chat" | "roadmap" | "docs">("chat");
   const [codeOpen, setCodeOpen] = useState(false);
@@ -146,6 +150,14 @@ export default function EditorPanels({
   }
 
   const [roadmap, setRoadmap] = useState<Roadmap | null>(null);
+
+  // What this course is ABOUT, which for a path is the path rather than the module it
+  // happens to open in ("Backend Developer", not "Python") — it is the persisted
+  // `skill`, the name on the card, and the subject every expansion prompt is built
+  // around. The stored tree wins, so a RESUMED path keeps its identity without the
+  // page having to remember which path the course came from.
+  const skill = roadmap?.skill || path?.title || getModuleMeta(moduleId)?.title || "";
+
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress>({});
   const [lessonRequest, setLessonRequest] = useState<{ node: RoadmapNode; outline?: string; nonce: number } | null>(null);
@@ -244,7 +256,34 @@ export default function EditorPanels({
     return () => {
       cancelled = true;
     };
-  }, [moduleId, skill, initialCourseId]);
+    // `skill` is deliberately NOT a dependency: it is derived partly from the tree
+    // this effect loads, so listing it would send the loader straight back through
+    // itself the moment a course resumed — dropping boot to "loading" again and
+    // re-booting the conversation with it. The identity that decides what to load is
+    // the module, the course and the path.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleId, initialCourseId, pathId]);
+
+  // A career path needs no generation call — its curriculum is data. Build the whole
+  // tree the moment the workspace opens, so the learner sees the real length of what
+  // they just started instead of a spinner, and every lesson under it is still
+  // generated on demand exactly as in any other course.
+  useEffect(() => {
+    if (!path || boot !== "fresh" || roadmap) return;
+    const seeded = pathRoadmap(path);
+    setRoadmap(seeded);
+    void nameCourseFromContent(seeded);
+    // Deliberately NOT switching to the roadmap tab here, unlike a generated course:
+    // the chat is mid-question, and answering it is what opens the tab below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, boot, roadmap]);
+
+  // The one thing a path still asks for. Stored on the tree (and so persisted with
+  // it) because the level is what every lesson on the path is pitched at.
+  function handlePathLevel(level: string) {
+    setRoadmap((r) => (r ? { ...r, level } : r));
+    showLeft("roadmap");
+  }
 
   // Signing in mid-run has to take effect without a reload. userId is what every
   // save below is gated on, so flipping it here is precisely what turns a trial
@@ -564,6 +603,10 @@ export default function EditorPanels({
             moduleId={moduleId}
             courseId={courseId}
             ensureCourseId={ensureCourseId}
+            skill={skill}
+            pathTitle={path?.title ?? null}
+            pathGoal={path?.goal ?? null}
+            onPathLevel={handlePathLevel}
             visible={isDesktop ? leftView === "chat" : mobilePane === "chat"}
             boot={boot}
             hasRoadmap={!!roadmap}
