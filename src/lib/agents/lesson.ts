@@ -83,6 +83,11 @@ const FORBIDDEN_BY_LANG: Record<ForbidLang, Rule[]> = {
     { re: /\b(file_get_contents|fopen)\s*\(\s*['"]https?:/, name: "remote file_get_contents/fopen" },
     { re: /\b(exec|shell_exec|system|passthru|proc_open)\s*\(/, name: "exec/shell" },
   ],
+  c: [
+    { re: /\bfopen\s*\(/, name: "fopen()" },
+    { re: /\b(system|popen|fork|exec[lv])\s*\(/, name: "system/fork/exec" },
+    { re: /^\s*#include\s*<(unistd|sys\/socket|netinet|pthread|dlfcn)\.h>/m, name: "process/network/thread header" },
+  ],
   none: [],
 };
 
@@ -96,6 +101,7 @@ const SYNTAX_BY_LANG: Record<ForbidLang, Syntax> = {
   ruby: { line: ["#"], block: [["=begin", "=end"]], strings: ["'", '"'] }, // backticks kept (shell exec)
   lua: { line: ["--"], block: [["--[[", "]]"]], strings: ["'", '"'] },
   php: { line: ["//", "#"], block: [["/*", "*/"]], strings: ["'", '"'] },
+  c: { line: ["//"], block: [["/*", "*/"]], strings: ["'", '"'] },
   none: { line: [], block: [], strings: [] },
 };
 
