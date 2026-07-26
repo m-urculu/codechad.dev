@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Privacy Policy — CodeChad",
   description:
     "How CodeChad handles your account information, your course data, and the code and messages you submit.",
+  alternates: { canonical: "/privacy" },
 };
 
 const UPDATED = "26 July 2026";

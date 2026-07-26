@@ -10,6 +10,10 @@ export const metadata: Metadata = {
   title: `${SITE_NAME} — learn programming by doing, live in your browser`,
   description: `${SITE_NAME} builds you a personalised learning roadmap for a programming language or database, then teaches it lesson by lesson with an AI tutor and an editor that runs your code in the browser.`,
   applicationName: SITE_NAME,
+  // The apex 308s to www, so both spellings of every URL exist. This names the
+  // www one as the real address, which is also the one registered as the OAuth
+  // home page and listed in the sitemap — three places that must agree.
+  alternates: { canonical: "/" },
   icons: { icon: "/logo.svg" },
   // og:site_name is the other place an automated check looks for an app's name.
   openGraph: {

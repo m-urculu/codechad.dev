@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: "Terms of Service — CodeChad",
   description:
     "The terms you agree to when you use CodeChad: what the service is, what is expected of you, and the limits of what it promises.",
+  alternates: { canonical: "/terms" },
 };
 
 const UPDATED = "26 July 2026";
