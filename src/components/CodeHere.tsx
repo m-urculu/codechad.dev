@@ -186,12 +186,23 @@ export default function CodeHere({
               height="100%"
               language={spec.monacoLang}
               defaultValue={spec.defaultCode}
-              onMount={(editor) => {
+              onMount={(editor, monaco) => {
                 editorRef.current = editor;
                 if (pendingRef.current != null) {
                   suppressChangeRef.current = true;
                   editor.setValue(pendingRef.current);
                   pendingRef.current = null;
+                }
+                // JetBrains Mono arrives asynchronously (a CSS @import to Google
+                // Fonts with display=swap), so on a cold visit Monaco measures the
+                // fallback face and caches its advance. Measured: 8.0273 px/char
+                // cached against 8.2 px/char once the real font swaps in. Monaco
+                // positions carets from live DOM ranges so the cursor is unaffected,
+                // but everything that trusts the cached figure — content width,
+                // horizontal scroll extent — stays 2% short for the session.
+                // remeasureFonts() re-reads the metrics; it is a no-op on a warm cache.
+                if (typeof document !== "undefined" && document.fonts?.ready) {
+                  document.fonts.ready.then(() => monaco.editor.remeasureFonts());
                 }
               }}
               onChange={(val) => {
@@ -248,7 +259,15 @@ export default function CodeHere({
                 matchBrackets: "near",
                 tabSize: 2,
                 cursorBlinking: "smooth",
-                cursorSmoothCaretAnimation: "on",
+                // Off, not "on": the glide made the caret read as mis-positioned.
+                // It animates from the old column to the new one, so it spends the
+                // trip sitting LEFT of the character it marks, by more the further
+                // it travels — measured at -205px jumping to column 26, -820px to
+                // column 101 and -1640px to column 201, settling to the correct
+                // place after ~100ms. That reads as a caret whose error grows with
+                // column, which is what it was reported as. The position was always
+                // right; only the journey to it was visible.
+                cursorSmoothCaretAnimation: "off",
                 cursorWidth: 2,
                 smoothScrolling: true,
                 contextmenu: false,
