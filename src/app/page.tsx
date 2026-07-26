@@ -4,13 +4,14 @@ import NavBar from "@/components/NavBar";
 import Background from "@/components/Background/Background";
 import Landing, { type RoadmapSummary } from "@/components/Landing";
 import CourseSettings from "@/components/CourseSettings";
+import AccountSettings from "@/components/AccountSettings";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseBrowser";
 
 
 export default function Home() {
   const [gpuOk, setGpuOk] = useState(true);
-  const [view, setView] = useState<"landing" | "workspace" | "settings">("landing");
+  const [view, setView] = useState<"landing" | "workspace" | "settings" | "account">("landing");
   const [moduleId, setModuleId] = useState<string | null>(null);
   const [courseId, setCourseId] = useState<string | null>(null);
   const [settingsCourse, setSettingsCourse] = useState<RoadmapSummary | null>(null);
@@ -66,7 +67,7 @@ export default function Home() {
       }`}
     >
       {gpuOk && <Background />}
-      <NavBar onHome={() => setView("landing")} />
+      <NavBar onHome={() => setView("landing")} onOpenAccount={() => setView("account")} />
       <div className="relative flex-1 min-h-0">
         {view === "landing" ? (
           <Landing
@@ -80,6 +81,8 @@ export default function Home() {
               setView("settings");
             }}
           />
+        ) : view === "account" ? (
+          <AccountSettings onBack={() => setView("landing")} />
         ) : view === "settings" && settingsCourse ? (
           <CourseSettings
             course={settingsCourse}

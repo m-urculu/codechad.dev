@@ -4,7 +4,13 @@ import React from "react";
 import { LoginButton } from "./LoginButton";
 import { version } from "../../package.json";
 
-export default function NavBar({ onHome }: { onHome?: () => void }) {
+export default function NavBar({
+  onHome,
+  onOpenAccount,
+}: {
+  onHome?: () => void;
+  onOpenAccount?: () => void;
+}) {
   return (
     <nav className="w-full h-16 flex items-center px-4 border-b border-line-strong shadow-sm">
       {/* Project title on the left — returns to the landing (modules) view */}
@@ -28,7 +34,7 @@ export default function NavBar({ onHome }: { onHome?: () => void }) {
       <div className="flex-1" />
       {/* User profile avatar on the right */}
       <div className="flex items-center">
-        <LoginButton />
+        <LoginButton onOpenAccount={onOpenAccount} />
       </div>
       {/* Add more nav content here if needed */}
     </nav>

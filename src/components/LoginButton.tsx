@@ -7,7 +7,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { LogOut } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseBrowser";
 import { completeGoogleRedirect } from "@/lib/googleAuth";
@@ -16,7 +16,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import { closeLogin, getServerSnapshot, getSnapshot, openLogin, subscribe } from "@/lib/authModal";
 
 
-export function LoginButton() {
+export function LoginButton({ onOpenAccount }: { onOpenAccount?: () => void } = {}) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [imgError, setImgError] = useState(false);
@@ -103,6 +103,15 @@ export function LoginButton() {
           align="end"
           className="bg-surface-0 border border-line-strong text-ink min-w-[8rem] p-1"
         >
+          {onOpenAccount && (
+            <DropdownMenuItem
+              className="px-3 py-2 hover:bg-surface-2 focus:bg-surface-2 text-ink text-sm flex items-center gap-2"
+              onClick={onOpenAccount}
+            >
+              Account
+              <Settings className="w-4 h-4 opacity-80 ml-auto" />
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             className="px-3 py-2 hover:bg-surface-2 focus:bg-surface-2 text-ink text-sm flex items-center gap-2"
             onClick={async () => {
