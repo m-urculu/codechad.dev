@@ -12,6 +12,7 @@ import { groundedText, extractJSON } from "./snowflake";
 import { geminiJSON } from "./llm";
 import { gradeSubmission } from "./grade";
 import { getRuntime, type RuntimeSpec, type ForbidLang } from "@/lib/runtimes/registry";
+import { formatConsoleArgs } from "@/lib/runtimes/consoleFormat";
 import { getDocSource } from "@/lib/docs";
 
 // A deterministic, programmatic check for one objective. Grading runs these — the LLM
@@ -199,6 +200,7 @@ function buildPrompt(
     `"solution": the COMPLETE correct ${spec.langName} — the starterCode with every objective fully implemented — that runs to completion WITHOUT errors and produces output proving all objectives. Same self-containment rules as starterCode${spec.allowDom ? "; it targets the same html (selectors must match)" : ""}. This is the reference answer; it is validated by running it.\n` +
     `Every objective MUST carry a "check" — a DETERMINISTIC, machine-verifiable test (grading runs it; no AI judges pass/fail). Pick the type that fits:\n` +
     `  • {"type":"stdout_equals","value":"<the exact line(s) the objective requires>"} — when the objective is fully defined by what the program prints. Grading looks for these lines inside the run output, so the learner may leave their own debugging prints in place; give ONLY the lines the objective is about, not incidental output.\n` +
+    (spec.outputFormat ? `    OUTPUT FORMAT — the console renders values as ${spec.outputFormat} Write stdout values EXACTLY as this runtime prints them, never as another language's REPL or console would.\n` : "") +
     `  • {"type":"stdout_includes","value":"<substring the output must contain>"} — when only part of the output matters.\n` +
     `  • {"type":"code_matches","value":"<JS regexp source>"} — for "use X" / structural objectives, or interaction that doesn't print on a plain run (e.g. a click handler): match the required construct in the learner's code, e.g. "addEventListener\\\\(\\\\s*['\\"]click['\\"]".\n` +
     `CRITICAL: your own "solution" MUST pass every check (stdout checks match the solution's real output; code_matches matches the solution's code). Checks are validated by running the solution — if they don't pass it, they are wrong.\n` +
@@ -299,7 +301,11 @@ export async function buildLesson(input: {
 // Only meaningful for pure-JS logic (no DOM / no browser APIs).
 export function runJsInSandbox(code: string): { ok: boolean; error?: string; output: string } {
   const logs: string[] = [];
-  const push = (...a: unknown[]) => logs.push(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" "));
+  // The learner's console formatter, not a lookalike. Validation is only meaningful
+  // if it sees the same text the learner will: this sandbox used to print
+  // `[99,2,3]` where the browser prints something else, so a check could be
+  // validated here and be unpassable there.
+  const push = (...a: unknown[]) => logs.push(formatConsoleArgs(a));
   const sandbox = {
     console: { log: push, info: push, warn: push, error: push, debug: push },
     setTimeout, clearTimeout, Math, Date, JSON, Object, Array, String, Number, Boolean, Map, Set, Symbol,
@@ -422,27 +428,41 @@ async function validateJsLesson(lesson: Lesson, spec: RuntimeSpec): Promise<Less
 
   let current = lesson;
 
-  // (1) Solution must be correct.
+  // (1a) Solution must RUN. A throw is the solution's fault; regenerate it.
   for (let attempt = 0; attempt < 2; attempt++) {
     const run = runJsInSandbox(current.solution!);
-    let error = run.error;
-    if (!error) {
-      const g = gradeSubmission(current.objectives, current.solution!, run.output);
-      if (g.gradable && !g.allPassed) {
-        error = "reference solution does not satisfy the objective checks: " +
-          g.results.filter((r) => !r.passed).map((r) => r.detail).join("; ");
-      }
-    }
-    if (!error) break; // runs clean AND passes its checks
+    if (!run.error) break;
     const fixed = await fixSolution({
       objectives: current.objectives,
       starterCode: current.starterCode,
       solution: current.solution!,
-      error,
+      error: run.error,
       language: spec.langName,
     });
     if (!fixed) break;
     current = { ...current, solution: fixed };
+  }
+
+  // (1b) Every check must pass against a solution that RUNS CLEAN — and when it
+  // doesn't, the CHECK is the suspect, not the solution. This used to blame the
+  // solution and regenerate it, which left the bad check in place and shipped an
+  // objective no correct answer could ever satisfy: the learner prints exactly the
+  // right thing, is told it's wrong, and follows contradictory hints in circles.
+  // The solution's real output is the ground truth to reground it on.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const run = runJsInSandbox(current.solution!);
+    if (run.error) break; // (1a) already did what it could
+    const g = gradeSubmission(current.objectives, current.solution!, run.output);
+    if (!g.gradable || g.allPassed) break;
+    const repaired = await fixChecks({
+      objectives: current.objectives,
+      failingIds: g.results.filter((r) => !r.passed).map((r) => r.id),
+      solution: current.solution!,
+      solutionOutput: run.output,
+      language: spec.langName,
+    });
+    if (!repaired) break;
+    current = { ...current, objectives: repaired };
   }
 
   // (2) Starter must leave a gap — it must NOT already pass all checks.

@@ -10,6 +10,7 @@
 // keeps using the worker runtime (javascript.ts).
 
 import type { OutLine } from "./javascript";
+import { CONSOLE_FMT_SRC } from "./consoleFormat";
 
 export type WebRunHandle = { cancel: () => void };
 
@@ -17,20 +18,10 @@ export type WebRunHandle = { cancel: () => void };
 // __fmt/__post are attached to window because the shim runs in its own <script>
 // while the runner (classic / babel / module script) runs in another.
 const SHIM = `
-window.__fmt = function __fmt(v){
-  try {
-    if (typeof v === 'string') return v;
-    if (v === null) return 'null';
-    if (typeof v === 'undefined') return 'undefined';
-    if (v instanceof Error) return v.stack || (v.name + ': ' + v.message);
-    if (v && v.nodeType === 1) return '<' + (v.tagName||'node').toLowerCase() + (v.id?(' id=\"'+v.id+'\"'):'') + '>';
-    if (typeof v === 'function') return '[Function ' + (v.name||'anonymous') + ']';
-    if (typeof v === 'object') return JSON.stringify(v);
-    return String(v);
-  } catch(e){ return String(v); }
-};
+${CONSOLE_FMT_SRC}
+window.__fmt = __fmt;
 window.__post = function __post(kind, text){ parent.postMessage({ __cp: true, kind: kind, text: text }, '*'); };
-var __fmt = window.__fmt, __post = window.__post;
+var __post = window.__post;
 ['log','info','warn','error','debug'].forEach(function(k){
   var orig = console[k] ? console[k].bind(console) : function(){};
   console[k] = function(){ __post(k==='debug'?'log':k, Array.prototype.map.call(arguments, __fmt).join(' ')); orig.apply(console, arguments); };

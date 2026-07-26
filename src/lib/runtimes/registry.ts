@@ -28,6 +28,10 @@ export type RuntimeSpec = {
   iframeLibs?: "react" | "vue" | "three";
   langName: string;             // how lessons name the language
   printHow: string;             // the output mechanism lessons teach
+  // How this runtime renders a printed value, stated to the lesson generator so the
+  // expected output it writes into a check is the output the learner will actually
+  // see. Omitted where the language's own printing is unsurprising.
+  outputFormat?: string;
   runNotes: string;             // extra constraints injected into lesson prompts
   forbid: ForbidLang;           // which self-containment list applies
   badgeColor: string;
@@ -39,10 +43,21 @@ export type RuntimeSpec = {
 const JS_NOTES =
   "Plain browser JavaScript sandbox. No require/import, no Node.js APIs, no network, no files.";
 
+// Every JS-family runtime prints through the same shim (see runtimes/consoleFormat),
+// which is NOT how Node or the DevTools console renders a value. Stating it here is
+// what stops the generator writing `[ 'a', 'b' ]` into a check that the console can
+// never produce.
+const JS_OUTPUT_FORMAT =
+  'JSON — a lone string prints bare, while arrays and objects print as compact JSON on ONE line ' +
+  '(["a","b"] / {"n":1}: double quotes, no space after commas), switching to 2-space indented ' +
+  "JSON across several lines only when that single line would exceed 72 characters. " +
+  "Never Node/DevTools style ([ 'a', 'b' ] or { n: 1 }).";
+
 export const RUNTIMES: Record<string, RuntimeSpec> = {
   javascript: {
     id: "javascript", title: "JavaScript", monacoLang: "javascript", engine: "worker-js",
     runnable: true, allowDom: true, langName: "JavaScript", printHow: "console.log(...)",
+    outputFormat: JS_OUTPUT_FORMAT,
     runNotes: JS_NOTES + " DOM lessons run against the lesson's HTML in a real document with a live Preview.",
     forbid: "js", badgeColor: "#F7DF1E",
     defaultCode: '// Try it — edit and press Run\nconsole.log("Hello, CodeChad!");',
@@ -50,6 +65,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
   typescript: {
     id: "typescript", title: "TypeScript", monacoLang: "typescript", engine: "typescript",
     runnable: true, allowDom: false, langName: "TypeScript", printHow: "console.log(...)",
+    outputFormat: JS_OUTPUT_FORMAT,
     runNotes:
       JS_NOTES + " Code is transpiled to JavaScript before running (type annotations are erased; teach types, interfaces, generics — but remember runtime checks still need real JS logic).",
     forbid: "js", badgeColor: "#3178C6",
@@ -125,6 +141,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     id: "react", title: "React", monacoLang: "javascript", engine: "iframe-web",
     runnable: true, allowDom: true, iframeLibs: "react",
     langName: "React (JSX)", printHow: "the rendered Preview + console.log(...)",
+    outputFormat: JS_OUTPUT_FORMAT,
     runNotes:
       "React 18 UMD + Babel run in a sandboxed page with a live Preview. Write JSX; render with ReactDOM.createRoot(document.getElementById('root')).render(...). The lesson HTML must include the root element. No imports/npm — React, ReactDOM are globals.",
     forbid: "js", badgeColor: "#61DAFB",
@@ -136,6 +153,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     id: "vue", title: "Vue", monacoLang: "javascript", engine: "iframe-web",
     runnable: true, allowDom: true, iframeLibs: "vue",
     langName: "Vue 3 (JavaScript)", printHow: "the rendered Preview + console.log(...)",
+    outputFormat: JS_OUTPUT_FORMAT,
     runNotes:
       "Vue 3 global build runs in a sandboxed page with a live Preview. Use Vue.createApp({...}).mount('#app') with template strings or in-HTML templates. The lesson HTML must include the mount element. No imports/npm — Vue is a global.",
     forbid: "js", badgeColor: "#42B883",
@@ -147,6 +165,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     id: "wasm", title: "WebAssembly", monacoLang: "javascript", engine: "worker-js",
     runnable: true, allowDom: false, langName: "JavaScript using the WebAssembly API",
     printHow: "console.log(...)",
+    outputFormat: JS_OUTPUT_FORMAT,
     runNotes:
       "Teach the JS WebAssembly API (WebAssembly.instantiate, exports, Memory, tables). There is NO wat/wasm toolchain: lessons must provide complete module binaries as inline Uint8Array literals (small hand-assembled modules) and have the learner instantiate/call/inspect them. Top-level await IS supported — always use `const { instance } = await WebAssembly.instantiate(bytes)` rather than .then() chains.",
     forbid: "js", badgeColor: "#654FF0",
@@ -157,6 +176,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     id: "graphics", title: "Three.js / WebGPU", monacoLang: "javascript", engine: "iframe-web",
     runnable: true, allowDom: true, iframeLibs: "three",
     langName: "JavaScript with Three.js", printHow: "the rendered 3D Preview + console.log(...)",
+    outputFormat: JS_OUTPUT_FORMAT,
     runNotes:
       "Three.js (ES module) runs in a sandboxed page with a live Preview. THREE is imported and available as a global. Create a scene/camera/renderer, append renderer.domElement to document.body, and animate with requestAnimationFrame. Keep scenes tiny.",
     forbid: "js", badgeColor: "#ffffff",
@@ -168,6 +188,7 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     id: "ml", title: "AI / ML", monacoLang: "javascript", engine: "ml",
     runnable: true, allowDom: false, langName: "JavaScript with transformers.js",
     printHow: "console.log(...)",
+    outputFormat: JS_OUTPUT_FORMAT,
     runNotes:
       "transformers.js runs real models in the browser. A `transformers` object (with `pipeline`) is provided to the code — use `const clf = await transformers.pipeline('sentiment-analysis')` style. Models download from the Hugging Face hub on first use (tens of MB) — prefer the default tiny models and warn about download time. This module MAY fetch models (exception to the no-network rule); everything else stays self-contained.",
     forbid: "none", badgeColor: "#FFD21E",

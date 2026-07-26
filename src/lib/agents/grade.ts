@@ -50,6 +50,27 @@ function containsLineBlock(got: string, want: string): boolean {
   return false;
 }
 
+// Printing a collection is the same achievement however the console renders it.
+//
+// An expected value for an array or object is written one way — `[ 99, 2, 3 ]`,
+// `[99,2,3]`, or indented across five lines — and which one a console produces is
+// a detail of the runtime, not of the learner's answer. Judging that difference
+// marks a correct answer wrong and, worse, sends the tutor hunting for a mistake
+// that isn't there. So when the expectation contains a bracket, fall back to a
+// comparison that ignores layout and quote style.
+//
+// Restricted to bracketed values on purpose: collapsing whitespace out of ordinary
+// prose would start matching text the learner never printed.
+function collapse(s: string): string {
+  return s.replace(/\s+/g, "").replace(/'/g, '"');
+}
+function isCollection(want: string): boolean {
+  return /[[{]/.test(want);
+}
+function sameCollection(got: string, want: string): boolean {
+  return isCollection(want) && collapse(got).includes(collapse(want));
+}
+
 function checkOne(obj: Objective, code: string, output: string): GradeResult {
   const c = obj.check;
   if (!c) return { id: obj.id, passed: false, detail: "no deterministic check" };
@@ -57,7 +78,7 @@ function checkOne(obj: Objective, code: string, output: string): GradeResult {
   if (c.type === "stdout_equals") {
     const want = norm(c.value);
     const got = norm(output);
-    const passed = containsLineBlock(got, want);
+    const passed = containsLineBlock(got, want) || sameCollection(got, want);
     return {
       id: obj.id,
       passed,
@@ -69,7 +90,8 @@ function checkOne(obj: Objective, code: string, output: string): GradeResult {
   if (c.type === "stdout_includes") {
     const want = norm(c.value);
     const got = norm(output);
-    return { id: obj.id, passed: got.includes(want), detail: got.includes(want) ? undefined : `output must contain ${JSON.stringify(want)}; got ${JSON.stringify(got)}` };
+    const passed = got.includes(want) || sameCollection(got, want);
+    return { id: obj.id, passed, detail: passed ? undefined : `output must contain ${JSON.stringify(want)}; got ${JSON.stringify(got)}` };
   }
   // code_matches
   let re: RegExp | null = null;
