@@ -1,9 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin as supabase } from "@/lib/supabaseAdmin";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
-);
 
 export async function registerUserStepFulfillment(user_id: string) {
   // Insert a new row for the user if not exists

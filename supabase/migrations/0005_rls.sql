@@ -21,10 +21,20 @@
 -- read server-side — never NEXT_PUBLIC_, never imported into a component.
 --
 -- Order of operations:
---   1. apply 0001
+--   1. apply 0004                                                        [done]
 --   2. add SUPABASE_SERVICE_ROLE_KEY to Vercel and .env.local
 --   3. move every server-side createClient onto that key
 --   4. then apply this file
+--
+-- Note that 0001-0003 did not merely leave RLS off, they turned it off and
+-- granted anon full access explicitly:
+--   grant all on public.user_roadmap_state to anon, authenticated, service_role;
+--   alter table public.user_roadmap_state disable row level security;
+-- So this file has to undo both halves — enabling RLS alone would leave the
+-- grants in place for any table that later gains a permissive policy.
+
+revoke all on public.user_roadmap_state from anon;
+revoke all on public.user_chat_state    from anon;
 
 alter table public.user_roadmap_state     enable row level security;
 alter table public.user_chat_state        enable row level security;

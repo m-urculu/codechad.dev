@@ -4,12 +4,8 @@
 // Follows the app's existing pattern (anon-key client, explicit user_id). All calls fail
 // soft (return null / log) so a paused or unreachable project never breaks the UX.
 
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin as supabase } from "@/lib/supabaseAdmin";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
-);
 
 // tree: the full Roadmap object. progress: { [nodeId]: { passed, done, built? } }
 export type RoadmapState = {
