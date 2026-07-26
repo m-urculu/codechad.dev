@@ -16,6 +16,11 @@ import { apiFetch } from "@/lib/apiFetch";
 import { openLogin } from "@/lib/authModal";
 import { isTrialUsed, markTrialUsed } from "@/lib/trial";
 
+// How long the finished trial lesson stays unobstructed before the sign-in
+// prompt appears. Long enough to read "Lesson complete" and see the objectives
+// tick green — the confirmation the learner actually solved it — and short
+// enough that the ask still reads as part of finishing.
+const COMPLETION_PROMPT_DELAY_MS = 2600;
 
 type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[] };
 type ProgressEntry = { built?: BuiltLesson; passed: string[]; done: boolean; code?: string };
@@ -122,6 +127,10 @@ export default function EditorPanels({
   const [initialProgress, setInitialProgress] = useState<Record<string, { built?: BuiltLesson; passed: string[]; code?: string }> | null>(null);
   // The lesson the trial prompt interrupted, resumed once they sign in.
   const pendingNext = useRef<RoadmapNode | null>(null);
+  const promptTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (promptTimer.current) clearTimeout(promptTimer.current);
+  }, []);
 
   const doneNodeIds = Object.keys(progress).filter((id) => progress[id]?.done);
 
@@ -325,14 +334,10 @@ export default function EditorPanels({
   }
 
   function handleActivateLesson(node: RoadmapNode) {
-    // The trial runs out at the first completed lesson. Starting another one
-    // signed out would build work with nowhere to put it, so ask here instead of
-    // letting them earn a second lesson's progress and then lose it.
-    if (!userId && isTrialUsed()) {
-      pendingNext.current = node;
-      openLogin("Your free lesson is done. Sign in to save what you've built and carry on — it's free.");
-      return;
-    }
+    // Opening a lesson never raises the sign-in prompt. Finishing one is the only
+    // moment that earns the ask, and interrupting someone on their way INTO a
+    // lesson asks for an account before they have been given anything.
+    pendingNext.current = null; // a lesson picked by hand outranks the queued one
     setActiveNodeId(node.id);
     setLeftView("chat");
     setLessonRequest({
@@ -355,10 +360,25 @@ export default function EditorPanels({
     // End of the free trial. This is the first moment the visitor has finished
     // something, and all of it — roadmap, code, conversation — lives in this tab
     // and nowhere else. Ask now, while there is something worth keeping.
+    //
+    // But not instantly. The objectives tick green and the tutor posts "Lesson
+    // complete" in the same commit as this call, so opening the modal here drops
+    // a login form over the only confirmation the learner gets that they solved
+    // it. They should read the win first; the ask lands better after it anyway.
     if (!userId) {
+      // Nothing stops a signed-out visitor finishing more lessons, so the prompt
+      // can recur. Say something different the second time rather than repeating
+      // a greeting that has stopped being true.
+      const first = !isTrialUsed();
       markTrialUsed();
       pendingNext.current = next ?? null;
-      openLogin("Nice — first lesson done. Sign in to save your progress and keep going. It's free.");
+      promptTimer.current = setTimeout(() => {
+        openLogin(
+          first
+            ? "Nice — first lesson done. Sign in to save your progress and keep going. It's free."
+            : "Another one done. None of this is saved yet — sign in and it's kept, including everything so far."
+        );
+      }, COMPLETION_PROMPT_DELAY_MS);
       return;
     }
 
