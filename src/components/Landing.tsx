@@ -55,33 +55,25 @@ type Section = { label: string; modules: Module[] };
 
 // Only technologies we are confident run FULLY client-side in the browser.
 // (See docs/browser-learning-capabilities.md)
+//
+// ORDER IS DELIBERATE: sections, and modules within them, run most to least
+// profitable for the learner — expected earnings, which is pay AND how many jobs
+// actually exist, not pay alone. That is why AI/ML is not first despite paying the
+// most per role (few roles, and most want a research background), and why PHP sits
+// above Lua despite the lower median (a large, live hiring market). Keep new
+// modules in rank rather than appending, or the grid stops meaning anything.
 const SECTIONS: Section[] = [
   {
     label: "Languages",
     modules: [
-      { id: "javascript", title: "JavaScript", blurb: "Runs natively on the JS engine", Icon: SiJavascript, color: "#F7DF1E" },
+      { id: "go", title: "Go", blurb: "Yaegi interpreter in a worker", Icon: SiGo, color: "#00ADD8" },
       { id: "typescript", title: "TypeScript", blurb: "Live types + transpile in-tab", Icon: SiTypescript, color: "#3178C6" },
       { id: "python", title: "Python", blurb: "CPython via Pyodide · numpy, pandas", Icon: SiPython, color: "#3776AB" },
+      { id: "javascript", title: "JavaScript", blurb: "Runs natively on the JS engine", Icon: SiJavascript, color: "#F7DF1E" },
+      { id: "c", title: "C", blurb: "Real Clang compiled to WASM", Icon: SiC, color: "#A8B9CC" },
       { id: "ruby", title: "Ruby", blurb: "Real CRuby via ruby.wasm", Icon: SiRuby, color: "#CC342D" },
       { id: "php", title: "PHP", blurb: "Real PHP via php-wasm", Icon: SiPhp, color: "#777BB4" },
       { id: "lua", title: "Lua", blurb: "Lua VM via fengari", Icon: SiLua, color: "#8895d9" },
-      { id: "c", title: "C", blurb: "Real Clang compiled to WASM", Icon: SiC, color: "#A8B9CC" },
-      { id: "go", title: "Go", blurb: "Yaegi interpreter in a worker", Icon: SiGo, color: "#00ADD8" },
-    ],
-  },
-  {
-    label: "Databases",
-    modules: [
-      { id: "postgres", title: "PostgreSQL", blurb: "Real Postgres via PGlite", Icon: SiPostgresql, color: "#4169E1" },
-      { id: "sqlite", title: "SQLite", blurb: "Real DB via sql.js", Icon: SiSqlite, color: "#7ac5e8" },
-      { id: "duckdb", title: "DuckDB", blurb: "Analytics on CSV / Parquet", Icon: SiDuckdb, color: "#FFF000" },
-    ],
-  },
-  {
-    label: "Tools",
-    modules: [
-      { id: "git", title: "Git", blurb: "A real repo in your browser", Icon: SiGit, color: "#F05032" },
-      { id: "linux", title: "Linux", blurb: "A shell, pipes and permissions", Icon: SiLinux, color: "#FCC624" },
     ],
   },
   {
@@ -93,10 +85,25 @@ const SECTIONS: Section[] = [
     ],
   },
   {
+    label: "Databases",
+    modules: [
+      { id: "postgres", title: "PostgreSQL", blurb: "Real Postgres via PGlite", Icon: SiPostgresql, color: "#4169E1" },
+      { id: "duckdb", title: "DuckDB", blurb: "Analytics on CSV / Parquet", Icon: SiDuckdb, color: "#FFF000" },
+      { id: "sqlite", title: "SQLite", blurb: "Real DB via sql.js", Icon: SiSqlite, color: "#7ac5e8" },
+    ],
+  },
+  {
+    label: "Tools",
+    modules: [
+      { id: "linux", title: "Linux", blurb: "A shell, pipes and permissions", Icon: SiLinux, color: "#FCC624" },
+      { id: "git", title: "Git", blurb: "A real repo in your browser", Icon: SiGit, color: "#F05032" },
+    ],
+  },
+  {
     label: "Graphics & AI",
     modules: [
-      { id: "graphics", title: "Three.js · WebGPU", blurb: "GPU compute & 3D visuals", Icon: SiThreedotjs, color: "#ffffff" },
       { id: "ml", title: "AI / ML", blurb: "Run real models via transformers.js", Icon: SiHuggingface, color: "#FFD21E" },
+      { id: "graphics", title: "Three.js · WebGPU", blurb: "GPU compute & 3D visuals", Icon: SiThreedotjs, color: "#ffffff" },
     ],
   },
 ];
