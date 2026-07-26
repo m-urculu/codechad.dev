@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { skill, level, goal, kind, title, parentId, path, treeOutline, moduleId } = body as {
+    const { skill, level, goal, kind, title, parentId, path, treeOutline, moduleId, nodeModule } = body as {
       skill?: string;
       level?: string;
       goal?: string;
@@ -22,6 +22,8 @@ export async function POST(request: Request) {
       path?: string[];
       treeOutline?: string;
       moduleId?: string;
+      /** The runtime of the node being expanded, for a path that spans several. */
+      nodeModule?: string;
     };
 
     if (!skill || !title || !parentId || (kind !== "topic" && kind !== "subtopic")) {
@@ -38,6 +40,8 @@ export async function POST(request: Request) {
       path: Array.isArray(path) ? path : [title],
       treeOutline: typeof treeOutline === "string" ? treeOutline : undefined,
       runtimeNotes: moduleId ? getRuntime(moduleId).runNotes : undefined,
+      // The node's own runtime when a path gave it one, so its children inherit it.
+      module: typeof nodeModule === "string" ? nodeModule : undefined,
     });
 
     return NextResponse.json({ children });

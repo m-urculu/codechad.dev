@@ -23,7 +23,10 @@ import { isTrialUsed, markTrialUsed } from "@/lib/trial";
 const COMPLETION_PROMPT_DELAY_MS = 2600;
 
 type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[] };
-type ProgressEntry = { built?: BuiltLesson; passed: string[]; done: boolean; code?: string };
+// `module` is the runtime the lesson was built for. It rides along in stored
+// progress so resuming a path lesson months later reopens the editor in the same
+// language rather than in whatever the course started as.
+type ProgressEntry = { built?: BuiltLesson; passed: string[]; done: boolean; code?: string; module?: string };
 type Progress = Record<string, ProgressEntry>;
 export type BootState = "loading" | "fresh" | "resumed";
 
@@ -146,6 +149,10 @@ export default function EditorPanels({
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress>({});
   const [lessonRequest, setLessonRequest] = useState<{ node: RoadmapNode; outline?: string; nonce: number } | null>(null);
+  // The runtime the EDITOR is showing. Normally the course's own module; a path
+  // whose nodes name their own runtime moves this as the learner walks it, so the
+  // editor is Go for the Go lesson and a shell for the Linux one.
+  const [activeModule, setActiveModule] = useState<string | null>(moduleId ?? null);
   const [submitRequest, setSubmitRequest] = useState<{ code: string; output: string; nonce: number } | null>(null);
   const [codeChange, setCodeChange] = useState<{ code: string; nonce: number } | null>(null);
   const [loadCode, setLoadCode] = useState<{ code: string; html?: string; nonce: number } | null>(null);
@@ -359,6 +366,7 @@ export default function EditorPanels({
           path,
           treeOutline: treeOutline(roadmap, node.id, progress),
           moduleId: moduleId ?? undefined,
+          nodeModule: node.module,
         }),
       });
       const data = await res.json();
@@ -375,6 +383,7 @@ export default function EditorPanels({
     // lesson asks for an account before they have been given anything.
     pendingNext.current = null; // a lesson picked by hand outranks the queued one
     setActiveNodeId(node.id);
+    setActiveModule(node.module ?? moduleId ?? null);
     showLeft("chat");
     setLessonRequest({
       node,
@@ -432,11 +441,13 @@ export default function EditorPanels({
   }, [userId]);
 
   // Merge the chat's per-node lesson cache into progress (preserving earned "done").
-  function handleProgressChange(cache: Record<string, { built?: BuiltLesson; passed: string[]; code?: string }>) {
+  function handleProgressChange(
+    cache: Record<string, { built?: BuiltLesson; passed: string[]; code?: string; module?: string }>
+  ) {
     setProgress((prev) => {
       const next: Progress = { ...prev };
       for (const [id, v] of Object.entries(cache)) {
-        next[id] = { built: v.built, passed: v.passed, done: prev[id]?.done ?? false, code: v.code };
+        next[id] = { built: v.built, passed: v.passed, done: prev[id]?.done ?? false, code: v.code, module: v.module };
       }
       return next;
     });
@@ -584,10 +595,10 @@ export default function EditorPanels({
           />
         </div>
         <div data-pane="docs" className={paneClass("docs")}>
-          <DocsPanel moduleId={moduleId} docTarget={docTarget} />
+          <DocsPanel moduleId={activeModule} docTarget={docTarget} />
         </div>
         <div data-pane="code" className={paneClass("code")}>
-          <CodeHere moduleId={moduleId} onSubmit={handleSubmitCode} onCodeChange={handleCodeChange} loadCode={loadCode} />
+          <CodeHere moduleId={activeModule} onSubmit={handleSubmitCode} onCodeChange={handleCodeChange} loadCode={loadCode} />
         </div>
       </div>
 

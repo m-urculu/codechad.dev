@@ -173,7 +173,10 @@ export default function CodeHere({
         <div className="h-full font-normal leading-normal border border-line-strong backdrop-blur-md flex flex-col gap-0 overflow-hidden">
           {/* Module header — a real bar rather than a floating badge, matching the
               toolbar below it. */}
-          <div className="flex shrink-0 items-center gap-2 border-b border-line bg-surface-0 px-3 py-1.5 text-xs font-semibold text-ink select-none">
+          <div
+            data-runtime={spec.id}
+            className="flex shrink-0 items-center gap-2 border-b border-line bg-surface-0 px-3 py-1.5 text-xs font-semibold text-ink select-none"
+          >
             <span className="inline-block h-2.5 w-2.5 shrink-0" style={{ background: spec.badgeColor }} />
             {spec.title}
             {!spec.runnable && (
