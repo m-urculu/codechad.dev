@@ -7,6 +7,7 @@ export type EngineKind =
   | "typescript"  // sucrase transpile -> worker-js
   | "clang"       // real Clang/LLD in WASM -> WASI (CDN)
   | "yaegi"       // Go interpreter in WASM, in a Worker (CDN)
+  | "git"         // real repo via isomorphic-git on an in-memory FS (CDN)
   | "pyodide"     // CPython in WASM (main thread, CDN)
   | "sqljs"       // SQLite in WASM (CDN)
   | "pglite"      // Postgres in WASM (CDN)
@@ -147,6 +148,24 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     defaultCode:
       'package main\n\nimport "fmt"\n\nfunc main() {\n\tnums := []int{1, 2, 3}\n\tsum := 0\n\tfor _, n := range nums {\n\t\tsum += n\n\t}\n\tfmt.Println("sum:", sum)\n}',
     loadNote: "Loading the Go interpreter (≈8 MB, first run only)…",
+  },
+  git: {
+    id: "git", title: "Git", monacoLang: "shell", engine: "git",
+    runnable: true, allowDom: false, langName: "Git commands", printHow: "what the commands print",
+    outputFormat:
+      "git's own output — `[main a1b2c3d] message` from commit, `a1b2c3d message` from log --oneline, " +
+      "`On branch main` from status. Commit SHAs are real and therefore DIFFERENT every run, so a stdout check must " +
+      "never contain one: match on the message, the branch, or the file name instead.",
+    runNotes:
+      "A REAL repository — isomorphic-git writing git's own on-disk format to an in-memory filesystem, wiped before every Run. " +
+      "The learner writes git COMMANDS, one per line, not JavaScript. Available: git init, config, status, add, rm, commit -m, " +
+      "log [--oneline] [-n], branch [-d], checkout [-b], switch, merge, show, tag — plus echo > file, echo >> file, cat, ls, " +
+      "mkdir, rm, touch, pwd for making files worth committing. NOT available: clone, fetch, push, pull (they need a network), " +
+      "diff, rebase, stash. The script must create everything it needs, starting from `git init`.",
+    forbid: "none", badgeColor: "#F05032",
+    defaultCode:
+      '# Real git — every command below actually runs\ngit init\ngit config user.name "Learner"\n\necho "# My project" > README.md\ngit add README.md\ngit commit -m "first commit"\n\ngit log --oneline',
+    loadNote: "Loading git…",
   },
   postgres: {
     id: "postgres", title: "PostgreSQL", monacoLang: "sql", engine: "pglite",

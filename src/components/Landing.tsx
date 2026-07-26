@@ -29,6 +29,7 @@ import {
   SiRuby,
   SiPhp,
   SiC,
+  SiGit,
   SiGo,
   SiLua,
   SiPostgresql,
@@ -73,6 +74,12 @@ const SECTIONS: Section[] = [
       { id: "postgres", title: "PostgreSQL", blurb: "Real Postgres via PGlite", Icon: SiPostgresql, color: "#4169E1" },
       { id: "sqlite", title: "SQLite", blurb: "Real DB via sql.js", Icon: SiSqlite, color: "#7ac5e8" },
       { id: "duckdb", title: "DuckDB", blurb: "Analytics on CSV / Parquet", Icon: SiDuckdb, color: "#FFF000" },
+    ],
+  },
+  {
+    label: "Tools",
+    modules: [
+      { id: "git", title: "Git", blurb: "A real repo in your browser", Icon: SiGit, color: "#F05032" },
     ],
   },
   {
