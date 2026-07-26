@@ -5,10 +5,10 @@ import { CONTACT_EMAIL, SITE_HOST, SITE_NAME, SITE_URL } from "@/lib/site";
 export const metadata: Metadata = {
   title: "Privacy Policy — CodeChad",
   description:
-    "How CodeChad handles your Google account information, your course data, and the code and messages you submit.",
+    "How CodeChad handles your account information, your course data, and the code and messages you submit.",
 };
 
-const UPDATED = "25 July 2026";
+const UPDATED = "26 July 2026";
 const CONTACT = CONTACT_EMAIL;
 
 const sections: Section[] = [
@@ -36,11 +36,27 @@ const sections: Section[] = [
       {
         list: [
           <>
-            <strong className="font-semibold text-ink">Your Google account basics.</strong> When
-            you sign in with Google we receive your name, email address, profile picture URL and
-            Google account identifier. We request only the basic profile and email scopes — we
-            never ask for access to your Gmail, Drive, Calendar, Contacts or any other Google
-            service, and we cannot read them.
+            <strong className="font-semibold text-ink">Your account basics.</strong> There are
+            three ways to sign in, and each gives us a little less than the last.
+            <ul className="mt-2 flex list-disc flex-col gap-2 pl-5 marker:text-ink-faint">
+              <li>
+                <strong className="font-semibold text-ink">Google.</strong> We receive your name,
+                email address, profile picture URL and Google account identifier. We request only
+                the basic profile and email scopes — we never ask for access to your Gmail, Drive,
+                Calendar, Contacts or any other Google service, and we cannot read them.
+              </li>
+              <li>
+                <strong className="font-semibold text-ink">GitHub.</strong> We receive your
+                username, email address, avatar URL and GitHub account identifier. We ask for no
+                repository access of any kind and cannot see your code, private or public.
+              </li>
+              <li>
+                <strong className="font-semibold text-ink">Email and password.</strong> We receive
+                only your email address. Your password is sent straight to Supabase, our
+                authentication provider, which stores it hashed — the operator of CodeChad never
+                sees it, and it is never written to our database in a readable form.
+              </li>
+            </ul>
           </>,
           <>
             <strong className="font-semibold text-ink">Your course data.</strong> The technology
@@ -63,7 +79,9 @@ const sections: Section[] = [
           <>
             We do not use analytics, advertising or tracking cookies, and there are no third-party
             trackers on the site. The only things stored in your browser are your sign-in session
-            and small preferences such as how you sort your course list.
+            and small preferences such as how you sort your course list. If you sign in with an
+            email and password, your browser may offer to remember them — that is your browser&rsquo;s
+            own password manager, under your control, and nothing about it reaches us.
           </>
         ),
       },
@@ -130,7 +148,13 @@ const sections: Section[] = [
           <>
             <strong className="font-semibold text-ink">Supabase</strong> — authentication and the
             database. Holds your account record and all of your course data, progress and tutor
-            conversations.
+            conversations, and — if you sign in with an email and password — the hashed form of
+            that password.
+          </>,
+          <>
+            <strong className="font-semibold text-ink">GitHub</strong> — only if you choose to sign
+            in with GitHub. GitHub authenticates you and tells us the account basics listed above.
+            If you never use that button, GitHub receives nothing.
           </>,
           <>
             <strong className="font-semibold text-ink">Google (Gemini API)</strong> — generates
@@ -217,13 +241,17 @@ const sections: Section[] = [
           <>
             To delete your account and everything attached to it, or to receive a copy of your data,
             email <A href={`mailto:${CONTACT}`}>{CONTACT}</A> from the address you signed up with.
-            We will action it within 30 days. You can also revoke CodeChad&rsquo;s access to your
-            Google account at any time from{" "}
+            We will action it within 30 days. You can also cut off future sign-ins yourself: revoke
+            CodeChad from{" "}
             <A href="https://myaccount.google.com/permissions">
               your Google account permissions page
+            </A>{" "}
+            or from{" "}
+            <A href="https://github.com/settings/applications">
+              your GitHub authorised applications page
             </A>
-            , which stops any future sign-in; email us as well if you also want the data we already
-            hold erased.
+            . Revoking stops any future sign-in but does not erase what we already hold — email us
+            as well if you want that too.
           </>
         ),
       },
@@ -236,7 +264,7 @@ const sections: Section[] = [
     heading: "Security",
     blocks: [
       {
-        p: "Traffic is encrypted in transit. Access to the database is restricted, and sign-in is handled by Google and Supabase rather than by us — we never see or store your Google password. No service can promise perfect security, and this one is a personal project rather than an enterprise product; please keep that in mind when deciding what to put into it.",
+        p: "Traffic is encrypted in transit, and access to the database is restricted to the app's own server code. Sign-in is handled by Google, GitHub and Supabase rather than by us: we never see your Google or GitHub password, and a password you set for CodeChad itself goes to Supabase to be hashed rather than being stored by us in a form anyone could read. No service can promise perfect security, and this one is a personal project rather than an enterprise product; please keep that in mind when deciding what to put into it.",
       },
     ],
   },
@@ -271,10 +299,10 @@ export default function Privacy() {
       updated={UPDATED}
       intro={
         <>
-          CodeChad is a learning app. You sign in with Google, describe what you want to learn, and
-          it builds you a course you work through in the browser. This page explains exactly what
-          that involves for your data — what we receive, what we do with it, who else sees it, and
-          how to get rid of it.
+          CodeChad is a learning app. You sign in with Google, with GitHub, or with an email address
+          and password, describe what you want to learn, and it builds you a course you work through
+          in the browser. This page explains exactly what that involves for your data — what we
+          receive, what we do with it, who else sees it, and how to get rid of it.
         </>
       }
       sections={sections}
