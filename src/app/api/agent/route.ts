@@ -1,16 +1,17 @@
 // POST /api/agent — entrypoint for the agent pipeline (chat manager).
 //
-// Body: { message, topic?, level?, goal?, history?, user_id? }
+// Body: { message, topic?, level?, goal?, history? }  (user comes from the token)
 // Returns: { action, response, roadmap? }
 
 import { NextResponse } from "next/server";
 import { runChatManager, type ChatMsg } from "@/lib/agents/chatManager";
 import { insertChatMessage } from "@/app/api/supabase/chat-message";
+import { optionalUser } from "@/lib/apiAuth";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { message, topic, level, goal, moduleId, hasRoadmap, activeLesson, history, user_id } = body as {
+    const { message, topic, level, goal, moduleId, hasRoadmap, activeLesson, history } = body as {
       message?: string;
       topic?: string;
       level?: string;
@@ -19,12 +20,13 @@ export async function POST(request: Request) {
       hasRoadmap?: boolean;
       activeLesson?: string;
       history?: ChatMsg[];
-      user_id?: string | null;
     };
 
     if (!message || typeof message !== "string") {
       return NextResponse.json({ error: "message is required" }, { status: 400 });
     }
+
+    const user_id = await optionalUser(request);
 
     if (user_id) {
       await insertChatMessage({ user_id, role: "user", content: message }).catch(() => {});

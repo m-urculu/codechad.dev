@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getUserChatMessages } from '@/app/api/supabase/chat-message';
+import { requireUser } from "@/lib/apiAuth";
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   try {
-    const { user_id, limit } = await request.json();
-    if (!user_id || typeof user_id !== 'string') {
-      return NextResponse.json({ error: 'Missing or invalid user_id' }, { status: 400 });
-    }
-    const { data, error } = await getUserChatMessages(user_id, limit ?? 50);
+    const { limit } = await request.json();
+    const { data, error } = await getUserChatMessages(who.userId, limit ?? 50);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }

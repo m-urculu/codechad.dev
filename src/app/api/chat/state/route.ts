@@ -6,28 +6,34 @@
 
 import { NextResponse } from "next/server";
 import { clearChatMessages, loadChatState, saveChatState } from "@/app/api/supabase/chat-state";
+import { requireUser } from "@/lib/apiAuth";
 
 export async function GET(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   const { searchParams } = new URL(request.url);
-  const user_id = searchParams.get("user_id");
   const course_id = searchParams.get("course_id");
-  if (!user_id || !course_id) {
-    return NextResponse.json({ error: "user_id and course_id are required" }, { status: 400 });
+  if (!course_id) {
+    return NextResponse.json({ error: "course_id is required" }, { status: 400 });
   }
-  const state = await loadChatState(user_id, course_id);
+  const state = await loadChatState(who.userId, course_id);
   return NextResponse.json({ state });
 }
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   try {
-    const { user_id, course_id, module: moduleId, messages, calib } = await request.json();
-    if (!user_id || !course_id || !Array.isArray(messages)) {
+    const { course_id, module: moduleId, messages, calib } = await request.json();
+    if (!course_id || !Array.isArray(messages)) {
       return NextResponse.json(
-        { error: "user_id, course_id and messages are required" },
+        { error: "course_id and messages are required" },
         { status: 400 }
       );
     }
-    const ok = await saveChatState(user_id, course_id, moduleId ?? "", {
+    const ok = await saveChatState(who.userId, course_id, moduleId ?? "", {
       messages,
       calib: calib ?? {},
     });
@@ -39,12 +45,14 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   const { searchParams } = new URL(request.url);
-  const user_id = searchParams.get("user_id");
   const course_id = searchParams.get("course_id");
-  if (!user_id || !course_id) {
-    return NextResponse.json({ error: "user_id and course_id are required" }, { status: 400 });
+  if (!course_id) {
+    return NextResponse.json({ error: "course_id is required" }, { status: 400 });
   }
-  const ok = await clearChatMessages(user_id, course_id);
+  const ok = await clearChatMessages(who.userId, course_id);
   return NextResponse.json({ ok });
 }

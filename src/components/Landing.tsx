@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseBrowser";
 import { RUNTIMES } from "@/lib/runtimes/registry";
 import { CONTACT_EMAIL, SITE_NAME } from "@/lib/site";
 import type { IconType } from "react-icons";
+import { apiFetch } from "@/lib/apiFetch";
 import {
   FiSettings,
   FiChevronDown,
@@ -150,7 +151,7 @@ function useStoredRoadmaps(): {
         return;
       }
       try {
-        const res = await fetch(`/api/roadmap/list?user_id=${encodeURIComponent(uid)}`);
+        const res = await apiFetch("/api/roadmap/list");
         const data = await res.json();
         if (!cancelled) setRoadmaps(Array.isArray(data.roadmaps) ? data.roadmaps : []);
       } catch {
@@ -170,17 +171,17 @@ function useStoredRoadmaps(): {
   function remove(r: RoadmapSummary) {
     setRoadmaps((list) => list.filter((x) => x.courseId !== r.courseId));
     if (!userId) return;
-    const qs = `user_id=${encodeURIComponent(userId)}&course_id=${encodeURIComponent(r.courseId)}`;
-    fetch(`/api/roadmap/state?${qs}`, { method: "DELETE" }).catch(() => {});
+    const qs = `course_id=${encodeURIComponent(r.courseId)}`;
+    apiFetch(`/api/roadmap/state?${qs}`, { method: "DELETE" }).catch(() => {});
   }
 
   async function duplicate(r: RoadmapSummary) {
     if (!userId) return;
     try {
-      await fetch("/api/course", {
+      await apiFetch("/api/course", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "duplicate", user_id: userId, course_id: r.courseId }),
+        body: JSON.stringify({ action: "duplicate", course_id: r.courseId }),
       });
     } catch {
       /* fail soft — the list simply won't show a copy */

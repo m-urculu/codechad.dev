@@ -16,6 +16,7 @@ import {
   FiX,
 } from "react-icons/fi";
 import type { RoadmapSummary } from "@/components/Landing";
+import { apiFetch } from "@/lib/apiFetch";
 
 type Progress = Record<string, { done?: boolean; passed?: unknown; built?: { objectives?: unknown[] } }>;
 type TreeNode = { id?: string; kind?: string; title?: string; children?: TreeNode[] | null };
@@ -149,8 +150,7 @@ export default function CourseSettings({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(
-          `/api/roadmap/state?user_id=${encodeURIComponent(userId)}&course_id=${encodeURIComponent(course.courseId)}`
+        const res = await apiFetch(`/api/roadmap/state?course_id=${encodeURIComponent(course.courseId)}`
         );
         const { state } = await res.json();
         if (cancelled || !state) return;
@@ -183,10 +183,10 @@ export default function CourseSettings({
   async function post(body: Record<string, unknown>) {
     if (!userId) return null;
     try {
-      const res = await fetch("/api/course", {
+      const res = await apiFetch("/api/course", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...body, user_id: userId, course_id: course.courseId }),
+        body: JSON.stringify({ ...body, course_id: course.courseId }),
       });
       return await res.json();
     } catch {
@@ -228,7 +228,7 @@ export default function CourseSettings({
     setRegenerating(true);
     setGenError(null);
     try {
-      const res = await fetch("/api/roadmap/generate", {
+      const res = await apiFetch("/api/roadmap/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -236,8 +236,7 @@ export default function CourseSettings({
           moduleId: course.module,
           level,
           goal,
-          user_id: userId,
-          course_id: course.courseId,
+                    course_id: course.courseId,
           draftTopics: topics.map((t) => t.title.trim()).filter(Boolean),
           guidance: guidance.trim() || undefined,
         }),
@@ -247,12 +246,11 @@ export default function CourseSettings({
         setGenError(data.error ?? "Could not regenerate the roadmap. Try again.");
         return;
       }
-      await fetch("/api/roadmap/state", {
+      await apiFetch("/api/roadmap/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: userId,
-          course_id: course.courseId,
+                    course_id: course.courseId,
           tree: data.roadmap,
           progress: {},
         }),
@@ -577,8 +575,7 @@ export default function CourseSettings({
             done={didClearChat}
             onConfirm={async () => {
               if (!userId) return;
-              await fetch(
-                `/api/chat/state?user_id=${encodeURIComponent(userId)}&course_id=${encodeURIComponent(course.courseId)}`,
+              await apiFetch(`/api/chat/state?course_id=${encodeURIComponent(course.courseId)}`,
                 { method: "DELETE" }
               ).catch(() => {});
               setDidClearChat(true);
@@ -591,8 +588,7 @@ export default function CourseSettings({
             confirmLabel="Delete permanently"
             onConfirm={async () => {
               if (!userId) return;
-              await fetch(
-                `/api/roadmap/state?user_id=${encodeURIComponent(userId)}&course_id=${encodeURIComponent(course.courseId)}`,
+              await apiFetch(`/api/roadmap/state?course_id=${encodeURIComponent(course.courseId)}`,
                 { method: "DELETE" }
               ).catch(() => {});
               onDeleted();
