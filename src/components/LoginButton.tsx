@@ -140,7 +140,7 @@ export function LoginButton({ onOpenAccount }: { onOpenAccount?: () => void } = 
         type="button"
         onClick={() => openLogin()}
         className="flex h-[38px] items-center justify-center border border-line-strong bg-surface-1 px-5
-                   text-meta font-medium text-ink-muted backdrop-blur-md
+                   text-sm font-medium text-ink-muted backdrop-blur-md
                    transition-colors duration-150
                    hover:border-line-active hover:bg-surface-2 hover:text-ink
                    focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active"
