@@ -22,9 +22,27 @@
 --
 -- Order of operations:
 --   1. apply 0004                                                        [done]
---   2. add SUPABASE_SERVICE_ROLE_KEY to Vercel and .env.local
---   3. move every server-side createClient onto that key
---   4. then apply this file
+--   2. add SUPABASE_SERVICE_ROLE_KEY to Vercel and .env.local            [done]
+--   3. move every server-side createClient onto that key                 [done]
+--   4. then apply this file                                              <- now
+--
+-- Measured state before applying, anon key against the live project:
+--
+--   user_step_fulfillment  200 []    RLS already on (Supabase enables it for
+--   chat_messages          200 []    new tables); the service role still reads
+--   user_roadmaps          200 []    the rows, so 0004's tables are already shut
+--   roadmaps               200 []
+--   user_roadmap_state     200 rows  RLS off — the exposure this file closes
+--   user_chat_state        200 rows  RLS off — likewise
+--
+-- So the `enable row level security` lines below are no-ops on four of six
+-- tables. They stay for the sake of a schema that states its own intent rather
+-- than one that depends on what a dashboard happened to do.
+--
+-- Also measured: no browser code queries any table. Every read and write goes
+-- through an API route, and those now authenticate with the service role, which
+-- bypasses RLS. Nothing user-facing depends on the policies below — they exist
+-- so that direct queries from the browser would be safe if they are ever added.
 --
 -- Note that 0001-0003 did not merely leave RLS off, they turned it off and
 -- granted anon full access explicitly:
@@ -65,3 +83,9 @@ create policy user_roadmaps_own on public.user_roadmaps
 -- through the API. Seeded with the service role or from the SQL editor.
 create policy roadmaps_read on public.roadmaps
   for select using (true);
+
+-- Verification. Every row should read rls = true after this file is applied.
+-- select relname as table, relrowsecurity as rls
+--   from pg_class
+--  where relnamespace = 'public'::regnamespace and relkind = 'r'
+--  order by relname;
