@@ -124,6 +124,11 @@ export function completeGoogleRedirect(): RedirectResult {
 
   const state = params.get("state");
   const expectedState = sessionStorage.getItem(STATE_KEY);
+  // An error fragment with no attempt of ours behind it belongs to somebody
+  // else — GitHub's failures arrive the same shape, via Supabase's broker.
+  // Consuming it here would both steal Supabase's response and clear the URL
+  // before it could read it.
+  if (!idToken && !expectedState) return null;
   const nonce = sessionStorage.getItem(NONCE_KEY);
   sessionStorage.removeItem(STATE_KEY);
   sessionStorage.removeItem(NONCE_KEY);
