@@ -8,8 +8,12 @@
 
 import { NextResponse } from "next/server";
 import { fixChecks, type Objective } from "@/lib/agents/lesson";
+import { requireUser } from "@/lib/apiAuth";
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   try {
     const { objectives, failingIds, solution, solutionOutput, language } = await request.json();
     if (!Array.isArray(objectives) || !Array.isArray(failingIds) || !solution) {

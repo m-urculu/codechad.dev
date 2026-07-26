@@ -9,10 +9,14 @@
 
 import { NextResponse } from "next/server";
 import { fixSolution, runJsInSandbox } from "@/lib/agents/lesson";
+import { requireUser } from "@/lib/apiAuth";
 
 type Obj = { id: string; description: string };
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   try {
     const { objectives, starterCode, html, solution, error, language } = await request.json();
     if (!Array.isArray(objectives) || !solution) {

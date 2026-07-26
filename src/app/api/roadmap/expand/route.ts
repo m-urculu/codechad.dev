@@ -4,8 +4,12 @@
 import { NextResponse } from "next/server";
 import { expandNode, type NodeKind } from "@/lib/agents/snowflake";
 import { getRuntime } from "@/lib/runtimes/registry";
+import { requireUser } from "@/lib/apiAuth";
 
 export async function POST(request: Request) {
+  const who = await requireUser(request);
+  if ("error" in who) return who.error;
+
   try {
     const body = await request.json();
     const { skill, level, goal, kind, title, parentId, path, treeOutline, moduleId } = body as {
