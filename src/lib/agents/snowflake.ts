@@ -7,6 +7,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { GoogleGenAI } from "@google/genai";
 import { GEMINI_MODELS } from "./models";
+import { RUNTIMES } from "@/lib/runtimes/registry";
 
 export type NodeKind = "topic" | "subtopic" | "point";
 
@@ -18,6 +19,17 @@ export type RoadmapNode = {
   description?: string;
   children: RoadmapNode[] | null; // null = expandable but not yet generated
   sources?: string[];
+  /**
+   * The runtime this node's lesson runs in — a RUNTIMES id.
+   *
+   * Absent means "the course's own module", which is every single-technology
+   * course. It exists so a PATH can cross technologies: a backend path teaches
+   * Python, then Go, then SQL, then the shell, and the editor follows the lesson
+   * instead of the lesson being stuck with whatever was clicked on the landing
+   * page. Validated on parse — an id we do not have is dropped rather than
+   * carried around to fail later.
+   */
+  module?: string;
 };
 
 export type Roadmap = {
@@ -120,6 +132,12 @@ async function groundedJSON(
   return { data: null, sources };
 }
 
+/** Only ids we actually have a runtime for; anything else is dropped. */
+function parseModule(raw: any): string | undefined {
+  const id = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  return id && id in RUNTIMES ? id : undefined;
+}
+
 function mkNode(id: string, kind: NodeKind, raw: any): RoadmapNode {
   return {
     id,
@@ -128,6 +146,7 @@ function mkNode(id: string, kind: NodeKind, raw: any): RoadmapNode {
     summary: String(raw?.summary ?? "").trim(),
     description: String(raw?.description ?? "").trim(),
     children: kind === "point" ? [] : null, // points are leaves (-> lesson)
+    module: parseModule(raw?.module),
   };
 }
 
@@ -159,8 +178,15 @@ export async function generateOverview(input: {
   draftTopics?: string[];
   /** Free-text steer from the learner ("assume I know general Python syntax"). */
   guidance?: string;
+  /**
+   * Runtimes this course may span, for a PATH that crosses technologies (a
+   * backend path moving Python -> Go -> SQL -> shell). Each is a RUNTIMES id with
+   * the language it runs. Absent for an ordinary single-technology course, whose
+   * topics all inherit the course's own module.
+   */
+  modules?: { id: string; title: string; langName: string }[];
 }): Promise<Roadmap | null> {
-  const { skill, level, goal, runtimeNotes, siblings, draftTopics, guidance } = input;
+  const { skill, level, goal, runtimeNotes, siblings, draftTopics, guidance, modules } = input;
 
   // Only siblings that actually got as far as having topics are useful context.
   const covered = (siblings ?? []).filter((s) => s.topics.length > 0);
@@ -208,7 +234,14 @@ export async function generateOverview(input: {
     (covered.length
       ? `It must be tellable apart at a glance from the courses listed above.\n`
       : `If the course really is broad fundamentals, name it that way.\n`) +
-    `Return ONLY JSON: {"title": string, "summary": string, "topics": [{"title": string, "summary": string, "description": string}]}.`;
+    (modules?.length
+      ? `THIS COURSE SPANS SEVERAL TECHNOLOGIES. Every topic MUST carry a "module" naming the one it is taught in, chosen from exactly these ids:\n` +
+        modules.map((m) => `  • "${m.id}" — ${m.title} (${m.langName})`).join("\n") +
+        `\nPick the module the topic is genuinely practiced in, not the one it is talked about in: a topic on writing a Dockerfile is shell work, a topic on SQL joins is the database. ` +
+        `Order the topics so the technologies come in a sensible teaching order and the learner is not thrown between them topic by topic — group consecutive topics of the same module together. ` +
+        `Use ONLY ids from that list; never invent one.\n` +
+        `Return ONLY JSON: {"title": string, "summary": string, "topics": [{"title": string, "summary": string, "description": string, "module": string}]}.`
+      : `Return ONLY JSON: {"title": string, "summary": string, "topics": [{"title": string, "summary": string, "description": string}]}.`);
 
   const { data, sources } = await groundedJSON(
     prompt,
@@ -243,8 +276,15 @@ export async function expandNode(input: {
   path: string[]; // ancestor titles -> this node
   treeOutline?: string;
   runtimeNotes?: string;
+  /**
+   * The runtime the node being expanded belongs to, inherited by its children.
+   * A path tags topics, not every leaf; without this, expanding a Go topic would
+   * produce lessons with no runtime and the editor would fall back to the
+   * course's language mid-path.
+   */
+  module?: string;
 }): Promise<RoadmapNode[]> {
-  const { skill, level, goal, kind, title, parentId, path, treeOutline, runtimeNotes } = input;
+  const { skill, level, goal, kind, title, parentId, path, treeOutline, runtimeNotes, module } = input;
   const trail = path.join(" > ");
 
   const common =
@@ -291,5 +331,8 @@ export async function expandNode(input: {
   );
   const arr: any[] = Array.isArray(data?.children) ? data.children : [];
   const tag = childKind === "subtopic" ? "s" : "p";
-  return arr.slice(0, 10).map((c, i) => mkNode(`${parentId}-${tag}${i}`, childKind, c));
+  return arr.slice(0, 10).map((c, i) => {
+    const node = mkNode(`${parentId}-${tag}${i}`, childKind, c);
+    return node.module ? node : { ...node, module };
+  });
 }

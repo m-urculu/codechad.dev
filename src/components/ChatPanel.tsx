@@ -103,8 +103,8 @@ type ChatPanelProps = {
   hasRoadmap?: boolean;
   savedLevel?: string;
   savedGoal?: string;
-  initialProgress?: Record<string, { built?: BuiltLesson; passed: string[]; code?: string }> | null;
-  onProgressChange?: (cache: Record<string, { built: BuiltLesson; passed: string[]; code?: string }>) => void;
+  initialProgress?: Record<string, { built?: BuiltLesson; passed: string[]; code?: string; module?: string }> | null;
+  onProgressChange?: (cache: Record<string, { built: BuiltLesson; passed: string[]; code?: string; module?: string }>) => void;
 };
 
 // Cold-start calibration: Level -> Goal -> generate first lesson.
@@ -112,7 +112,10 @@ type CalibStep = "level" | "goal" | "done";
 type Calib = { step: CalibStep; level?: string; goal?: string };
 
 // Active lesson with its fixed objectives + which are satisfied (the progress meter).
-type ActiveLesson = { pointId: string; title: string; objectives: Objective[]; passed: string[] };
+// `module` is the runtime THIS lesson runs in — the node's own when a path names
+// one, the course's otherwise. Grading, guidance and the build all read it from
+// here, so a submission is never judged against the wrong language.
+type ActiveLesson = { pointId: string; title: string; objectives: Objective[]; passed: string[]; module: string | null };
 type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[]; solution?: string };
 
 
@@ -162,15 +165,15 @@ export default function ChatPanel({
   // Per-node lesson cache: keeps each point's built lesson + objective progress so
   // switching between points retains progress (and skips re-generation). In-memory for
   // now; Supabase persistence layers on top once the project is reachable.
-  const lessonCache = useRef<Record<string, { built: BuiltLesson; passed: string[]; code?: string }>>({});
+  const lessonCache = useRef<Record<string, { built: BuiltLesson; passed: string[]; code?: string; module?: string }>>({});
 
   // Seed the cache from saved (Supabase) progress so resumed lessons restore — including
   // the learner's edited code, not just the objectives.
   useEffect(() => {
     if (!initialProgress) return;
-    const seeded: Record<string, { built: BuiltLesson; passed: string[]; code?: string }> = {};
+    const seeded: Record<string, { built: BuiltLesson; passed: string[]; code?: string; module?: string }> = {};
     for (const [id, v] of Object.entries(initialProgress)) {
-      if (v.built) seeded[id] = { built: v.built, passed: v.passed ?? [], code: v.code };
+      if (v.built) seeded[id] = { built: v.built, passed: v.passed ?? [], code: v.code, module: v.module };
     }
     lessonCache.current = { ...lessonCache.current, ...seeded };
   }, [initialProgress]);
@@ -528,7 +531,7 @@ export default function ChatPanel({
     const built = cached?.built;
     if (!built?.solution) return;
     validatedPoints.current.add(pointId);
-    const spec = getRuntime(moduleId);
+    const spec = getRuntime(lessonCache.current[pointId]?.module ?? moduleId);
     let solution = built.solution;
     for (let attempt = 0; attempt < 2; attempt++) {
       let err: string | null = null;
@@ -777,13 +780,23 @@ export default function ChatPanel({
   const handledLessonNonce = useRef(0);
   useEffect(() => {
     if (!lessonRequest || lessonRequest.nonce === handledLessonNonce.current) return;
+    // Not consumed until it is actually handled. Marking it handled and then
+    // bailing on `loading` below silently threw the click away: pick a lesson
+    // while another is still building and the workspace simply did nothing, with
+    // no way to retry but clicking again. `loading` is in this effect's deps, so
+    // a request that arrives mid-build runs the moment the build finishes.
+    if (loading) return;
     handledLessonNonce.current = lessonRequest.nonce;
     const node = lessonRequest.node;
+    // A path's nodes carry their own runtime; a single-technology course's do not
+    // and fall back to the course module. Everything this lesson does — build,
+    // grade, guide — uses this and not the module the learner clicked on the
+    // landing page.
+    const lessonModule = node.module ?? moduleId ?? null;
     // Starting/resuming a lesson is an explicit action → always bring its intro/recap into
     // view (align it to the top), even if the user wasn't following the newest message.
     pendingBottomRef.current = true;
     (async () => {
-      if (loading) return;
       // Resume a previously-opened lesson: restore its objectives + progress, no rebuild.
       const cached = lessonCache.current[node.id];
       if (cached) {
@@ -792,13 +805,13 @@ export default function ChatPanel({
         // code if it's already the active lesson) and stop.
         if (introducedRef.current === node.id) {
           if (lessonRef.current?.pointId !== node.id) {
-            setLesson({ pointId: node.id, title: node.title, objectives: cached.built.objectives, passed: cached.passed });
+            setLesson({ pointId: node.id, title: node.title, objectives: cached.built.objectives, passed: cached.passed, module: lessonModule });
             onLoadCode?.(cached.code ?? cached.built.starterCode, cached.built.html);
           }
           void validateSolutionInBackground(node.id);
           return;
         }
-        setLesson({ pointId: node.id, title: node.title, objectives: cached.built.objectives, passed: cached.passed });
+        setLesson({ pointId: node.id, title: node.title, objectives: cached.built.objectives, passed: cached.passed, module: lessonModule });
         // Restore the learner's edited code if we have it, else the starter scaffold.
         const hasCode = !!cached.code;
         onLoadCode?.(cached.code ?? cached.built.starterCode, cached.built.html);
@@ -831,8 +844,8 @@ export default function ChatPanel({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 pointTitle: node.title,
-                language: getRuntime(moduleId).langName,
-                moduleId: moduleId ?? undefined,
+                language: getRuntime(lessonModule).langName,
+                moduleId: lessonModule ?? undefined,
                 intro: cached.built.intro,
                 hasCode,
                 objectives: cached.built.objectives.map((o) => ({
@@ -861,7 +874,7 @@ export default function ChatPanel({
             skill: meta?.title || node.title,
             level: calib.level,
             goal: calib.goal,
-            moduleId: moduleId ?? undefined,
+            moduleId: lessonModule ?? undefined,
             pointTitle: node.title,
             pointSummary: node.summary || node.description,
             treeOutline: lessonRequest.outline,
@@ -873,9 +886,10 @@ export default function ChatPanel({
           lessonCache.current[node.id] = {
             built: { intro: l.intro, starterCode: l.starterCode, html: l.html || "", objectives: l.objectives, solution: l.solution },
             passed: [],
+            module: lessonModule ?? undefined,
           };
           onProgressChange?.(lessonCache.current);
-          setLesson({ pointId: node.id, title: node.title, objectives: l.objectives, passed: [] });
+          setLesson({ pointId: node.id, title: node.title, objectives: l.objectives, passed: [], module: lessonModule });
           onLoadCode?.(l.starterCode, l.html);
           // Intro is real lesson content → persisted, and tagged so re-opening replaces it
           // rather than stacking a duplicate.
@@ -894,7 +908,8 @@ export default function ChatPanel({
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lessonRequest]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lessonRequest, loading]);
 
   // Persist the learner's edited code into the active lesson's cache (debounced upstream
   // in CodeHere) so resuming restores their work, not just the objectives.
@@ -941,7 +956,7 @@ export default function ChatPanel({
                 code,
                 output,
                 alreadyPassed: active.passed,
-                language: getRuntime(moduleId).langName,
+                language: getRuntime(active.module).langName,
               }),
             });
             const data = await res.json();
@@ -976,8 +991,8 @@ export default function ChatPanel({
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   pointTitle: active.title,
-                  language: getRuntime(moduleId).langName,
-                  moduleId: moduleId ?? undefined,
+                  language: getRuntime(active.module).langName,
+                  moduleId: active.module ?? undefined,
                   code,
                   output,
                   results: active.objectives.map((o) => {
