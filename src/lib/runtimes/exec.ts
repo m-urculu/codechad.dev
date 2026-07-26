@@ -90,6 +90,10 @@ export async function startRun(spec: RuntimeSpec, code: string, onLine: OnLine):
       const { runTypeScript } = await import("./engineTs");
       return runTypeScript(code, onLine);
     }
+    case "clang": {
+      const { runC } = await import("./engineC");
+      return { done: runC(code, onLine, spec.loadNote), cancel: () => {} };
+    }
     case "pyodide": {
       const { runPython } = await import("./enginePyodide");
       return { done: runPython(code, onLine, spec.loadNote), cancel: () => {} };

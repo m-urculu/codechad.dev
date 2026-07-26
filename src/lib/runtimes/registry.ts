@@ -5,6 +5,7 @@
 export type EngineKind =
   | "worker-js"   // Web Worker JS sandbox (hard-killable)
   | "typescript"  // sucrase transpile -> worker-js
+  | "clang"       // real Clang/LLD in WASM -> WASI (CDN)
   | "pyodide"     // CPython in WASM (main thread, CDN)
   | "sqljs"       // SQLite in WASM (CDN)
   | "pglite"      // Postgres in WASM (CDN)
@@ -16,7 +17,7 @@ export type EngineKind =
   | "ml"          // transformers.js (CDN; downloads models)
   | "none";       // no client runtime — guided lessons only
 
-export type ForbidLang = "js" | "python" | "sql" | "ruby" | "lua" | "php" | "none";
+export type ForbidLang = "js" | "python" | "sql" | "ruby" | "lua" | "php" | "c" | "none";
 
 export type RuntimeSpec = {
   id: string;
@@ -106,6 +107,27 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
       "Real Lua VM (fengari) in the browser. No require, no io.*, no os.execute. Tables, functions, metatables, coroutines all work.",
     forbid: "lua", badgeColor: "#8895d9",
     defaultCode: '-- Lua — edit and press Run\nprint("Hello, CodeChad!")',
+  },
+  c: {
+    id: "c", title: "C", monacoLang: "c", engine: "clang",
+    runnable: true, allowDom: false, langName: "C", printHow: "printf(...)",
+    outputFormat:
+      "exactly what printf writes — no framework formats values for you. " +
+      "A stdout check must match the program's own format strings.",
+    runNotes:
+      "Real Clang/LLD compiled to WebAssembly, running in the browser; the program then runs under a WASI host. " +
+      "C17, full standard library (stdio, stdlib, string, math). No network, no files, no shell, no fork/exec, no threads. " +
+      "MEMORY BEHAVIOUR (measured, do not assume otherwise): wasm memory is one flat region starting at address 0, so a NULL " +
+      "dereference, a small array overrun and a use-after-free all keep running and read whatever is there — exactly as an " +
+      "unlucky C program on a real machine does. Only a far-out pointer, stack overflow from runaway recursion, a failed " +
+      "assert() and integer divide-by-zero actually trap. So never write an objective whose expected output depends on a crash " +
+      "from a null dereference: prove memory bugs with printed values, sizeof, or assert(). " +
+      "CHECKS: C has several correct spellings of the same thing — the cast on malloc is optional (`p = malloc(n)` is idiomatic), " +
+      "`(*p).x` equals `p->x`, and whitespace is free. A code_matches regexp must accept all of them or it fails correct answers.",
+    forbid: "c", badgeColor: "#A8B9CC",
+    defaultCode:
+      '#include <stdio.h>\n#include <stdlib.h>\n\nint main() {\n  int *nums = malloc(sizeof(int) * 3);\n  for (int i = 0; i < 3; i++) nums[i] = i * i;\n  printf("%d %d %d\\n", nums[0], nums[1], nums[2]);\n  free(nums);\n  return 0;\n}',
+    loadNote: "Loading the C compiler (≈23 MB, first run only)…",
   },
   postgres: {
     id: "postgres", title: "PostgreSQL", monacoLang: "sql", engine: "pglite",

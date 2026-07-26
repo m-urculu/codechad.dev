@@ -28,6 +28,7 @@ import {
   SiPython,
   SiRuby,
   SiPhp,
+  SiC,
   SiLua,
   SiPostgresql,
   SiSqlite,
@@ -61,6 +62,7 @@ const SECTIONS: Section[] = [
       { id: "ruby", title: "Ruby", blurb: "Real CRuby via ruby.wasm", Icon: SiRuby, color: "#CC342D" },
       { id: "php", title: "PHP", blurb: "Real PHP via php-wasm", Icon: SiPhp, color: "#777BB4" },
       { id: "lua", title: "Lua", blurb: "Lua VM via fengari", Icon: SiLua, color: "#8895d9" },
+      { id: "c", title: "C", blurb: "Real Clang compiled to WASM", Icon: SiC, color: "#A8B9CC" },
     ],
   },
   {
