@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     "The terms you agree to when you use CodeChad: what the service is, what is expected of you, and the limits of what it promises.",
 };
 
-const UPDATED = "25 July 2026";
+const UPDATED = "26 July 2026";
 const CONTACT = CONTACT_EMAIL;
 
 const sections: Section[] = [
@@ -43,7 +43,7 @@ const sections: Section[] = [
     heading: "Your account",
     blocks: [
       {
-        p: "You sign in with a Google account. You are responsible for that account and for anything done through it on CodeChad. Tell us promptly if you believe someone else has used it.",
+        p: "You sign in with a Google account, a GitHub account, or an email address and a password you choose. You are responsible for that account and for anything done through it on CodeChad. If you set a password here, choose one you do not use anywhere else, and keep it to yourself. Tell us promptly if you believe someone else has used your account.",
       },
       {
         p: "You must be at least 16 years old to use CodeChad.",
