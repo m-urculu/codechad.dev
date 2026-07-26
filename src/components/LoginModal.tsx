@@ -82,7 +82,6 @@ export default function LoginModal({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState<null | "google" | "github" | "email">(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const panel = useRef<HTMLDivElement | null>(null);
   const firstField = useRef<HTMLInputElement | null>(null);
@@ -156,7 +155,6 @@ export default function LoginModal({
   const withEmail = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setNotice(null);
     setBusy("email");
 
     if (mode === "signin") {
@@ -172,25 +170,40 @@ export default function LoginModal({
       return;
     }
 
-    const { data, error: err } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { emailRedirectTo: `${window.location.origin}/` },
+    // Creating the account is a server call (see api/auth/signup) so that it
+    // comes back usable straight away. Signing in stays a normal client call, so
+    // the session lands in this tab — which is the whole point: the roadmap and
+    // chat built during the trial are saved by the auth listeners the moment it
+    // does, without a reload or a trip to an inbox.
+    const res = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
     });
-    setBusy(null);
-    if (err) {
-      setError(err.message);
+    const out = await res.json().catch(() => ({} as { error?: string; code?: string }));
+    const taken = res.status === 409 && out.code === "email_taken";
+
+    if (!res.ok && !taken) {
+      setBusy(null);
+      setError(out.error ?? "Could not create the account. Please try again.");
       return;
     }
-    // With confirmations on, Supabase returns a user but no session — the account
-    // is not usable until the emailed link is followed, so there is nothing worth
-    // saving yet.
-    if (data.session) {
-      await rememberCredentials(email, password);
-      onClose();
-    } else {
-      setNotice("Check your email to confirm the account, then sign in.");
+
+    const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+    if (signInErr) {
+      setBusy(null);
+      // The only way in here for a brand-new account is Supabase being down; for
+      // a taken one it is the ordinary case of someone else's address, or their
+      // own with a different password.
+      setError(
+        taken
+          ? "That email already has an account, and this isn't its password."
+          : signInErr.message
+      );
+      return;
     }
+    await rememberCredentials(email, password);
+    onClose();
   };
 
   const providerClass =
@@ -309,14 +322,12 @@ export default function LoginModal({
             {error}
           </p>
         )}
-        {notice && <p className="mt-3 text-meta text-info">{notice}</p>}
 
         <button
           type="button"
           onClick={() => {
             setMode(mode === "signin" ? "signup" : "signin");
             setError(null);
-            setNotice(null);
           }}
           disabled={busy !== null}
           className="mt-4 w-full text-center text-meta text-ink-dim transition-colors duration-150
