@@ -9,7 +9,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut } from "lucide-react";
 import { createClient, User } from "@supabase/supabase-js";
-import { completeGoogleRedirect, startGoogleRedirect } from "@/lib/googleAuth";
+import { completeGoogleRedirect } from "@/lib/googleAuth";
+import LoginModal from "@/components/LoginModal";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
@@ -21,6 +22,7 @@ export function LoginButton() {
   const [loading, setLoading] = useState(true);
   const [imgError, setImgError] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     const start = async () => {
@@ -48,6 +50,8 @@ export function LoginButton() {
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
+        // Whichever way they got in, the modal's work is done.
+        setModalOpen(false);
         // Call API route to register user in user_step_fulfillment
         try {
           await fetch('/api/user-steps/register', {
@@ -114,57 +118,28 @@ export function LoginButton() {
     );
   }
 
-  return <GoogleSignIn onError={setSignInError} error={signInError} />;
-}
-
-// An ordinary button. Nothing of Google's is rendered here — no script, no
-// iframe, no popup — because the flow is a full-page redirect: this navigates
-// away to accounts.google.com and the app is remounted with an ID token in the
-// fragment, which the effect above spends.
-//
-// The one thing that is still Google's is the account chooser the browser lands
-// on. Only the OAuth Branding fields reach it.
-function GoogleSignIn({
-  onError,
-  error,
-}: {
-  onError: (m: string | null) => void;
-  error: string | null;
-}) {
-  const [leaving, setLeaving] = useState(false);
-
-  const go = async () => {
-    onError(null);
-    setLeaving(true);
-    try {
-      await startGoogleRedirect();
-    } catch (e) {
-      // Only reached if the redirect never happens; otherwise the page is gone.
-      setLeaving(false);
-      onError(e instanceof Error ? e.message : "Sign-in unavailable");
-    }
-  };
-
+  // Just a trigger. Every way in lives in the modal.
   return (
     <div className="flex items-center gap-2">
-      {error && (
-        <span className="max-w-[16rem] truncate text-meta text-danger" title={error}>
-          {error}
+      {signInError && (
+        <span className="max-w-[16rem] truncate text-meta text-danger" title={signInError}>
+          {signInError}
         </span>
       )}
       <button
         type="button"
-        onClick={go}
-        disabled={leaving}
+        onClick={() => setModalOpen(true)}
         className="flex h-[38px] items-center justify-center border border-line-strong bg-surface-1 px-5
                    text-meta font-medium text-ink-muted backdrop-blur-md
                    transition-colors duration-150
                    hover:border-line-active hover:bg-surface-2 hover:text-ink
-                   focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active
-                   disabled:opacity-60"
+                   focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active"
       >
-        {leaving ? "Redirecting…" : "Login"}
+        Login
       </button>
+      {modalOpen && (
+        <LoginModal supabase={supabase} onClose={() => setModalOpen(false)} />
+      )}
     </div>
   );
 }
