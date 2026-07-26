@@ -8,6 +8,7 @@ export type EngineKind =
   | "clang"       // real Clang/LLD in WASM -> WASI (CDN)
   | "yaegi"       // Go interpreter in WASM, in a Worker (CDN)
   | "git"         // real repo via isomorphic-git on an in-memory FS (CDN)
+  | "shell"       // POSIX-ish shell + coreutils on an in-memory FS (CDN)
   | "pyodide"     // CPython in WASM (main thread, CDN)
   | "sqljs"       // SQLite in WASM (CDN)
   | "pglite"      // Postgres in WASM (CDN)
@@ -166,6 +167,26 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     defaultCode:
       '# Real git — every command below actually runs\ngit init\ngit config user.name "Learner"\n\necho "# My project" > README.md\ngit add README.md\ngit commit -m "first commit"\n\ngit log --oneline',
     loadNote: "Loading git…",
+  },
+  linux: {
+    id: "linux", title: "Linux", monacoLang: "shell", engine: "shell",
+    runnable: true, allowDom: false, langName: "shell commands", printHow: "what the commands print",
+    outputFormat:
+      "exactly what the command prints — `ls` separates names with two spaces, `wc -l` prints a bare number, " +
+      "`grep` prints matching lines unchanged. No framework formats anything.",
+    runNotes:
+      "A real shell over an in-memory filesystem: a working directory, pipes (|), redirection (> >> <), " +
+      "&& || ; sequencing, exit codes ($?), $VAR and quoting. Commands: ls cd pwd echo cat head tail wc grep sort uniq " +
+      "cut tr find touch mkdir rmdir rm cp mv chmod stat whoami env export which basename dirname true false. " +
+      "IT IS NOT A KERNEL: no processes, no users to switch between, no package manager, no editors (vim/nano), no sudo, " +
+      "no devices, no /proc. Permissions are enforced by the commands themselves — good for teaching what rwx MEANS, " +
+      "useless as a security boundary, so never write a lesson claiming a file is protected from anyone. " +
+      "The filesystem is wiped every Run and starts with /home/learner (the working directory), /tmp, /etc and /usr/bin, " +
+      "so a lesson must create every file it needs.",
+    forbid: "none", badgeColor: "#FCC624",
+    defaultCode:
+      '# A real shell — every command below actually runs\nmkdir -p logs\necho "boot ok" > logs/app.log\necho "disk error" >> logs/app.log\necho "boot ok" >> logs/app.log\n\ncat logs/app.log | grep error\nwc -l < logs/app.log\nls -l logs',
+    loadNote: "Starting the shell…",
   },
   postgres: {
     id: "postgres", title: "PostgreSQL", monacoLang: "sql", engine: "pglite",
