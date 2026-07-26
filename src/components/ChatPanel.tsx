@@ -89,6 +89,16 @@ type ChatPanelProps = {
   courseId?: string | null;
   /** Creates the course row on demand (first calibration answer) and returns its id. */
   ensureCourseId?: () => Promise<string | null>;
+  /** What the course is about. Equals the module's title for an ordinary course; for a
+   *  career path it is the PATH ("Backend Developer"), which is the subject every
+   *  lesson on it should be framed by — not whichever language the path opened in. */
+  skill?: string;
+  /** Set only while STARTING a career path: its curriculum is fixed, so the cold-start
+   *  asks for the learner's level and stops — there is no goal to ask for and no
+   *  overview to generate. */
+  pathTitle?: string | null;
+  pathGoal?: string | null;
+  onPathLevel?: (level: string) => void;
   visible?: boolean; // is the chat tab currently shown? (re-align when it becomes visible)
   onRoadmap?: (roadmap: Roadmap) => void;
   onRoadmapFailed?: (level: string, goal: string) => void; // save a stub course so it's listed/deletable
@@ -123,6 +133,10 @@ export default function ChatPanel({
   moduleId,
   courseId,
   ensureCourseId,
+  skill,
+  pathTitle,
+  pathGoal,
+  onPathLevel,
   visible = true,
   onRoadmap,
   onRoadmapFailed,
@@ -141,6 +155,10 @@ export default function ChatPanel({
   onProgressChange,
 }: ChatPanelProps) {
   const meta = getModuleMeta(moduleId);
+  // What this course is called in the conversation and, more importantly, what the
+  // lesson and agent prompts are told the subject is. A path course opened in Python
+  // is not a Python course, and a Go lesson inside it must not be framed as one.
+  const subject = skill || meta?.title || "";
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 0,
@@ -364,6 +382,16 @@ export default function ChatPanel({
       chatBootKey.current = key;
       return;
     }
+    // The course row is created lazily, so courseId goes null -> id partway through a
+    // conversation this component already booted. The key changes; the conversation
+    // does not. Re-booting here would fetch a chat state that has not been saved yet
+    // and fall through to the cold-start greeting, wiping the answer that caused the
+    // row to be created in the first place. A path makes this the common case rather
+    // than a race, since starting one creates the course immediately.
+    if (courseId && chatBootKey.current === `${moduleId}|${userId ?? "anon"}`) {
+      chatBootKey.current = key;
+      return;
+    }
 
     chatBootKey.current = key;
     (async () => {
@@ -402,18 +430,21 @@ export default function ChatPanel({
           {
             id: 0,
             role: "bot",
-            text: `Welcome back to **${meta.title}**. Your roadmap and progress are restored — open the Roadmap tab to pick up where you left off, or ask me anything.`,
+            text: `Welcome back to **${subject}**. Your roadmap and progress are restored — open the Roadmap tab to pick up where you left off, or ask me anything.`,
           },
         ]);
         return;
       }
-      // 3) Fresh start -> 2-tap cold-start.
+      // 3) Fresh start -> cold-start. Two taps for a technology (level, then goal);
+      //    one for a path, whose curriculum and goal are already decided.
       setCalib({ step: "level" });
       setMessages([
         {
           id: 0,
           role: "bot",
-          text: `Let's learn **${meta.title}**. To tailor it to you — how would you describe your level?`,
+          text: pathTitle
+            ? `You're starting the **${pathTitle}** path — the whole curriculum is already in the Roadmap tab. One question before we begin: how would you describe your level?`
+            : `Let's learn **${meta.title}**. To tailor it to you — how would you describe your level?`,
         },
       ]);
     })();
@@ -463,7 +494,7 @@ export default function ChatPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message,
-          topic: meta?.title,
+          topic: subject || meta?.title,
           level: ctx?.level ?? calib.level,
           goal: ctx?.goal ?? calib.goal,
           moduleId: moduleId ?? undefined,
@@ -730,7 +761,19 @@ export default function ChatPanel({
     const v = value.trim();
     if (!v || loading) return;
     pushMessage('user', v);
-    if (calib.step === "level") {
+    if (calib.step === "level" && pathTitle) {
+      // A path's curriculum is fixed and its goal is the job it is named after, so
+      // there is nothing left to ask and nothing to generate — the tree is already
+      // on screen. The level is still worth having: it is what every lesson on the
+      // path is pitched at.
+      setCalib({ step: "done", level: v, goal: pathGoal ?? undefined });
+      onPathLevel?.(v);
+      pushMessage(
+        "bot",
+        `Got it — *${v}*. Your **${pathTitle}** path is waiting in the Roadmap tab: start at the top and work down. ` +
+          `Open a chapter to reveal its lessons, hit **Start lesson** on one, and we'll dive in here.`
+      );
+    } else if (calib.step === "level") {
       setCalib((c) => ({ ...c, step: "goal", level: v }));
       pushMessage('bot', `Got it — *${v}*. And what's your goal with ${meta?.title ?? "it"}?`);
     } else if (calib.step === "goal") {
@@ -871,7 +914,7 @@ export default function ChatPanel({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            skill: meta?.title || node.title,
+            skill: subject || node.title,
             level: calib.level,
             goal: calib.goal,
             moduleId: lessonModule ?? undefined,

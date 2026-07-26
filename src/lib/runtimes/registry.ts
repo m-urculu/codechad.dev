@@ -277,6 +277,138 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
       "// transformers.js — first run downloads the model (~25 MB)\nconst classify = await transformers.pipeline(\"sentiment-analysis\");\nconst result = await classify(\"I love learning in the browser!\");\nconsole.log(result);",
     loadNote: "Loading transformers.js — the first model download can take a while…",
   },
+
+  // ---- Path-only modules with NO browser runtime ----------------------------
+  //
+  // A career path has to cross technologies that genuinely cannot run in a tab: a
+  // container needs a kernel, a cluster needs a control plane, a cloud needs an
+  // account, and a resume is not a program. `runnable: false` is already a
+  // supported shape (CodeHere disables Run and offers Submit; lesson.ts writes a
+  // different prompt for it), so these teach by having the learner WRITE the real
+  // artifact — a Dockerfile, a manifest, a workflow, a query — which the tutor then
+  // reviews against the real tool's semantics.
+  //
+  // The honesty rule for every runNotes below: say plainly that nothing executes,
+  // so the generator never writes an objective that depends on output the learner
+  // cannot produce. These are NOT on the landing grid — a path puts them on a node.
+  docker: {
+    id: "docker", title: "Docker", monacoLang: "dockerfile", engine: "none",
+    runnable: false, allowDom: false, langName: "Dockerfiles and docker commands",
+    printHow: "what the command would print (nothing executes)",
+    runNotes:
+      "NO RUNTIME — a container needs a Linux kernel and a daemon, neither of which exists in a browser tab. " +
+      "The learner WRITES Dockerfiles and docker/compose commands and submits them for review; nothing is built or run. " +
+      "Teach the real thing: FROM/RUN/COPY/WORKDIR/ENV/EXPOSE/CMD/ENTRYPOINT, layer caching and ordering, multi-stage builds, " +
+      "image tags, volumes and bind mounts, port publishing, networks, and docker run/ps/exec/logs/build/push. " +
+      "Objectives must be checkable by READING the artifact (the instruction used, its order, its arguments), never by output.",
+    forbid: "none", badgeColor: "#2496ED",
+    defaultCode:
+      "# Nothing runs here — write the Dockerfile, then press Submit for review.\nFROM python:3.13-slim\n\nWORKDIR /app\nCOPY requirements.txt .\nRUN pip install --no-cache-dir -r requirements.txt\n\nCOPY . .\nEXPOSE 8000\nCMD [\"python\", \"main.py\"]",
+  },
+  kubernetes: {
+    id: "kubernetes", title: "Kubernetes", monacoLang: "yaml", engine: "none",
+    runnable: false, allowDom: false, langName: "Kubernetes manifests and kubectl commands",
+    printHow: "what kubectl would print (nothing executes)",
+    runNotes:
+      "NO RUNTIME — a cluster is a control plane plus nodes; a browser tab is neither. " +
+      "The learner WRITES YAML manifests and kubectl commands and submits them for review; nothing is applied. " +
+      "Teach the real API: apiVersion/kind/metadata/spec, Pods, Deployments and replicas, labels and selectors, Services, " +
+      "ConfigMaps and Secrets, resource requests/limits, probes, namespaces, PVCs, and kubectl apply/get/describe/logs/scale. " +
+      "Objectives must be checkable by READING the manifest — the right kind, the selector matching the pod labels, the field set.",
+    forbid: "none", badgeColor: "#326CE5",
+    defaultCode:
+      "# Nothing runs here — write the manifest, then press Submit for review.\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: web\nspec:\n  replicas: 2\n  selector:\n    matchLabels:\n      app: web\n  template:\n    metadata:\n      labels:\n        app: web\n    spec:\n      containers:\n        - name: web\n          image: nginx:1.27\n          ports:\n            - containerPort: 80",
+  },
+  aws: {
+    id: "aws", title: "AWS", monacoLang: "shell", engine: "none",
+    runnable: false, allowDom: false, langName: "AWS CLI commands and IAM/infra policy documents",
+    printHow: "what the CLI would return (nothing executes)",
+    runNotes:
+      "NO RUNTIME — every call would need a real account, real credentials and real money. " +
+      "The learner WRITES AWS CLI invocations and JSON policy/config documents and submits them for review; nothing is called. " +
+      "Teach the services as they actually behave: VPCs and subnets, EC2, RDS, IAM principals/actions/resources and least privilege, " +
+      "CloudWatch metrics and alarms, Route 53 record types, S3 buckets/keys/storage classes/presigned URLs, CloudFront distributions " +
+      "and cache behaviour, ECS task definitions, and Lambda handlers and triggers. " +
+      "Objectives must be checkable by READING the command or document — the right service, flags, and policy shape.",
+    forbid: "none", badgeColor: "#FF9900",
+    defaultCode:
+      '# Nothing runs here — write the commands, then press Submit for review.\naws s3 mb s3://my-course-bucket\naws s3 cp report.csv s3://my-course-bucket/reports/report.csv\n\naws s3 presign s3://my-course-bucket/reports/report.csv --expires-in 3600',
+  },
+  cicd: {
+    id: "cicd", title: "CI/CD", monacoLang: "yaml", engine: "none",
+    runnable: false, allowDom: false, langName: "GitHub Actions workflows",
+    printHow: "what the job log would show (nothing executes)",
+    runNotes:
+      "NO RUNTIME — a workflow runs on a runner reacting to repository events, which a browser tab cannot provide. " +
+      "The learner WRITES workflow YAML and submits it for review; nothing is triggered. " +
+      "Teach the real schema: on: (push/pull_request/workflow_dispatch), jobs, runs-on, steps, uses vs run, actions/checkout, " +
+      "setup actions, caching, needs: for job ordering, if: conditions, matrix builds, secrets and permissions, and gating a deploy " +
+      "behind tests/lint/format/security steps. " +
+      "Objectives must be checkable by READING the workflow — the trigger, the job dependency, the step that must exist.",
+    forbid: "none", badgeColor: "#2088FF",
+    defaultCode:
+      "# Nothing runs here — write the workflow, then press Submit for review.\nname: ci\n\non:\n  pull_request:\n    branches: [main]\n\njobs:\n  tests:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-go@v5\n        with:\n          go-version: '1.23'\n      - run: go test ./...",
+  },
+  rabbitmq: {
+    id: "rabbitmq", title: "RabbitMQ", monacoLang: "go", engine: "none",
+    runnable: false, allowDom: false, langName: "Go using the amqp091-go client",
+    printHow: "what the publisher/consumer would log (nothing executes)",
+    runNotes:
+      "NO RUNTIME — pub/sub needs a broker process and a TCP connection to it; the browser has neither. " +
+      "The learner WRITES Go client code against amqp091-go and submits it for review; nothing connects or publishes. " +
+      "Teach the model as it really works: exchanges (direct/fanout/topic) versus queues, binding keys and routing keys, " +
+      "publishing vs consuming, acknowledgements and redelivery, durability and persistence, prefetch/QoS, dead-letter exchanges, " +
+      "serialization (JSON vs gob), and competing consumers for scale. " +
+      "Objectives must be checkable by READING the code — the exchange type declared, the binding key, the ack call.",
+    forbid: "none", badgeColor: "#FF6600",
+    defaultCode:
+      '// Nothing runs here — write the client, then press Submit for review.\npackage main\n\nimport (\n\tamqp "github.com/rabbitmq/amqp091-go"\n)\n\nfunc main() {\n\tconn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\tdefer conn.Close()\n\n\tch, err := conn.Channel()\n\tif err != nil {\n\t\tpanic(err)\n\t}\n\tdefer ch.Close()\n\n\t// Declare a durable topic exchange, then publish to it.\n}',
+  },
+  powerbi: {
+    id: "powerbi", title: "Power BI", monacoLang: "plaintext", engine: "none",
+    runnable: false, allowDom: false, langName: "DAX and Power Query (M) expressions",
+    printHow: "the value the measure would return (nothing executes)",
+    runNotes:
+      "NO RUNTIME — Power BI Desktop is a Windows application, and there is no browser engine for its model. " +
+      "The learner WRITES DAX measures, Power Query (M) steps, and short written report/design decisions, and submits them for review. " +
+      "Teach what transfers: star schemas and relationships, calculated columns versus measures, CALCULATE and filter context, " +
+      "SUM/AVERAGE/COUNTROWS/DIVIDE, time intelligence, Power Query cleaning steps, and choosing the chart and colour encoding " +
+      "that answers the question asked. " +
+      "Objectives must be checkable by READING the expression or the written rationale.",
+    forbid: "none", badgeColor: "#F2C811",
+    defaultCode:
+      "// Nothing runs here — write the measure, then press Submit for review.\nTotal Revenue = SUM(Sales[Amount])\n\nRevenue YoY % =\nVAR Current = [Total Revenue]\nVAR Prior = CALCULATE([Total Revenue], SAMEPERIODLASTYEAR('Date'[Date]))\nRETURN DIVIDE(Current - Prior, Prior)",
+  },
+  pygame: {
+    id: "pygame", title: "Pygame", monacoLang: "python", engine: "none",
+    runnable: false, allowDom: false, langName: "Python using Pygame",
+    printHow: "what the game would draw (nothing executes)",
+    runNotes:
+      "NO RUNTIME — Pyodide has no Pygame display surface, so a game loop cannot be run or seen here. " +
+      "The learner WRITES Python using the real Pygame API and submits it for review; nothing is drawn. " +
+      "Teach the real API: pygame.init, display.set_mode, the event loop and QUIT, clock.tick and dt, filling and flipping the screen, " +
+      "sprite groups with update/draw, vectors for position and velocity, and circle/rect collision. " +
+      "Objectives must be checkable by READING the code — the class inherited from, the method overridden, the call in the loop. " +
+      "Plain Python logic that a lesson wants EXECUTED (vector maths, collision predicates) belongs on a `python` node instead.",
+    forbid: "none", badgeColor: "#3776AB",
+    defaultCode:
+      '# Nothing runs here — write the code, then press Submit for review.\nimport pygame\n\n\ndef main():\n    pygame.init()\n    screen = pygame.display.set_mode((1280, 720))\n    clock = pygame.time.Clock()\n\n    while True:\n        for event in pygame.event.get():\n            if event.type == pygame.QUIT:\n                return\n        screen.fill("black")\n        pygame.display.flip()\n        clock.tick(60)\n\n\nif __name__ == "__main__":\n    main()',
+  },
+  career: {
+    id: "career", title: "Career", monacoLang: "markdown", engine: "none",
+    runnable: false, allowDom: false, langName: "written job-search material (markdown)",
+    printHow: "nothing — this is writing, not code",
+    runNotes:
+      "NO RUNTIME, and no code: the artifacts here are a resume, a GitHub profile README, a project scope, an application message, " +
+      "and answers to interview questions. The learner WRITES markdown and submits it for review. " +
+      "Review it the way a hiring manager reads it — specific over generic, evidence over adjectives, shipped work over coursework — " +
+      "and give concrete rewrites rather than praise. " +
+      "Objectives must be checkable by READING the writing (a section present, a claim carrying a measurable outcome, a link included). " +
+      "Never invent achievements for the learner; when their draft is thin, ask for the missing fact.",
+    forbid: "none", badgeColor: "#8B5CF6",
+    defaultCode:
+      "<!-- Nothing runs here — write, then press Submit for review. -->\n\n## Projects\n\n**<project name>** — <one line on what it does and who it is for>\n\n- <what you built, and the decision that made it non-trivial>\n- <a number: users, rows, ms, %, size>\n- Code: <link> · Live: <link>",
+  },
 };
 
 export function getRuntime(id?: string | null): RuntimeSpec {

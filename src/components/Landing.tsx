@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseBrowser";
 import { RUNTIMES } from "@/lib/runtimes/registry";
+import { PATHS, getPathByTitle, type LearningPath } from "@/lib/paths";
 import { CONTACT_EMAIL, SITE_NAME } from "@/lib/site";
 import type { IconType } from "react-icons";
 import { apiFetch } from "@/lib/apiFetch";
@@ -232,6 +233,9 @@ function RoadmapCard({
 }) {
   const id = r.module ?? moduleIdForSkill(r.skill);
   const mod = id ? MODULE_BY_ID.get(id) : undefined;
+  // A stored path course keeps the path's title as its skill, which is how it is
+  // recognised here — the row itself holds no path id.
+  const path = getPathByTitle(r.skill);
   const [confirming, setConfirming] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   // Use the same continuous, objective-level ratio the roadmap tab shows (falls back to
@@ -292,10 +296,18 @@ function RoadmapCard({
           The wrapper's height matches the title's line box so the two centres
           coincide — hence the explicit leading rather than an inherited one. */}
       <div className="flex w-full items-start gap-2 pr-7">
-        {mod && (
+        {/* A path spans a dozen technologies, so its module icon (whatever it happens
+            to open in) would misdescribe it. Show the path's own colour instead. */}
+        {path ? (
           <span className="flex h-5 shrink-0 items-center">
-            <mod.Icon size={18} color={mod.color} />
+            <span className="h-3.5 w-1" style={{ backgroundColor: path.color }} />
           </span>
+        ) : (
+          mod && (
+            <span className="flex h-5 shrink-0 items-center">
+              <mod.Icon size={18} color={mod.color} />
+            </span>
+          )
         )}
         <div className="min-w-0">
           <div className="truncate text-sm font-bold leading-5 text-ink">{r.name}</div>
@@ -477,6 +489,44 @@ function MyCourses({
   );
 }
 
+// A career path — a fixed, multi-technology curriculum (src/lib/paths.ts).
+// Deliberately not a ModuleCard: a path is a months-long commitment across a dozen
+// technologies, and it should not look like a one-click Python sandbox. The card
+// states its length up front, because the honest version of "become a backend
+// developer" is 23 courses, not a nicer button.
+function PathCard({
+  p,
+  onSelect,
+}: {
+  p: LearningPath;
+  onSelect: (moduleId: string, courseId: undefined, pathId: string) => void;
+}) {
+  const projects = p.courses.filter((c) => c.kind !== "course").length;
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(p.module, undefined, p.id)}
+      className="group relative flex flex-col items-start gap-2 border border-line-strong bg-surface-1 p-5 text-left
+                 backdrop-blur-md
+                 transition-colors duration-150 hover:border-line-active hover:bg-surface-2
+                 focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active"
+    >
+      <span className="h-1 w-8" style={{ backgroundColor: p.color }} />
+      <div className="text-base font-bold text-ink">{p.title}</div>
+      <div className="text-xs font-medium text-ink-muted">{p.blurb}</div>
+      <div className="mt-1 text-xs leading-snug text-ink-dim">{p.summary}</div>
+      <div className="mt-2 flex items-center gap-2 text-meta text-ink-dim">
+        <span className="tabular-nums">{p.courses.length} courses</span>
+        <span>·</span>
+        <span className="tabular-nums">{projects} projects</span>
+      </div>
+      <span className="mt-1 text-meta font-medium text-accent group-hover:text-accent-bright">
+        Start the path →
+      </span>
+    </button>
+  );
+}
+
 function ModuleCard({ m, onSelect }: { m: Module; onSelect: (id: string) => void }) {
   const { Icon } = m;
   return (
@@ -506,8 +556,9 @@ export default function Landing({
   onSettings,
 }: {
   /** courseId is supplied when resuming a stored course; omitted when starting a
-   *  technology from the grid, which resumes the most recent course or begins one. */
-  onSelect: (moduleId: string, courseId?: string) => void;
+   *  technology from the grid, which resumes the most recent course or begins one.
+   *  pathId starts a fixed multi-technology curriculum instead of a generated one. */
+  onSelect: (moduleId: string, courseId?: string, pathId?: string) => void;
   onSettings: (r: RoadmapSummary) => void;
 }) {
   const { roadmaps, remove, duplicate } = useStoredRoadmaps();
@@ -563,6 +614,24 @@ export default function Landing({
           />
         )}
 
+        {/* Career paths — above the grid on purpose. Someone who knows which
+            technology they want can find it below; someone who only knows which JOB
+            they want cannot, and picking "Python" would answer a question they
+            didn't ask. */}
+        <section className="mb-10">
+          <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-ink-dim">
+            Career paths
+          </h2>
+          <p className="mb-3 text-xs text-ink-muted">
+            A fixed curriculum across every technology the job needs — in order, with projects.
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {PATHS.map((p) => (
+              <PathCard key={p.id} p={p} onSelect={onSelect} />
+            ))}
+          </div>
+        </section>
+
         {/* Module sections */}
         <div className="flex flex-col gap-8">
           {SECTIONS.map((section) => (
@@ -580,8 +649,13 @@ export default function Landing({
         </div>
 
         {/* Footnote */}
-        <p className="mt-10 text-center text-meta text-ink-dim">
-          C# · Node.js · Linux · Rust · Go · cloud tracks are coming as heavier runtimes land.
+        {/* Kept accurate as runtimes land: Linux and Go used to be listed here as
+            "coming" long after they shipped, which is the kind of small lie a landing
+            page tells for months. */}
+        <p className="mx-auto mt-10 max-w-2xl text-center text-meta leading-relaxed text-ink-dim">
+          C# · Node.js · Rust · Java are coming as heavier runtimes land. Docker, Kubernetes, AWS,
+          CI/CD and Power BI appear inside the career paths as work you write and get reviewed —
+          a browser tab has no kernel, cluster or cloud account to run them against.
         </p>
 
         {/* What the app is. The hero above carries the one-line version; this is

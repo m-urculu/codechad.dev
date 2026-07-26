@@ -8,7 +8,7 @@
 
 import { NextResponse } from "next/server";
 import { generateOverview } from "@/lib/agents/snowflake";
-import { getRuntime } from "@/lib/runtimes/registry";
+import { getRuntime, RUNTIMES } from "@/lib/runtimes/registry";
 import { siblingCourses } from "@/app/api/supabase/roadmap-state";
 import { userOrTrial } from "@/lib/apiAuth";
 
@@ -18,11 +18,19 @@ export async function POST(request: Request) {
 
 
   try {
-    const { skill, level, goal, moduleId, course_id, draftTopics, guidance } =
+    const { skill, level, goal, moduleId, course_id, draftTopics, guidance, modules } =
       await request.json();
     if (!skill || typeof skill !== "string") {
       return NextResponse.json({ error: "skill is required" }, { status: 400 });
     }
+    // A course that SPANS runtimes (a career path being regenerated) tells the
+    // generator which ones it may tag topics with. Unknown ids are dropped here
+    // rather than offered to the model, which would then hand back a module the
+    // editor cannot open.
+    const spanModules = (Array.isArray(modules) ? modules : [])
+      .map(String)
+      .filter((id) => id in RUNTIMES)
+      .map((id) => ({ id, title: RUNTIMES[id].title, langName: RUNTIMES[id].langName }));
     const runtimeNotes = moduleId ? getRuntime(moduleId).runNotes : undefined;
     // Trial visitors have no other courses to build on, by definition.
     const siblings =
@@ -37,6 +45,7 @@ export async function POST(request: Request) {
         ? draftTopics.map(String).filter(Boolean).slice(0, 20)
         : undefined,
       guidance: typeof guidance === "string" ? guidance : undefined,
+      modules: spanModules.length ? spanModules : undefined,
     });
     if (!roadmap) {
       return NextResponse.json({ error: "Could not generate the roadmap. Please try again." }, { status: 502 });
