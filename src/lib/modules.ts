@@ -17,6 +17,7 @@ export const MODULE_META: Record<string, ModuleMeta> = {
   php: { id: "php", title: "PHP", goals: ["Web backends", "WordPress", "Just the language"] },
   c: { id: "c", title: "C", goals: ["Memory & pointers", "Systems programming", "Coding interviews", "Just the language"] },
   go: { id: "go", title: "Go", goals: ["Backend services", "CLIs & tooling", "Concurrency", "Just the language"] },
+  git: { id: "git", title: "Git", goals: ["Everyday version control", "Branching & merging", "Understanding the internals"] },
   lua: { id: "lua", title: "Lua", goals: ["Game scripting", "Embedded config", "Just the language"] },
   postgres: { id: "postgres", title: "PostgreSQL", goals: ["Analytics & queries", "Backend/app dev", "Coding interviews"] },
   sqlite: { id: "sqlite", title: "SQLite", goals: ["App storage", "Learning SQL", "Coding interviews"] },
