@@ -8,14 +8,11 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { LogOut } from "lucide-react";
-import { createClient, User } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseBrowser";
 import { completeGoogleRedirect } from "@/lib/googleAuth";
 import LoginModal from "@/components/LoginModal";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
-);
 
 export function LoginButton() {
   const [user, setUser] = useState<User | null>(null);
@@ -137,9 +134,7 @@ export function LoginButton() {
       >
         Login
       </button>
-      {modalOpen && (
-        <LoginModal supabase={supabase} onClose={() => setModalOpen(false)} />
-      )}
+      {modalOpen && <LoginModal onClose={() => setModalOpen(false)} />}
     </div>
   );
 }

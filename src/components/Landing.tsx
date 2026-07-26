@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseBrowser";
 import { RUNTIMES } from "@/lib/runtimes/registry";
 import { CONTACT_EMAIL, SITE_NAME } from "@/lib/site";
 import type { IconType } from "react-icons";
@@ -109,10 +109,6 @@ export type RoadmapSummary = {
   ratio?: number; // continuous completion [0,1] — matches the roadmap tab's overall bar
 };
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
-);
 
 // A stored roadmap's `skill` is the module's registry title — map it back to the
 // module id so clicking resumes the right workspace.

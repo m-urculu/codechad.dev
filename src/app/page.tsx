@@ -5,12 +5,8 @@ import Background from "@/components/Background/Background";
 import Landing, { type RoadmapSummary } from "@/components/Landing";
 import CourseSettings from "@/components/CourseSettings";
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabaseBrowser";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
-);
 
 export default function Home() {
   const [gpuOk, setGpuOk] = useState(true);
