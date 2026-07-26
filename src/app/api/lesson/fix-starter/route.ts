@@ -7,12 +7,12 @@
 
 import { NextResponse } from "next/server";
 import { fixStarter } from "@/lib/agents/lesson";
-import { requireUser } from "@/lib/apiAuth";
+import { userOrTrial } from "@/lib/apiAuth";
 
 type Obj = { id: string; description: string };
 
 export async function POST(request: Request) {
-  const who = await requireUser(request);
+  const who = await userOrTrial(request);
   if ("error" in who) return who.error;
 
   try {

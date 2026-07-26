@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useSyncExternalStore } from "react";
 import Image from "next/image";
 import {
   DropdownMenu,
@@ -13,6 +13,7 @@ import { supabase } from "@/lib/supabaseBrowser";
 import { completeGoogleRedirect } from "@/lib/googleAuth";
 import LoginModal from "@/components/LoginModal";
 import { apiFetch } from "@/lib/apiFetch";
+import { closeLogin, getServerSnapshot, getSnapshot, openLogin, subscribe } from "@/lib/authModal";
 
 
 export function LoginButton() {
@@ -20,7 +21,9 @@ export function LoginButton() {
   const [loading, setLoading] = useState(true);
   const [imgError, setImgError] = useState(false);
   const [signInError, setSignInError] = useState<string | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
+  // Open state lives outside the component: the workspace raises this modal too,
+  // when the trial lesson is finished. See src/lib/authModal.ts.
+  const modal = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   useEffect(() => {
     const start = async () => {
@@ -49,7 +52,7 @@ export function LoginButton() {
       setUser(session?.user ?? null);
       if (session?.user) {
         // Whichever way they got in, the modal's work is done.
-        setModalOpen(false);
+        closeLogin();
         // Call API route to register user in user_step_fulfillment
         try {
           await apiFetch('/api/user-steps/register', {
@@ -126,7 +129,7 @@ export function LoginButton() {
       )}
       <button
         type="button"
-        onClick={() => setModalOpen(true)}
+        onClick={() => openLogin()}
         className="flex h-[38px] items-center justify-center border border-line-strong bg-surface-1 px-5
                    text-meta font-medium text-ink-muted backdrop-blur-md
                    transition-colors duration-150
@@ -135,7 +138,7 @@ export function LoginButton() {
       >
         Login
       </button>
-      {modalOpen && <LoginModal onClose={() => setModalOpen(false)} />}
+      {modal.open && <LoginModal reason={modal.reason} onClose={closeLogin} />}
     </div>
   );
 }

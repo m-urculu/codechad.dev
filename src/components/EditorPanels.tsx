@@ -13,6 +13,8 @@ import { resolveDocUrl } from "@/lib/docs-index";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
 import { apiFetch } from "@/lib/apiFetch";
+import { openLogin } from "@/lib/authModal";
+import { isTrialUsed, markTrialUsed } from "@/lib/trial";
 
 
 type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[] };
@@ -118,6 +120,8 @@ export default function EditorPanels({
   const [savedLevel, setSavedLevel] = useState<string | undefined>();
   const [savedGoal, setSavedGoal] = useState<string | undefined>();
   const [initialProgress, setInitialProgress] = useState<Record<string, { built?: BuiltLesson; passed: string[]; code?: string }> | null>(null);
+  // The lesson the trial prompt interrupted, resumed once they sign in.
+  const pendingNext = useRef<RoadmapNode | null>(null);
 
   const doneNodeIds = Object.keys(progress).filter((id) => progress[id]?.done);
 
@@ -189,6 +193,17 @@ export default function EditorPanels({
       cancelled = true;
     };
   }, [moduleId, skill, initialCourseId]);
+
+  // Signing in mid-run has to take effect without a reload. userId is what every
+  // save below is gated on, so flipping it here is precisely what turns a trial
+  // run into stored work: the debounced save effect fires on the next change and
+  // writes the roadmap and progress the visitor built while signed out.
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
+      setUserId(session?.user?.id ?? null);
+    });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   // Create the course row on first real activity (the learner answering calibration),
   // rather than the moment a technology is opened — otherwise merely browsing a module
@@ -310,6 +325,14 @@ export default function EditorPanels({
   }
 
   function handleActivateLesson(node: RoadmapNode) {
+    // The trial runs out at the first completed lesson. Starting another one
+    // signed out would build work with nowhere to put it, so ask here instead of
+    // letting them earn a second lesson's progress and then lose it.
+    if (!userId && isTrialUsed()) {
+      pendingNext.current = node;
+      openLogin("Your free lesson is done. Sign in to save what you've built and carry on — it's free.");
+      return;
+    }
     setActiveNodeId(node.id);
     setLeftView("chat");
     setLessonRequest({
@@ -328,8 +351,29 @@ export default function EditorPanels({
     setProgress(nextProgress);
     const next =
       firstUncompletedPoint(roadmap, nextProgress, pointId) ?? nextPointAfter(roadmap, pointId);
+
+    // End of the free trial. This is the first moment the visitor has finished
+    // something, and all of it — roadmap, code, conversation — lives in this tab
+    // and nowhere else. Ask now, while there is something worth keeping.
+    if (!userId) {
+      markTrialUsed();
+      pendingNext.current = next ?? null;
+      openLogin("Nice — first lesson done. Sign in to save your progress and keep going. It's free.");
+      return;
+    }
+
     if (next) handleActivateLesson(next);
   }
+
+  // Signing in from that prompt picks up exactly where it stopped, so the ask
+  // costs the learner nothing but the sign-in itself.
+  useEffect(() => {
+    const node = pendingNext.current;
+    if (!userId || !node) return;
+    pendingNext.current = null;
+    handleActivateLesson(node);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   // Merge the chat's per-node lesson cache into progress (preserving earned "done").
   function handleProgressChange(cache: Record<string, { built?: BuiltLesson; passed: string[]; code?: string }>) {

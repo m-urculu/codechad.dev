@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabaseBrowser";
+import { openLogin } from "@/lib/authModal";
 
 // fetch() for this app's own API, with the caller's identity attached.
 //
@@ -16,5 +17,20 @@ export async function apiFetch(input: string, init: RequestInit = {}): Promise<R
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  return fetch(input, { ...init, headers });
+  const res = await fetch(input, { ...init, headers });
+
+  // A trial visitor who has spent their allowance gets a 429 from any of the
+  // generation routes. Raising the modal here rather than at each of the dozen
+  // call sites means no route can quietly fail with a message the learner can't
+  // act on. Signed-in callers are never rate limited, so this cannot fire on them.
+  if (res.status === 429 && !token) {
+    const reason = await res
+      .clone()
+      .json()
+      .then((b) => (b?.code === "trial_limit" ? (b.error as string) : null))
+      .catch(() => null);
+    if (reason) openLogin(reason);
+  }
+
+  return res;
 }

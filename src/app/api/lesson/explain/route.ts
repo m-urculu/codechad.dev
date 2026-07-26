@@ -8,12 +8,12 @@
 import { NextResponse } from "next/server";
 import { geminiText } from "@/lib/agents/llm";
 import { getDocSource } from "@/lib/docs";
-import { requireUser } from "@/lib/apiAuth";
+import { userOrTrial } from "@/lib/apiAuth";
 
 type Item = { description: string; passed: boolean };
 
 export async function POST(request: Request) {
-  const who = await requireUser(request);
+  const who = await userOrTrial(request);
   if ("error" in who) return who.error;
 
   try {

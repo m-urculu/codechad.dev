@@ -10,10 +10,10 @@ import { NextResponse } from "next/server";
 import { generateOverview } from "@/lib/agents/snowflake";
 import { getRuntime } from "@/lib/runtimes/registry";
 import { siblingCourses } from "@/app/api/supabase/roadmap-state";
-import { requireUser } from "@/lib/apiAuth";
+import { userOrTrial } from "@/lib/apiAuth";
 
 export async function POST(request: Request) {
-  const who = await requireUser(request);
+  const who = await userOrTrial(request);
   if ("error" in who) return who.error;
 
 
@@ -24,8 +24,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "skill is required" }, { status: 400 });
     }
     const runtimeNotes = moduleId ? getRuntime(moduleId).runNotes : undefined;
+    // Trial visitors have no other courses to build on, by definition.
     const siblings =
-      moduleId ? await siblingCourses(who.userId, moduleId, course_id) : [];
+      who.userId && moduleId ? await siblingCourses(who.userId, moduleId, course_id) : [];
     const roadmap = await generateOverview({
       skill,
       level,

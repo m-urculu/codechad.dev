@@ -4,10 +4,10 @@
 import { NextResponse } from "next/server";
 import { expandNode, type NodeKind } from "@/lib/agents/snowflake";
 import { getRuntime } from "@/lib/runtimes/registry";
-import { requireUser } from "@/lib/apiAuth";
+import { userOrTrial } from "@/lib/apiAuth";
 
 export async function POST(request: Request) {
-  const who = await requireUser(request);
+  const who = await userOrTrial(request);
   if ("error" in who) return who.error;
 
   try {
