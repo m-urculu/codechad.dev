@@ -11,7 +11,7 @@
 --   roadmaps               api/functions/roadmap/index.ts
 --
 -- Safe to run as-is: it only adds tables. RLS is deliberately NOT enabled here —
--- see 0002_rls.sql, which must not be applied until the server routes stop using
+-- see 0005_rls.sql, which must not be applied until the server routes stop using
 -- the anon key.
 
 -- One row per user, tracking which onboarding steps are done.

@@ -1,12 +1,8 @@
 // src/app/api/supabase/chat-message.ts
 // Server utility to insert a chat message into Supabase
 
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin as supabase } from "@/lib/supabaseAdmin";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
-);
 
 /**
  * Insert a chat message into the chat_messages table

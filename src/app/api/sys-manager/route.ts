@@ -5,7 +5,7 @@ import { POST as searchHandler } from '@/app/api/functions/search/route';
 import * as roadmapHandlers from '@/app/api/functions/roadmap/index';
 import { callGemini } from '@/lib/gemini';
 import { getUserChatMessages, insertChatMessage } from '@/app/api/supabase/chat-message';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin as supabase } from "@/lib/supabaseAdmin";
 
 const functionMap: Record<string, (request: Request) => Promise<Response>> = {
   chat: chatHandler,
@@ -17,7 +17,6 @@ const functionMap: Record<string, (request: Request) => Promise<Response>> = {
 
 // Helper to fetch user step fulfillment from Supabase
 async function getUserStepFulfillment(user_id: string) {
-  const supabase = createClient(process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!, process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!);
   const { data, error } = await supabase
     .from('user_step_fulfillment')
     .select('define_roadmaps_done, define_project_done, course_nodes_gen_done')

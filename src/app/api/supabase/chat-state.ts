@@ -4,12 +4,8 @@
 // duplicated courses keep separate conversations).
 // Fail-soft: an unreachable project returns null/false, never breaks the UX.
 
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin as supabase } from "@/lib/supabaseAdmin";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
-  process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
-);
 
 export type ChatStateMsg = { role: "user" | "bot"; text: string; lessonId?: string };
 export type ChatCalib = { step?: string; level?: string; goal?: string };

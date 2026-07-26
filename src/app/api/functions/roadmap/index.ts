@@ -1,6 +1,6 @@
 
 import { callGemini } from '@/lib/gemini';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin as supabase } from "@/lib/supabaseAdmin";
 import { insertChatMessage } from '@/app/api/supabase/chat-message';
 
 export async function define_roadmaps(req: Request) {
@@ -33,10 +33,6 @@ export async function define_roadmaps(req: Request) {
 	let roadmapInfo = null;
 	let roadmapSummary = '';
 	if (selectedRoadmap) {
-		const supabase = createClient(
-			process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
-			process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
-		);
 		const { data, error } = await supabase
 			.from('roadmaps')
 			.select('key, title, description, content')
@@ -66,10 +62,6 @@ export async function define_roadmaps(req: Request) {
 	// 3. Save the selected roadmap to the database and update user_step_fulfillment
 	let dbStatus = 'not saved';
 	if (user_id && selectedRoadmap && archetypes.includes(selectedRoadmap)) {
-		const supabase = createClient(
-			process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_URL!,
-			process.env.NEXT_PUBLIC_PROJECT_COURSESSUPABASE_ANON_KEY!
-		);
 		const { error } = await supabase
 			.from('user_roadmaps')
 			.upsert({ user_id, roadmap_key: selectedRoadmap });
