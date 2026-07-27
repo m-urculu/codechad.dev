@@ -523,10 +523,15 @@ export default function EditorPanels({
   // section URL (search fallback) and navigate there. Suppressed for external-doc modules,
   // whose lessons carry no doc links anyway.
   async function handleOpenDoc(term: string) {
-    const src = getDocSource(moduleId);
+    // The LESSON's runtime, not the course's. On a path they differ, and resolving a Go
+    // term against Python's index is how a link ends up pointing at nothing — or, worse,
+    // at a same-named Python entry. This is the module the Docs pane is already showing.
+    const src = getDocSource(activeModule);
+    // No embeddable docs for this runtime: still open the pane, which offers the
+    // official site. Returning silently made the click look broken.
+    showLeft("docs");
     if (!src || src.kind !== "devdocs") return;
-    showLeft("docs"); // instant tab switch — resolution can take a beat on first click
-    const url = await resolveDocUrl(moduleId, term);
+    const url = await resolveDocUrl(activeModule, term);
     if (url) setDocTarget({ url, nonce: Date.now() });
   }
 
