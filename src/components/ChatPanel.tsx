@@ -31,6 +31,7 @@ import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
 import { Check, Circle, RotateCcw } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { canResolveDocTerm } from "@/lib/docs-index";
 
 marked.setOptions({ breaks: false });
 
@@ -550,6 +551,51 @@ export default function ChatPanel({
       return [...base, { id: newId(), text, role: "bot" as const, lessonId }];
     });
   }
+
+  // Validate every rendered doc-link against the real documentation index, and DEMOTE
+  // the ones that resolve to nothing back to plain text.
+  //
+  // The generator is asked for the "canonical documentation name" of an API, and it is
+  // usually right — but "usually" means some links point at terms the docs do not carry.
+  // Those used to render identically to working ones: the learner clicked, the pane
+  // opened, and nothing relevant appeared. A link that cannot be honoured should not
+  // look like a link.
+  //
+  // Runs after paint, per bubble, and marks what it has checked so each term is
+  // examined once. Index-only — the index is fetched once per module and cached in
+  // localStorage, so this costs no network per link.
+  const docLinkModule = lesson?.module ?? moduleId ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    const nodes = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-doc-term]:not([data-doc-checked])")
+    );
+    if (nodes.length === 0) return;
+    (async () => {
+      for (const el of nodes) {
+        let term = el.getAttribute("data-doc-term") || "";
+        try {
+          if (term.includes("%")) term = decodeURIComponent(term);
+        } catch {
+          /* keep raw term */
+        }
+        const ok = await canResolveDocTerm(docLinkModule, term);
+        if (cancelled) return;
+        el.setAttribute("data-doc-checked", ok ? "ok" : "dead");
+        if (!ok) {
+          // Strip every affordance: the click delegation keys on data-doc-term, so
+          // removing it is what actually makes the text inert.
+          el.removeAttribute("data-doc-term");
+          el.removeAttribute("role");
+          el.removeAttribute("tabindex");
+          el.classList.remove("doc-link");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [messages, docLinkModule]);
 
   // Delegated click for inline doc-links inside a bot bubble: resolve the term to a doc
   // section and open the Docs tab (handled upstream). preventDefault so nothing navigates.
