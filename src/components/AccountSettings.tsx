@@ -128,6 +128,9 @@ export default function AccountSettings({ onBack }: { onBack: () => void }) {
   const [signedOutEverywhere, setSignedOutEverywhere] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -228,6 +231,38 @@ export default function AccountSettings({ onBack }: { onBack: () => void }) {
     setPassword("");
     setPassword2("");
     flash("password");
+  }
+
+  // Article 15/20 in one button. The route sets Content-Disposition, but a fetch
+  // response is not a navigation and the browser will not act on it — so the blob is
+  // turned into a download here. It cannot be a plain <a href>: the endpoint needs the
+  // Authorization header, which only apiFetch supplies.
+  async function downloadData() {
+    setExporting(true);
+    setExportError(null);
+    try {
+      const res = await apiFetch("/api/account/export");
+      if (!res.ok) {
+        setExportError("Could not build the file. Please try again.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `codechad-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Revoked on a delay: revoking synchronously can cancel the download in Safari.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      setExported(true);
+      setTimeout(() => setExported(false), 4000);
+    } catch {
+      setExportError("Could not reach the server. Please try again.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function deleteAccount() {
@@ -406,6 +441,37 @@ export default function AccountSettings({ onBack }: { onBack: () => void }) {
           {error?.field === "password" && (
             <p className="mt-2 text-meta text-danger">{error.message}</p>
           )}
+        </section>
+
+        {/* --- Your data ------------------------------------------------------ */}
+        {/* Not in the danger zone: exporting is the opposite of destructive, and
+            burying it next to "delete everything" would make a right look like a risk. */}
+        <section className="mt-8">
+          <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink-dim">
+            Your data
+          </h2>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={downloadData}
+              disabled={exporting}
+              className="border border-line-strong px-3 py-1.5 text-xs font-semibold text-ink transition-colors duration-150 hover:bg-surface-2 disabled:opacity-40 sm:shrink-0"
+            >
+              {exporting ? "Preparing…" : "Download my data"}
+            </button>
+            {exported && (
+              <span className="flex items-center gap-1.5 text-meta font-medium text-accent">
+                <FiCheck size={13} /> Downloaded
+              </span>
+            )}
+          </div>
+          <p className="mt-2 text-meta text-ink-dim">
+            A JSON file with everything attached to your account: your profile, every
+            course and roadmap, your progress and submitted code, every conversation with
+            the tutor, and any feedback you sent while signed in. Yours to keep or to take
+            elsewhere.
+          </p>
+          {exportError && <p className="mt-2 text-meta text-danger">{exportError}</p>}
         </section>
 
         {/* --- Danger zone ---------------------------------------------------- */}

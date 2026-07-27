@@ -1,6 +1,8 @@
 # GDPR and compliance
 
 **Status:** working compliance record for CodeChad. **Last reviewed:** 27 July 2026.
+**Last implemented:** 27 July 2026 — G1–G6, G8 and G9 are closed in code; see the
+[gap register](#gap-register) for what each fix was and where it lives.
 **Controller:** the solo operator of CodeChad, established in Portugal.
 **Supervisory authority:** CNPD (Comissão Nacional de Proteção de Dados).
 
@@ -12,7 +14,7 @@ Two dates make this urgent rather than theoretical:
 
 | Date | What applies | Status here |
 |---|---|---|
-| **2 Aug 2026** (7 days) | **EU AI Act Art. 50** — users must be told they are interacting with AI | ⚠️ [Gap G3](#gap-register) |
+| **2 Aug 2026** (7 days) | **EU AI Act Art. 50** — users must be told they are interacting with AI | ✅ **Done** — permanent disclosure bar above the conversation, `ChatPanel.tsx`. See [§8](#8-ai-specific-obligations) |
 | **19 Jun 2026** (in force) | **CRD Art. 11a withdrawal button** for online consumer contracts | Not yet relevant — no paid product. **Blocks launch of the subscription.** See [§9](#9-payments-and-subscription) |
 
 ---
@@ -89,9 +91,30 @@ for analytics or marketing email — neither exists.
 | **Vercel** | Processor — hosting | Request data, IPs, logs | DPA + SCCs |
 | **Google (Gemini API)** | Processor — lesson/roadmap generation | **D, E** and course context | Paid-tier terms; confirm no training on input |
 | **Google / GitHub (OAuth)** | Independent controllers | Sign-in event | Their own policies |
-| **Microsoft** (Edge read-aloud) | Processor in effect | **Lesson text** on each press | ⚠️ Undocumented — [Gap G4](#gap-register) |
-| **jsDelivr, unpkg, Hugging Face** | Recipients of an IP address | Visitor **IP + user-agent** | ⚠️ No DPA — [Gap G5](#gap-register) |
-| **DevDocs** (iframe) | Recipient of an IP address | Visitor IP when the docs pane opens | ⚠️ Same |
+| **Microsoft** (Edge read-aloud) | Processor in effect | **Lesson text** on each press | Disclosed in the policy; no DPA |
+| **jsDelivr, unpkg, Hugging Face** | Recipients of an IP address | Visitor **IP + user-agent** | Disclosed in the policy; no DPA |
+| **DevDocs** (iframe) | Recipient of an IP address | Visitor IP when the docs pane opens | Disclosed in the policy; no DPA |
+
+### Processor register
+
+The Art. 30(1)(d) list of recipients, with the paperwork state for each. "Standard terms"
+means the provider's published DPA applies by acceptance of their terms of service rather
+than by a separately signed instrument — the normal position for a solo operator on
+self-serve plans, and worth recording as such rather than leaving blank.
+
+| Party | Role | Basis for the transfer | Paperwork | To confirm |
+|---|---|---|---|---|
+| Supabase | Processor | Art. 28 DPA + SCCs | Standard terms | Project region; backup retention |
+| Vercel | Processor | Art. 28 DPA + SCCs | Standard terms | Log retention period |
+| Google (Gemini API) | Processor | Paid-tier API terms + SCCs | Standard terms | Written confirmation of no-training-on-input |
+| Google / GitHub (OAuth) | Independent controllers | Their own policies | N/A | — |
+| Microsoft (speech) | Processor in effect | None — browser-initiated | **None** | Whether to make Read Aloud opt-in |
+| jsDelivr · unpkg · Hugging Face · DevDocs | Recipients of an IP | Legitimate interests 6(1)(f) | **None** | Whether to self-host (see below) |
+
+The bottom two rows are the honest weak spot: there is no contract with any of them,
+because the browser contacts them directly and no commercial relationship exists to hang
+one on. Disclosure is what closes the transparency half of that; the contractual half only
+closes by removing the third party, which is option (2) below.
 
 ### The CDN problem, stated plainly
 
@@ -116,20 +139,44 @@ Three ways out, in order of cost:
 3. **Defer the load until the user presses Run** — several already do. A visitor who
    never opens a module then never contacts a CDN at all.
 
-Do (1) now; (3) is mostly true already and worth completing; (2) only if a DPA ever
-challenges it.
+**(1) is done.** The privacy policy now has a *Content delivery networks, and what they
+can see* passage naming jsDelivr, unpkg, Hugging Face and DevDocs, saying plainly that a
+request to another company discloses an IP address, and stating the limits — no cookie, no
+account data, no access to code or conversations, and nothing contacted at all if the
+visitor never opens a module or the docs pane. (3) is mostly true already and worth
+completing; (2) only if a DPA ever challenges it.
 
 ## 4. Data subject rights
 
 | Right | Article | State | Where |
 |---|---|---|---|
 | Information | 13–14 | ✅ Detailed privacy policy | `src/app/privacy/page.tsx` |
-| Access | 15 | ⚠️ Manual only | [Gap G2](#gap-register) |
+| Access | 15 | ✅ **Self-service, immediate** | `api/account/export` GET |
 | Rectification | 16 | ✅ Name and email editable | `AccountSettings.tsx`, `api/account` PATCH |
 | **Erasure** | 17 | ✅ **Self-service, immediate** | `api/account` DELETE + `on delete cascade` |
-| Portability | 20 | ⚠️ Missing | [Gap G2](#gap-register) |
+| Portability | 20 | ✅ Same endpoint — structured JSON | `api/account/export` GET |
 | Objection | 21 | ✅ By email; only 6(1)(f) processing is objectable | — |
 | No automated decisions | 22 | ✅ N/A — grading has no legal or similarly significant effect | — |
+
+### Access and portability — one endpoint
+
+`GET /api/account/export` returns a JSON attachment containing every row linked to the
+caller, from all six user-owned tables plus the `auth.users` profile. Three properties
+make it an answer to Art. 15 rather than a gesture at it:
+
+- **It is complete.** Conversations and submitted code are in it, not summarised out of
+  it. The awkward parts are the parts the right exists for.
+- **It is scoped by the verified token**, never by a caller-supplied id. The service role
+  bypasses RLS, so the `WHERE user_id = <verified>` clause *is* the boundary — verified by
+  seeding a second user's row and confirming it does not appear.
+- **It says what it does not contain**, in a `notes` array: hashed passwords, the host's
+  request logs, and anonymous feedback that carries no link to the account.
+
+The surface is `AccountSettings` → *Your data* → **Download my data**, deliberately not
+inside the danger zone: exporting is the opposite of destructive, and filing a right next
+to "delete everything" makes it look like a risk.
+
+### Erasure, and the proof it works
 
 Erasure is the strongest part of the implementation and worth describing precisely,
 because it is where most apps quietly fail. Account deletion calls the GoTrue admin API
@@ -138,6 +185,15 @@ from **every** table to it, so roadmaps, chat state, chat messages, onboarding f
 progress are removed by the database itself rather than by application code that can be
 forgotten. The user types `DELETE` to confirm. There is no soft-delete and no grace
 period, and the privacy policy says so.
+
+Those constraints are not visible from outside the database, which is why the claim used
+to be unverifiable ([old gap G6](#gap-register)). **`npm run check:erasure`** now settles
+it empirically instead of by inspection: it creates a throwaway user, writes one row into
+every user-owned table, deletes the account through the same admin call the app uses, and
+re-reads each table **as the service role** — which bypasses RLS, so a surviving row has
+nowhere to hide. Last run 27 July 2026 against production: **6/6 tables erased**
+(`user_roadmap_state`, `user_chat_state`, `chat_messages`, `user_step_fulfillment`,
+`user_roadmaps`, `feedback`). Re-run it after any migration that adds a user-owned table.
 
 > ⚠️ **This changes the moment you take money.** Invoices must survive erasure — see
 > [§9.7](#97-erasure-vs-invoices--the-conflict-to-design-for).
@@ -157,7 +213,10 @@ Article 32 measures actually in place:
   with the anon key rather than the service role, deliberately, so a forged token has less
   room to matter.
 - **Passwords never touch app code** — handed to GoTrue, stored hashed.
-- **Rate limiting** on anonymous generation and on signup (8/hour/IP), in memory.
+- **Rate limiting** on anonymous generation, on signup (8/hour/IP) and on feedback
+  (10/hour/IP), in memory.
+- **The export endpoint is scoped by the verified token**, and that scoping is tested:
+  a second user's row seeded alongside the caller's does not appear in the file.
 - **Code execution is client-side and sandboxed** — Web Workers and sandboxed iframes.
   Learner code never runs on a server, which removes an entire class of breach.
 - **Transport** — HTTPS throughout; a strict CSP on published artifacts.
@@ -208,11 +267,26 @@ The tutor is an AI system that interacts directly with people, so it must be des
 that users are **informed they are interacting with AI**, at the point of first
 interaction, accessibly.
 
-CodeChad is largely there in substance — the product is openly "an AI tutor" and the
+CodeChad was largely there in substance — the product is openly "an AI tutor" and the
 landing page says so — but "the marketing says AI" is not the same as an in-product
-disclosure at first interaction. The fix is small: a one-line, permanently visible marker
-in the chat panel's first message. **[Gap G3](#gap-register), and the deadline is seven
-days away.**
+disclosure at first interaction.
+
+**Implemented 27 July 2026**, ahead of the deadline: a permanently visible bar at the top
+of the chat panel, above every message, in every state —
+
+> ✨ You're talking to an AI tutor. Replies are generated and can be wrong — check
+> anything that matters.
+
+It is a fixed element rather than a line in the opening message, and that choice is the
+whole point. The opening message scrolls out of view after two exchanges and is never
+shown at all to someone resuming a saved conversation — so a disclosure living there would
+be absent for precisely the returning user who has stopped thinking about it. It carries
+`role="note"` so it is reachable by a screen reader, which is part of what "accessible"
+asks for. Verified rendered in the workspace at 1440×900.
+
+The privacy policy also gained a *The AI tutor* section stating that the tutor is a system
+and not a person, that nobody is reading the messages, that generated text can be wrong,
+and that nothing written is used to train models.
 
 Art. 50 also requires providers of generative systems to mark synthetic output in a
 machine-readable form. That duty falls on **Google as the model provider**, not on this
@@ -376,7 +450,7 @@ today, and it is much cheaper to plan for than to unpick.
 | Feedback | Until the sender deletes their account; **anonymous feedback has no owner and therefore no erasure route** | `on delete cascade` covers signed-in senders |
 | IP (rate limiting) | Minutes — memory only | Process restart or window expiry |
 | Trial counter | Until the user clears their browser | On their device |
-| Auth logs | Per Supabase defaults | ⚠️ Confirm and document |
+| Auth logs | Per Supabase defaults | ⚠️ Confirm and document — [G7](#gap-register) |
 | **Invoices (future)** | **10 years** | Legal obligation, survives erasure |
 | Backups | Per Supabase defaults | ⚠️ Confirm — erasure must reach them within the cycle |
 
@@ -407,23 +481,35 @@ institutions, or any use of conversation content for model training or profiling
 
 ## Gap register
 
-| ID | Gap | Severity | Fix |
+| ID | Gap | Severity | State |
 |---|---|---|---|
-| **G1** | Privacy policy predates the AI/CDN/TTS analysis here | High | Add Gemini, Microsoft TTS, and the CDNs as recipients |
-| **G2** | No self-service export (Arts. 15, 20) | High | `GET /api/account/export` → JSON of the user's own rows. The queries already exist |
-| **G3** | **No in-product AI disclosure at first interaction** | **High — 2 Aug 2026** | One line in the chat panel's opening message |
-| **G4** | TTS sends lesson text to a Microsoft endpoint, undisclosed | Medium | Disclose, or make it opt-in per session |
-| **G5** | CDNs receive visitor IPs with no disclosure | Medium | Disclose now; consider self-hosting later |
-| **G6** | Cascade FKs (`0006`) not verifiable from outside the DB | Medium | Confirm the constraints exist in production |
-| **G7** | Backup and auth-log retention unknown | Low | Confirm with Supabase, write it into §10 |
-| **G8** | No Terms age statement | Low | State 16+ |
-| **G9** | No processor register with DPA dates | Low | One table; §3 is most of it |
-| **P1–P6** | Everything in [§9](#9-payments-and-subscription) | **Blocks launch** | Hosted checkout · Stripe DPA · SCA · VAT/OSS · **withdrawal button** · split erasure |
+| **G1** | Privacy policy predates the AI/CDN/TTS analysis here | High | ✅ **Closed** — policy rewritten: feedback, rate-limit IPs, CDNs, sharper TTS entry, new *The AI tutor* section, rights section rewritten around the self-service actions |
+| **G2** | No self-service export (Arts. 15, 20) | High | ✅ **Closed** — `GET /api/account/export` + *Download my data* in Account settings. 17/17 assertions passed against a seeded account |
+| **G3** | **No in-product AI disclosure at first interaction** | **High — 2 Aug 2026** | ✅ **Closed** — permanent bar in `ChatPanel.tsx`, [§8](#8-ai-specific-obligations) |
+| **G4** | TTS sends lesson text to a Microsoft endpoint, undisclosed | Medium | ✅ **Disclosed** — including that the IP goes with it. Making it opt-in remains an option, not a requirement |
+| **G5** | CDNs receive visitor IPs with no disclosure | Medium | ✅ **Disclosed** — all four named in the policy with the purpose and the limits |
+| **G6** | Cascade FKs (`0006`) not verifiable from outside the DB | Medium | ✅ **Closed** — `npm run check:erasure` proves it behaviourally; 6/6 tables erased, 27 Jul 2026 |
+| **G7** | Backup and auth-log retention unknown | Low | ⚠️ **Open** — needs an answer from Supabase, not a code change |
+| **G8** | No Terms age statement | Low | ✅ Already present — "You must be at least 16 years old to use CodeChad" |
+| **G9** | No processor register with DPA dates | Low | ✅ **Closed** — [§3](#processor-register). Two rows honestly read "None" |
+| **P1–P6** | Everything in [§9](#9-payments-and-subscription) | **Blocks launch** | ⏸️ **Not built, by design** — there is no paid product to attach them to |
 
-Fix order: **G3** (deadline in 7 days), then **G1/G2/G5** (one policy update and one
-endpoint), then the rest. The payment items only matter when the subscription is built,
-but **P5 and P6 must be designed in from the start** — retrofitting a withdrawal button
-and unpicking a cascading delete are both far worse later.
+### What is deliberately not implemented
+
+**The payment items (P1–P6).** Every one of them — hosted checkout, the Stripe DPA, SCA,
+VAT/OSS registration, the withdrawal button, split erasure — is a control *on a
+subscription*. There is no subscription: no payment provider, no billing table, no price
+in the UI. Building a withdrawal button with no contract to withdraw from, or splitting
+erasure to protect invoices that do not exist, would be inert code that has to be rewritten
+against the real flow anyway. §9 stays what it is: the specification the payment work must
+satisfy on the day it starts, with **P5 (withdrawal) and P6 (split erasure) called out as
+design-time, not retrofit** decisions.
+
+**G7** needs a support answer from Supabase about backup and auth-log retention. Nothing in
+this repository can settle it.
+
+Remaining order: **G7**, then the CDN self-hosting question if it ever becomes pressing,
+then the payment block when the subscription is actually built.
 
 ## Sources
 
@@ -442,6 +528,9 @@ Evidence from this repository (all re-checkable):
 
 - Schema and RLS — `supabase/migrations/0001`–`0006`
 - Erasure — `src/app/api/account/route.ts`, `src/components/AccountSettings.tsx`
+- Erasure, proven — `scripts/check-erasure.mjs` (`npm run check:erasure`)
+- Access and portability — `src/app/api/account/export/route.ts`
+- AI Act Art. 50 disclosure — `src/components/ChatPanel.tsx`, the `role="note"` bar
 - Auth and token verification — `src/lib/apiAuth.ts`, `src/lib/supabaseAdmin.ts`
 - IP handling — `src/lib/rateLimit.ts`
 - Model calls — `src/lib/agents/*.ts` → `generativelanguage.googleapis.com`

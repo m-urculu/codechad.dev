@@ -29,7 +29,7 @@ import { gradeSubmission } from "@/lib/agents/grade";
 import ReadAloudButton from "@/components/ReadAloudButton";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
-import { Check, Circle, RotateCcw } from "lucide-react";
+import { Check, Circle, RotateCcw, Sparkles } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { canResolveDocTerm } from "@/lib/docs-index";
 
@@ -1231,6 +1231,29 @@ export default function ChatPanel({
 
   return (
     <div className="flex flex-col h-full w-full min-w-0 border border-line-strong backdrop-blur-md font-sans overflow-x-auto">
+          {/* EU AI Act Art. 50, applicable 2 August 2026: a person interacting with an
+              AI system must be informed of that, at the point of first interaction and
+              in a clear, accessible way.
+
+              It is a permanent bar rather than a line in the opening message on purpose.
+              The opening message scrolls away after two exchanges, and a restored
+              conversation never shows it at all — so a disclosure that lives there is
+              absent for exactly the returning user who has stopped thinking about it.
+              This sits above every message, in every state of the panel, always.
+
+              `role="note"` and the fixed wording keep it findable by a screen reader,
+              which is part of what "accessible" is asking for. See
+              docs/gdpr-and-compliance.md §8. */}
+          <div
+            role="note"
+            className="flex items-center gap-1.5 border-b border-line-strong px-4 py-1.5 text-meta text-ink-dim"
+          >
+            <Sparkles className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span>
+              You&rsquo;re talking to an AI tutor. Replies are generated and can be wrong —
+              check anything that matters.
+            </span>
+          </div>
           {lesson && (
             <div className="border-b border-line-strong px-4 py-2">
               <div className="flex items-center justify-between gap-2">
