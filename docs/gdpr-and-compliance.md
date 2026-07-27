@@ -1,6 +1,6 @@
 # GDPR and compliance
 
-**Status:** working compliance record for CodeChad. **Last reviewed:** 26 July 2026.
+**Status:** working compliance record for CodeChad. **Last reviewed:** 27 July 2026.
 **Controller:** the solo operator of CodeChad, established in Portugal.
 **Supervisory authority:** CNPD (Comissão Nacional de Proteção de Dados).
 
@@ -51,6 +51,7 @@ a template.
 | F | **Onboarding flags** | App usage | `user_step_fulfillment` | Behavioural, trivial |
 | G | **IP address** | Every HTTP request | **In memory only**, `src/lib/rateLimit.ts` | Identifying, transient |
 | H | **Trial counter** | Anonymous visits | `localStorage` on the visitor's own device | Not held by us |
+| I | **Feedback** — message, optional reply email, kind, and the page/module it was sent from | The feedback button, signed in **or out** | `feedback` (FK `user_id`, **nullable**) | **Free text**, plus an email address if the sender gave one |
 
 **The sensitive item is D.** Everything else is bounded and predictable; a free-text chat
 box is not. A learner may type their employer, their salary, their health, their
@@ -73,6 +74,7 @@ grep — there is no `gtag`, `posthog`, `plausible`, or `document.cookie` anywhe
 | Text-to-speech (Read Aloud) | **Contract** 6(1)(b), user-initiated | Only fires when the button is pressed |
 | IP rate limiting (G) | **Legitimate interests** 6(1)(f) | Balancing test: security purpose, in-memory only, no profiling, minimal — passes |
 | Trial allowance (H) | **Legitimate interests** 6(1)(f) | Stored on the user's own device |
+| Feedback (I) | **Legitimate interests** 6(1)(f) | Improving the service on the sender's own initiative. Nothing is required: the email is optional and an anonymous send stores no identifier |
 | Loading runtimes from CDNs | **Legitimate interests** 6(1)(f) | See [§3](#3-processors-sub-processors-and-transfers) — the weakest basis in this table |
 
 **Consent is not used as a basis anywhere**, and that is deliberate: consent that can be
@@ -371,6 +373,7 @@ today, and it is much cheaper to plan for than to unpick.
 | Data | Retention | Trigger |
 |---|---|---|
 | Account, courses, chats, code | Until the user deletes the account | Self-service, immediate, cascading |
+| Feedback | Until the sender deletes their account; **anonymous feedback has no owner and therefore no erasure route** | `on delete cascade` covers signed-in senders |
 | IP (rate limiting) | Minutes — memory only | Process restart or window expiry |
 | Trial counter | Until the user clears their browser | On their device |
 | Auth logs | Per Supabase defaults | ⚠️ Confirm and document |

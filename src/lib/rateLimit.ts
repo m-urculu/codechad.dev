@@ -51,6 +51,12 @@ function hit(store: Map<string, Window>, key: string, limit: number, span: numbe
 const SIGNUP_PER_HOUR = 8;
 const signups = new Map<string, Window>();
 
+// Feedback is open to anonymous visitors — the ones who bounce have the most useful
+// thing to say — so it needs its own ceiling. A person with a lot to report sends a
+// handful; past that it is a script filling a table nobody will read.
+const FEEDBACK_PER_HOUR = 10;
+const feedback = new Map<string, Window>();
+
 /**
  * Returns a 429 when one address has created enough accounts for an hour.
  *
@@ -63,6 +69,25 @@ export function signupRateLimit(request: Request): Response | null {
 
   return new Response(
     JSON.stringify({ error: "Too many accounts from here. Try again in an hour." }),
+    {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": String(HOUR / 1000) },
+    }
+  );
+}
+
+/**
+ * Returns a 429 when one address has sent enough feedback for an hour.
+ *
+ * Applies to signed-in callers too, unlike the generation limits: an account is
+ * free, so "is authenticated" is not evidence of good faith when the cost of the
+ * thing being protected is a table the operator has to read by hand.
+ */
+export function feedbackRateLimit(request: Request): Response | null {
+  if (hit(feedback, clientIp(request), FEEDBACK_PER_HOUR, HOUR)) return null;
+
+  return new Response(
+    JSON.stringify({ error: "That's a lot of feedback — thank you. Try again in an hour." }),
     {
       status: 429,
       headers: { "Content-Type": "application/json", "Retry-After": String(HOUR / 1000) },

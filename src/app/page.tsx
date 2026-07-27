@@ -5,6 +5,7 @@ import Background from "@/components/Background/Background";
 import Landing, { type RoadmapSummary } from "@/components/Landing";
 import CourseSettings from "@/components/CourseSettings";
 import AccountSettings from "@/components/AccountSettings";
+import FeedbackButton from "@/components/FeedbackButton";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseBrowser";
 
@@ -107,6 +108,10 @@ export default function Home() {
           <EditorPanels moduleId={moduleId} courseId={courseId} pathId={pathId} />
         )}
       </div>
+
+      {/* Feedback is most useful when it carries the place it came from, and this is
+          the component that knows it: which view, which technology, which course. */}
+      <FeedbackButton context={{ view, module: moduleId, courseId }} />
     </div>
   );
 }
