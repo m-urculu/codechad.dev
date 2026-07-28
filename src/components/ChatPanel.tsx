@@ -71,6 +71,10 @@ type Message = {
 // objectives done so far." recap lines (plus the bot explanation after each). Drop those
 // pairs. Current orientation messages carry a lessonId and are deduped instead of purged.
 const RESUMING_LINE = /^Resuming \*\*.+\*\* — \d+\/\d+ objectives done so far\.?$/;
+// Recognises the calibration opener in a stored thread, so re-asking it can tell
+// whether it is already the last thing said.
+const LEVEL_QUESTION = /how would you describe your level/i;
+
 function stripResumeRecaps<T extends { role: string; text: string; lessonId?: string }>(msgs: T[]): T[] {
   const out: T[] = [];
   for (let i = 0; i < msgs.length; i++) {
@@ -450,6 +454,32 @@ export default function ChatPanel({
 
     chatBootKey.current = key;
 
+    // Open (or re-open) calibration at its first question. `returning` is for a
+    // course that already exists because the learner left partway through this
+    // very question — the course is not new to them, so it should not be greeted
+    // as if it were, but the question is unchanged.
+    const askLevel = (returning: boolean, existing?: Message[]) => {
+      setCalib({ step: "level" });
+      const opener = pathTitle
+        ? returning
+          ? `Picking up the **${pathTitle}** path — the whole curriculum is in the Roadmap tab.`
+          : `You're starting the **${pathTitle}** path — the whole curriculum is already in the Roadmap tab.`
+        : returning
+          ? `Back to **${meta.title}**.`
+          : `Let's learn **${meta.title}**.`;
+      const text = `${opener} ${
+        pathTitle ? "One question before we begin" : "To tailor it to you"
+      } — how would you describe your level?`;
+      // `existing` keeps a restored conversation and puts the question at the end
+      // of it; without it the question IS the conversation (a cold start).
+      const prior = existing ?? [];
+      if (LEVEL_QUESTION.test(prior[prior.length - 1]?.text ?? "")) {
+        return; // already the last thing said — asking twice reads as a stutter
+      }
+      setMessages([...prior, { id: prior.length + 1, role: "bot", text }]);
+      resetToLatest();
+    };
+
     // Adopt a stored conversation: newest batch in view, calibration restored.
     // Shared by the cache path and the network path so the two cannot land the
     // learner in different places.
@@ -500,9 +530,14 @@ export default function ChatPanel({
               painted &&
               painted.length === stripResumeRecaps(raw).length &&
               painted[painted.length - 1]?.text === raw[raw.length - 1]?.text;
-            if (unchanged && !same) adopt(state);
+            const shown = unchanged && !same ? adopt(state) : messagesRef.current;
             writeChat(userId, courseId, { messages: raw, calib: state.calib });
             chatRestored.current = true;
+            // Same hole as below, one layer up: the conversation was saved but
+            // calibration never finished, so nothing here knows the learner's
+            // level and no lesson can be pitched at it. Put the question back at
+            // the end of the thread rather than leaving it buried in history.
+            if (!savedLevel && !state.calib?.level) askLevel(true, shown);
             return;
           }
         } catch {
@@ -512,8 +547,21 @@ export default function ChatPanel({
         }
         if (painted) return;
       }
-      // 2) Roadmap resumed but no saved chat -> welcome back.
+      // 2) Roadmap resumed but no saved chat.
       if (boot === "resumed") {
+        // A course can be STORED before its calibration is finished. A path seeds
+        // its whole curriculum the moment it is opened, so the row exists from the
+        // first frame — close the tab on the level question and the course is
+        // already in "My courses", with a tree and no idea who it is for.
+        //
+        // Welcoming that back as "your progress is restored" strands it: the
+        // question is gone, nothing asks it again, and the level every lesson is
+        // supposed to be pitched at is never learned. Ask it again instead. It is
+        // the same question the cold start asks, because it is the same question.
+        if (!savedLevel) {
+          askLevel(true);
+          return;
+        }
         setCalib({ step: "done", level: savedLevel, goal: savedGoal });
         setMessages([
           {
@@ -526,16 +574,7 @@ export default function ChatPanel({
       }
       // 3) Fresh start -> cold-start. Two taps for a technology (level, then goal);
       //    one for a path, whose curriculum and goal are already decided.
-      setCalib({ step: "level" });
-      setMessages([
-        {
-          id: 0,
-          role: "bot",
-          text: pathTitle
-            ? `You're starting the **${pathTitle}** path — the whole curriculum is already in the Roadmap tab. One question before we begin: how would you describe your level?`
-            : `Let's learn **${meta.title}**. To tailor it to you — how would you describe your level?`,
-        },
-      ]);
+      askLevel(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moduleId, courseId, boot, userId]);
