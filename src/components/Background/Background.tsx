@@ -21,7 +21,21 @@ function supportsFloatTargets(): boolean {
   }
 }
 
-export default function Background() {
+/**
+ * `calm` is for the workspace, where the background stops being the thing you are looking
+ * at and starts being something behind the thing you are looking at.
+ *
+ * Two changes, and they are different in kind:
+ *
+ *   * The pointer no longer stirs the fluid. In the workspace the pointer is working —
+ *     moving between the editor, the console and the chat — and having smoke billow out
+ *     from under every one of those movements is motion in the corner of the eye while
+ *     someone is trying to read an error message.
+ *   * Everything slows to a third of real time. Not stopped: a static backdrop reads as a
+ *     screenshot, and the drift is what keeps the page feeling alive. Slow enough that
+ *     nothing in it competes for attention at the speed a person reads.
+ */
+export default function Background({ calm = false }: { calm?: boolean }) {
   // null until probed, so the server and the first client render agree.
   const [fluid, setFluid] = useState<boolean | null>(null);
   useEffect(() => setFluid(supportsFloatTargets()), []);
@@ -38,7 +52,7 @@ export default function Background() {
       }}
     >
       {fluid === null ? null : fluid ? (
-        <Fluid />
+        <Fluid {...(calm ? { splatForce: 0, timeScale: 0.33 } : {})} />
       ) : (
         <Dither
           waveColor={[0.4, 0.4, 0.4]}
@@ -47,7 +61,8 @@ export default function Background() {
           colorNum={20}
           waveAmplitude={0.4}
           waveFrequency={3}
-          waveSpeed={0.05}
+          // The fallback has no simulation to slow, only the wave itself.
+          waveSpeed={calm ? 0.017 : 0.05}
         />
       )}
     </div>

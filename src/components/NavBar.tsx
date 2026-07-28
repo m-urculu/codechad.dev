@@ -2,14 +2,18 @@
 
 import React from "react";
 import { LoginButton } from "./LoginButton";
+import FeedbackButton, { type FeedbackContext } from "./FeedbackButton";
 import { version } from "../../package.json";
 
 export default function NavBar({
   onHome,
   onOpenAccount,
+  feedbackContext,
 }: {
   onHome?: () => void;
   onOpenAccount?: () => void;
+  /** Where the user is, carried into any feedback they send from here. */
+  feedbackContext?: FeedbackContext;
 }) {
   return (
     <nav className="w-full h-16 flex items-center px-4 border-b border-line-strong shadow-sm">
@@ -32,8 +36,11 @@ export default function NavBar({
       </div>
       {/* Spacer for future nav items */}
       <div className="flex-1" />
-      {/* User profile avatar on the right */}
-      <div className="flex items-center">
+      {/* Feedback, then the account button. Feedback sits to its LEFT so the account
+          control keeps the far corner it has always had — the position people reach for
+          without looking. */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        <FeedbackButton context={feedbackContext} />
         <LoginButton onOpenAccount={onOpenAccount} />
       </div>
       {/* Add more nav content here if needed */}

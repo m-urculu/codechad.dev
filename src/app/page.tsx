@@ -5,7 +5,6 @@ import Background from "@/components/Background/Background";
 import Landing, { type RoadmapSummary } from "@/components/Landing";
 import CourseSettings from "@/components/CourseSettings";
 import AccountSettings from "@/components/AccountSettings";
-import FeedbackButton from "@/components/FeedbackButton";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseBrowser";
 
@@ -70,8 +69,14 @@ export default function Home() {
         gpuOk ? "" : "bg-[radial-gradient(ellipse_at_top,#0b1224_0%,#050810_65%)]"
       }`}
     >
-      {gpuOk && <Background />}
-      <NavBar onHome={() => setView("landing")} onOpenAccount={() => setView("account")} />
+      {/* Calm in the workspace: no pointer interaction, a third of the speed. The
+          background is decoration on the landing page and a distraction next to a lesson. */}
+      {gpuOk && <Background calm={view === "workspace"} />}
+      <NavBar
+        onHome={() => setView("landing")}
+        onOpenAccount={() => setView("account")}
+        feedbackContext={{ view, module: moduleId, courseId }}
+      />
       <div className="relative flex-1 min-h-0">
         {view === "landing" ? (
           <Landing
@@ -108,10 +113,6 @@ export default function Home() {
           <EditorPanels moduleId={moduleId} courseId={courseId} pathId={pathId} />
         )}
       </div>
-
-      {/* Feedback is most useful when it carries the place it came from, and this is
-          the component that knows it: which view, which technology, which course. */}
-      <FeedbackButton context={{ view, module: moduleId, courseId }} />
     </div>
   );
 }
