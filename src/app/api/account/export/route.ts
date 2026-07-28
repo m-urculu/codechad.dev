@@ -35,6 +35,10 @@ const OWNED_TABLES: { table: string; column: string; orderBy?: string }[] = [
   { table: "user_step_fulfillment", column: "user_id" },
   { table: "user_roadmaps", column: "user_id" },
   { table: "feedback", column: "user_id", orderBy: "created_at" },
+  // Billing. Included because it IS the caller's personal data, even though it is the
+  // one thing that survives an account deletion (0008). Card data is not here and never
+  // was: Stripe holds it and we never receive it.
+  { table: "subscriptions", column: "user_id", orderBy: "started_at" },
 ];
 
 export async function GET(request: Request) {
@@ -88,6 +92,8 @@ export async function GET(request: Request) {
       "Passwords are not included: they are stored hashed by Supabase and cannot be read back.",
       "Server request logs held by our host (Vercel) are not included; ask us if you need them.",
       "Feedback sent while signed out is not linked to your account and cannot be identified as yours.",
+      "Card details are not included because we never receive them: Stripe holds them.",
+      "Invoices are held by Stripe and are kept for 10 years to satisfy tax law, even if you delete your account. Everything else about you is erased.",
       ...(failed.length ? [`Some data could not be read at export time: ${failed.join(", ")}.`] : []),
     ],
   };

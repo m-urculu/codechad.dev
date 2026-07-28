@@ -15,7 +15,7 @@ Two dates make this urgent rather than theoretical:
 | Date | What applies | Status here |
 |---|---|---|
 | **2 Aug 2026** (7 days) | **EU AI Act Art. 50** — users must be told they are interacting with AI | ✅ **Done** — permanent disclosure bar above the conversation, `ChatPanel.tsx`. See [§8](#8-ai-specific-obligations) |
-| **19 Jun 2026** (in force) | **CRD Art. 11a withdrawal button** for online consumer contracts | Not yet relevant — no paid product. **Blocks launch of the subscription.** See [§9](#9-payments-and-subscription) |
+| **19 Jun 2026** (in force) | **CRD Art. 11a withdrawal button** for online consumer contracts | ✅ **Built** — `api/billing/withdraw` + the control in `BillingSection.tsx`. See [§9.5](#95-consumer-withdrawal--and-the-button-that-is-already-law) |
 
 ---
 
@@ -35,6 +35,9 @@ Two dates make this urgent rather than theoretical:
 - [12. DPIA screening](#12-dpia-screening)
 - [13. Gap register](#gap-register)
 - [Sources](#sources)
+
+Companion document: **[docs/payments.md](payments.md)** — how the payment system is set up
+and operated, and what was verified.
 
 ---
 
@@ -104,6 +107,7 @@ self-serve plans, and worth recording as such rather than leaving blank.
 
 | Party | Role | Basis for the transfer | Paperwork | To confirm |
 |---|---|---|---|---|
+| Stripe | Processor **and** controller (dual role: fraud, its own regulatory duties) | Art. 28 DPA + SCCs | Standard terms — **accept before launch** | Sub-processor list |
 | Supabase | Processor | Art. 28 DPA + SCCs | Standard terms | Project region; backup retention |
 | Vercel | Processor | Art. 28 DPA + SCCs | Standard terms | Log retention period |
 | Google (Gemini API) | Processor | Paid-tier API terms + SCCs | Standard terms | Written confirmation of no-training-on-input |
@@ -316,10 +320,18 @@ margin but does not change the reasoning.
 
 ## 9. Payments and subscription
 
-**Nothing is implemented today** — there is no payment provider in `package.json`, no
-billing table, no price anywhere in the UI, and the privacy policy correctly describes a
-non-commercial service. Everything here is what must be true **before** the first euro is
-taken. Taking money changes the app's regulatory character more than any feature has.
+> **Implemented 28 July 2026.** This section was written as a specification; it is now
+> also a description. The controls below exist in code — see **[docs/payments.md](payments.md)**
+> for setup, operation and the verification evidence. What remains is configuration
+> (Stripe account, price, webhook, four environment variables) and the administrative
+> obligations code cannot discharge: VAT registration and a first live transaction.
+>
+> Until `STRIPE_SECRET_KEY` and `STRIPE_PRICE_ID` are set, billing is **invisible and
+> inert**: the account page hides its subscription section, `/pricing` shows an
+> unavailable notice, and every billing route answers `503`.
+
+Taking money changes the app's regulatory character more than any feature has, which is
+why each subsection below now records both the requirement and where it is satisfied.
 
 ### 9.1 Architecture: use Stripe's hosted Checkout, and not for the obvious reason
 
@@ -492,24 +504,30 @@ institutions, or any use of conversation content for model training or profiling
 | **G7** | Backup and auth-log retention unknown | Low | ⚠️ **Open** — needs an answer from Supabase, not a code change |
 | **G8** | No Terms age statement | Low | ✅ Already present — "You must be at least 16 years old to use CodeChad" |
 | **G9** | No processor register with DPA dates | Low | ✅ **Closed** — [§3](#processor-register). Two rows honestly read "None" |
-| **P1–P6** | Everything in [§9](#9-payments-and-subscription) | **Blocks launch** | ⏸️ **Not built, by design** — there is no paid product to attach them to |
+| **P1** | Hosted checkout, PCI scope | Blocks launch | ✅ Full redirect to Stripe; no Stripe JS on our pages; script inventory in `app/pricing/page.tsx`, asserted by test |
+| **P2** | Stripe DPA and recipient disclosure | Blocks launch | ⚠️ **Yours** — DPA applies on accepting Stripe's terms; policy already names Stripe |
+| **P3** | SCA / 3DS on recurring charges | Blocks launch | ✅ Stripe Checkout subscription mode handles the mandate and off-session retries |
+| **P4** | VAT / OSS | Blocks launch | ⚠️ **Part code, part yours** — Stripe Tax computes rates and collects the evidence; **registration and filing are administrative** |
+| **P5** | **Withdrawal function (Art. 11a)** | Blocks launch | ✅ `api/billing/withdraw` + `BillingSection.tsx`; live window check, two-step confirm, pro-rata refund, reference |
+| **P6** | **Split erasure vs invoices** | Blocks launch | ✅ 0008 uses `on delete set null`; `check:erasure` asserts **both** directions |
 
-### What is deliberately not implemented
-
-**The payment items (P1–P6).** Every one of them — hosted checkout, the Stripe DPA, SCA,
-VAT/OSS registration, the withdrawal button, split erasure — is a control *on a
-subscription*. There is no subscription: no payment provider, no billing table, no price
-in the UI. Building a withdrawal button with no contract to withdraw from, or splitting
-erasure to protect invoices that do not exist, would be inert code that has to be rewritten
-against the real flow anyway. §9 stays what it is: the specification the payment work must
-satisfy on the day it starts, with **P5 (withdrawal) and P6 (split erasure) called out as
-design-time, not retrofit** decisions.
+### What is still open
 
 **G7** needs a support answer from Supabase about backup and auth-log retention. Nothing in
-this repository can settle it.
+this repository can settle it — though note the likely answer is favourable: the Free plan
+takes **no automatic backups at all**, which means erasure cannot linger in one.
 
-Remaining order: **G7**, then the CDN self-hosting question if it ever becomes pressing,
-then the payment block when the subscription is actually built.
+**P2 and P4** are administrative, not technical. Accepting Stripe's DPA and registering for
+VAT/OSS are things only the operator can do.
+
+**One live transaction has never been made through this code.** Everything was verified
+against test keys and offline signatures — 21/21 on entitlement and degradation, 6/6 on
+webhook signature handling including a rejected forged-entitlement payload. Nothing else
+proves that live keys, the live webhook and the live tax settings agree; do it once, with a
+real card, and refund it.
+
+Remaining order: **the live smoke test**, then **P4** (VAT registration, only once sales
+justify it), then **G7**, then the CDN self-hosting question if it ever becomes pressing.
 
 ## Sources
 

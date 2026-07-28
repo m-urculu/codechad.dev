@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/privacy" },
 };
 
-const UPDATED = "27 July 2026";
+const UPDATED = "28 July 2026";
 const CONTACT = CONTACT_EMAIL;
 
 const sections: Section[] = [
@@ -33,7 +33,7 @@ const sections: Section[] = [
   {
     heading: "What we collect",
     blocks: [
-      { p: "We collect five things, and nothing else." },
+      { p: "We collect six things, and nothing else." },
       {
         list: [
           <>
@@ -75,6 +75,19 @@ const sections: Section[] = [
             &ldquo;this is confusing&rdquo; actionable. The email address is optional and used only
             to reply. You can send feedback without being signed in, and if you do, we store no
             identifier for you at all.
+          </>,
+          <>
+            <strong className="font-semibold text-ink">Billing details, if you subscribe.</strong>{" "}
+            We store a Stripe customer reference, a subscription reference, its status and
+            renewal date, and your billing country. The country is there because VAT on a
+            digital service is charged where you are, and we are required to be able to show
+            it.{" "}
+            <strong className="font-semibold text-ink">
+              We never receive your card number, expiry or security code.
+            </strong>{" "}
+            Payment happens entirely on Stripe&rsquo;s own site — card details are not
+            entered on any page we serve and never reach our servers, so they cannot leak
+            from us.
           </>,
           <>
             <strong className="font-semibold text-ink">Ordinary server logs.</strong> Our host
@@ -172,6 +185,15 @@ const sections: Section[] = [
             roadmaps, lessons and tutor replies. It receives the learning goal and level you
             described, the topic being taught, your messages to the tutor and the code you submit
             for feedback. It does not receive your name, email address or account identifier.
+          </>,
+          <>
+            <strong className="font-semibold text-ink">Stripe</strong> — only if you subscribe.
+            Stripe takes the payment, holds your card details, calculates VAT and issues your
+            invoices. It receives your email address, the billing address and country you
+            give it, and your card details, which it never shares with us. Stripe acts partly
+            on our instructions and partly as a controller in its own right for fraud
+            prevention and its own regulatory duties. If you never subscribe, Stripe receives
+            nothing.
           </>,
           <>
             <strong className="font-semibold text-ink">Vercel</strong> — hosting. Serves the site
@@ -281,6 +303,7 @@ const sections: Section[] = [
           "Feedback you sent while signed in: until you delete your account, which takes it with it.",
           "Feedback you sent while signed out: kept until we have acted on it. It carries no identifier, so we cannot connect it to you or find it again on request — that is the trade for being able to send it without an account.",
           "Rate-limiting counts: in memory only, for at most an hour.",
+          "Invoices and the billing record attached to them: 10 years, because tax law requires it. This is the one thing that outlives deleting your account, and it no longer names you as a user.",
           "Server logs: for the short period our host retains them, in the ordinary course of operating the site.",
         ],
       },
@@ -333,6 +356,24 @@ const sections: Section[] = [
             to keep it.
           </>,
         ],
+      },
+      {
+        p: (
+          <>
+            <strong className="font-semibold text-ink">
+              One thing survives deleting your account, and you should know before you do it
+              rather than after.
+            </strong>{" "}
+            If you have ever paid us, the invoice and the billing record attached to it are
+            kept for <strong className="font-semibold text-ink">10 years</strong>, because
+            Portuguese tax law requires it and the GDPR expressly permits keeping what the law
+            obliges us to keep (Article 17(3)(b)). That record is stripped of its link to your
+            account, so it no longer identifies you as a user of this service. It is the only
+            exception — your courses, conversations, code, progress and feedback are all
+            erased. Any subscription still running is cancelled at the end of the period you
+            have already paid for.
+          </>
+        ),
       },
       {
         p: (

@@ -21,6 +21,7 @@ import {
   saveRoadmapState,
 } from "@/app/api/supabase/roadmap-state";
 import { requireUser } from "@/lib/apiAuth";
+import { canCreateCourse, limitResponse } from "@/lib/billing";
 
 type TopicEdit = { id?: string; title: string };
 type Node = { id?: string; title?: string; kind?: string; children?: Node[] | null };
@@ -48,6 +49,10 @@ export async function POST(request: Request) {
 
     switch (action) {
       case "duplicate": {
+        // The second door into course creation. Gated identically — a limit enforced at
+        // one of two entry points is not a limit, it is a speed bump with a bypass.
+        const check = await canCreateCourse(user_id);
+        if (!check.allowed) return limitResponse(check);
         const id = await duplicateCourse(user_id, course_id);
         return NextResponse.json({ ok: !!id, course_id: id });
       }
