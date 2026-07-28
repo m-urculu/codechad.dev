@@ -13,6 +13,16 @@
 // DELETE /api/account uses, and checks with the service role (which bypasses RLS,
 // so nothing can hide) that no row survived.
 //
+// Since 0008 there are TWO properties to prove, not one, and the second is the one that
+// is easy to break silently:
+//
+//   ERASED   every table that holds the user's own content. Article 17.
+//   RETAINED billing rows, with user_id blanked. Article 17(3)(b) plus ten-year
+//            Portuguese invoice retention — a cascade here would destroy tax records at
+//            the exact moment nobody is watching, and it would look like success.
+//
+// A regression in either direction fails. "Everything was deleted" is NOT a pass.
+//
 // It writes only to rows owned by the user it just created, and deletes that user at
 // the end whatever happens. It is still, deliberately, a script you run knowingly.
 
@@ -34,8 +44,8 @@ if (!url || !key) {
 
 const db = createClient(url, key, { auth: { persistSession: false } });
 
-// One row per user-owned table. Keep this in step with OWNED_TABLES in
-// src/app/api/account/export/route.ts — the two lists describe the same set.
+// Tables whose rows must NOT survive the delete.
+// Keep in step with OWNED_TABLES in src/app/api/account/export/route.ts.
 const rows = (uid) => [
   ["user_roadmap_state", { user_id: uid, skill: "erasure-check", module: "python", name: "Erasure check", tree: [], progress: {} }],
   ["user_chat_state", { user_id: uid, course_id: crypto.randomUUID(), module: "python", messages: [{ role: "user", text: "erasure check" }], calib: {} }],
@@ -43,6 +53,12 @@ const rows = (uid) => [
   ["user_step_fulfillment", { user_id: uid, define_roadmaps_done: true }],
   ["user_roadmaps", { user_id: uid, roadmap_key: "erasure-check" }],
   ["feedback", { user_id: uid, kind: "general", message: "erasure check", context: {} }],
+];
+
+// Tables whose rows must SURVIVE, with user_id blanked. The opposite assertion.
+const billingRows = (uid, cust, sub) => [
+  ["billing_customers", "stripe_customer_id", cust, { stripe_customer_id: cust, user_id: uid, email: "erasure-check@codechad.invalid", country: "PT" }],
+  ["subscriptions", "stripe_subscription_id", sub, { stripe_subscription_id: sub, stripe_customer_id: cust, user_id: uid, status: "active" }],
 ];
 
 let uid = null;
@@ -72,6 +88,21 @@ try {
     console.log(`  · ${table.padEnd(22)} seeded`);
   }
 
+  // 1b. And one row in each billing table, which must survive.
+  const custId = `cus_erasurecheck_${Date.now()}`;
+  const subId = `sub_erasurecheck_${Date.now()}`;
+  const billingWritten = [];
+  for (const [table, keyCol, keyVal, row] of billingRows(uid, custId, subId)) {
+    const { error } = await db.from(table).insert(row);
+    if (error) {
+      console.log(`  ✗ ${table.padEnd(22)} could not seed: ${error.message}`);
+      failures++;
+      continue;
+    }
+    billingWritten.push([table, keyCol, keyVal]);
+    console.log(`  · ${table.padEnd(22)} seeded (must survive)`);
+  }
+
   // 2. Delete the account exactly as the app does.
   const { error: derr } = await db.auth.admin.deleteUser(uid);
   if (derr) throw new Error(`could not delete the test user: ${derr.message}`);
@@ -92,6 +123,25 @@ try {
       console.log(`  ✓ ${table.padEnd(22)} erased`);
     }
   }
+
+  // 4. The billing rows must still be there, and must no longer name anyone.
+  for (const [table, keyCol, keyVal] of billingWritten) {
+    const { data, error } = await db.from(table).select("*").eq(keyCol, keyVal);
+    if (error) {
+      console.log(`  ✗ ${table.padEnd(22)} could not verify: ${error.message}`);
+      failures++;
+    } else if (!data.length) {
+      console.log(`  ✗ ${table.padEnd(22)} DESTROYED — tax records must survive erasure`);
+      failures++;
+    } else if (data[0].user_id !== null) {
+      console.log(`  ✗ ${table.padEnd(22)} survived but still names the user`);
+      failures++;
+    } else {
+      console.log(`  ✓ ${table.padEnd(22)} retained, user_id blanked`);
+    }
+    // Clean up: this row exists only for the test and has no real invoice behind it.
+    await db.from(table).delete().eq(keyCol, keyVal);
+  }
 } catch (err) {
   console.error(`\n${err.message}`);
   failures++;
@@ -101,7 +151,7 @@ try {
 
 console.log(
   failures === 0
-    ? "\nErasure is complete: every seeded row was removed by the account delete."
+    ? "\nErasure is correct: user content removed, billing retained and de-identified."
     : `\n${failures} problem(s). Article 17 is not satisfied until these are zero.`
 );
 process.exit(failures === 0 ? 0 : 1);

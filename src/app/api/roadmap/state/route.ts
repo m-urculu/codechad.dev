@@ -18,6 +18,7 @@ import {
   uniqueCourseName,
 } from "@/app/api/supabase/roadmap-state";
 import { requireUser } from "@/lib/apiAuth";
+import { canCreateCourse, limitResponse } from "@/lib/billing";
 
 export async function GET(request: Request) {
   const who = await requireUser(request);
@@ -55,6 +56,15 @@ export async function POST(request: Request) {
       await request.json();
     if (!course_id && !skill) {
       return NextResponse.json({ error: "skill is required when creating a course" }, { status: 400 });
+    }
+    // The free tier's ceiling, enforced where the row is actually made. Only on CREATE:
+    // a user who is over the limit (because they subscribed, made ten courses, then let
+    // the subscription lapse) must still be able to open, edit and finish the ones they
+    // have. Locking someone out of work they already did would be a punishment, not a
+    // limit — they simply cannot add an eleventh.
+    if (!course_id) {
+      const check = await canCreateCourse(who.userId);
+      if (!check.allowed) return limitResponse(check);
     }
     // Creating: give the course a name that doesn't collide with an existing one,
     // so a second "Python" arrives as "Python (2)" rather than an identical card.

@@ -20,6 +20,7 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseBrowser";
 import { apiFetch } from "@/lib/apiFetch";
 import type { RoadmapSummary } from "@/components/Landing";
+import BillingSection from "@/components/BillingSection";
 
 const MIN_PASSWORD = 6;
 
@@ -443,6 +444,11 @@ export default function AccountSettings({ onBack }: { onBack: () => void }) {
           )}
         </section>
 
+        {/* --- Subscription --------------------------------------------------- */}
+        {/* Renders nothing when billing is unconfigured, so the free-only build of the
+            app is unchanged. Carries its own withdrawal control — see the component. */}
+        <BillingSection />
+
         {/* --- Your data ------------------------------------------------------ */}
         {/* Not in the danger zone: exporting is the opposite of destructive, and
             burying it next to "delete everything" would make a right look like a risk. */}
@@ -502,6 +508,16 @@ export default function AccountSettings({ onBack }: { onBack: () => void }) {
                   ? `: ${courses.length} course${courses.length === 1 ? "" : "s"}, their roadmaps and progress, and every conversation with the tutor`
                   : ", including any conversation with the tutor"}
               . This cannot be undone, and signing in again starts you from nothing.
+            </p>
+            {/* Said plainly and before the fact, because a person who deletes their
+                account and later sees an invoice will reasonably think we broke a
+                promise. Tax law requires the record; honesty requires the warning. */}
+            <p className="mt-2 text-xs leading-snug text-ink-dim">
+              Any active subscription is cancelled at the end of the period you have already
+              paid for. Your invoices are kept by Stripe for 10 years because tax law
+              requires it — they no longer name your account, and nothing else about you
+              survives. To get money back for the current period instead, withdraw or cancel
+              before deleting.
             </p>
             <div className="mt-3 flex flex-col gap-2 sm:flex-row">
               <input

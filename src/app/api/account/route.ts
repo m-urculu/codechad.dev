@@ -44,6 +44,44 @@ async function emailTaken(email: string, selfId: string): Promise<boolean> {
   }
 }
 
+/**
+ * Stop any live subscription before the account goes.
+ *
+ * Fails SOFT and deliberately: if Stripe is unreachable, the deletion still proceeds.
+ * Blocking erasure — a right with a legal deadline — on a third party's availability is
+ * the wrong trade. The cost is a subscription that may need cancelling by hand, which is
+ * logged loudly enough to notice.
+ */
+async function cancelSubscriptions(userId: string): Promise<void> {
+  try {
+    const { stripe } = await import("@/lib/stripe");
+    if (!stripe) return;
+
+    const { data: subs } = await supabaseAdmin
+      .from("subscriptions")
+      .select("stripe_subscription_id, status")
+      .eq("user_id", userId);
+
+    for (const sub of subs ?? []) {
+      // Already over? Cancelling again is an error, not a no-op.
+      if (["canceled", "incomplete_expired", "unpaid"].includes(sub.status)) continue;
+      try {
+        await stripe.subscriptions.update(sub.stripe_subscription_id, {
+          cancel_at_period_end: true,
+          cancellation_details: { comment: "Account deleted by the user" },
+        });
+      } catch (e) {
+        console.error(
+          `[account] could not cancel ${sub.stripe_subscription_id} before delete:`,
+          e
+        );
+      }
+    }
+  } catch (e) {
+    console.error("[account] subscription cancellation step failed:", e);
+  }
+}
+
 export async function PATCH(request: Request) {
   const who = await requireUser(request);
   if ("error" in who) return who.error;
@@ -81,9 +119,29 @@ export async function PATCH(request: Request) {
   return NextResponse.json({ ok: true, email });
 }
 
+// Erasure. One call, and the database does the rest — with one deliberate exception.
+//
+// Every user-owned table cascades from auth.users (0006), so roadmaps, progress, chat and
+// feedback go with the account. `billing_customers` and `subscriptions` do NOT (0008):
+// their FK is `on delete set null`, so the row survives with user_id blanked. That is
+// Art. 17(3)(b) — invoices must be retained for ten years under Portuguese tax law, and
+// a cascade would destroy tax records at the moment nobody is watching. The privacy
+// policy states this; `npm run check:erasure` asserts both halves.
+//
+// An active subscription IS cancelled first, and that ordering matters. Deleting the
+// account without it would leave a live Stripe subscription attached to a customer whose
+// account no longer exists — still charging, monthly, with no way for the person to stop
+// it from inside an app they can no longer sign into. Nobody deleting their account
+// expects to keep paying for it.
+//
+// It is cancelled at period end rather than immediately: they paid for the month, and
+// taking it away is not ours to do. If they want the money back they withdraw (inside 14
+// days) before deleting, which refunds the unused part.
 export async function DELETE(request: Request) {
   const who = await requireUser(request);
   if ("error" in who) return who.error;
+
+  await cancelSubscriptions(who.userId);
 
   const { error } = await supabaseAdmin.auth.admin.deleteUser(who.userId);
   if (error) {

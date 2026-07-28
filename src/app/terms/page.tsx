@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/terms" },
 };
 
-const UPDATED = "26 July 2026";
+const UPDATED = "28 July 2026";
 const CONTACT = CONTACT_EMAIL;
 
 const sections: Section[] = [
@@ -36,7 +36,45 @@ const sections: Section[] = [
         p: "CodeChad generates a personalised learning roadmap for a programming language or database, then teaches it lesson by lesson with an AI tutor, in an editor that runs your code live in the browser.",
       },
       {
-        p: "It is beta software and a personal project. Features change, break and disappear. It is offered free of charge, with no guarantee that it will keep working, keep your data, or continue to exist.",
+        p: "It is beta software and a personal project. Features change, break and disappear. Everything that teaches you is free of charge, and there is no guarantee that it will keep working, keep your data, or continue to exist.",
+      },
+    ],
+  },
+  {
+    heading: "Subscriptions and payment",
+    blocks: [
+      {
+        p: "Everything that teaches you is free: every technology, every career path, the AI tutor, the editor and the grading. The optional subscription changes one thing — free accounts can keep 3 courses at a time, and a subscription removes that limit. Nothing you have already made stops working if you do not subscribe, or if you subscribe and later stop.",
+      },
+      {
+        p: "The price and billing period are shown on the pricing page before you buy, and include VAT at the rate for your country, which is calculated at checkout. Payment is taken by Stripe on their own site; we never receive or store your card details. Subscriptions renew automatically at the end of each period until you cancel.",
+      },
+      {
+        p: "You can cancel at any time from Account settings, and it takes effect at the end of the period you have already paid for — you keep what you paid for and are not charged again. Cancelling is deliberately no harder than subscribing: no retention offers, no extra steps.",
+      },
+      {
+        p: "If a renewal payment fails we will retry it. Your access is not cut off while that is happening; if it ultimately fails, the subscription ends and your account returns to the free tier with your courses intact.",
+      },
+    ],
+  },
+  {
+    heading: "Your right to withdraw",
+    blocks: [
+      {
+        p: "If you are a consumer in the EU you have 14 days from the day the contract is concluded to withdraw from it, without giving any reason. This is separate from cancelling, and there is a button for it in Account settings labelled “Withdraw from the contract here”, available for the whole 14 days.",
+      },
+      {
+        p: "At checkout you are asked to confirm two things separately: that you want the subscription to start immediately rather than after the withdrawal period, and that you understand what that means for a refund. Because the service starts at once, if you withdraw you are refunded for the part of the period you have not used, and you pay only for the part you have. Withdrawing ends the subscription immediately and returns you to the free tier; your courses and progress are not deleted.",
+      },
+      {
+        p: (
+          <>
+            You do not have to use the button. You may also withdraw by writing to{" "}
+            <A href={`mailto:${CONTACT}`}>{CONTACT}</A>, in any clear terms, within the same
+            14 days. Either way we confirm it to you and process the refund without undue
+            delay.
+          </>
+        ),
       },
     ],
   },
@@ -118,7 +156,7 @@ const sections: Section[] = [
     heading: "Limitation of liability",
     blocks: [
       {
-        p: "To the fullest extent the law allows, we are not liable for indirect or consequential loss, lost data, lost profits, or anything arising from your reliance on AI-generated content. Because the service is free, our total liability to you is limited to what you have paid for it, which is nothing. Liability for death, personal injury, fraud, or anything else that cannot be excluded by law is unaffected.",
+        p: "To the fullest extent the law allows, we are not liable for indirect or consequential loss, lost data, lost profits, or anything arising from your reliance on AI-generated content. Our total liability to you is limited to the amount you have paid us in the 12 months before the claim — which, if you have never subscribed, is nothing. Liability for death, personal injury, fraud, or anything else that cannot be excluded by law is unaffected, and nothing here limits your rights as a consumer under mandatory law, including your rights if the service is not as described.",
       },
     ],
   },
@@ -128,10 +166,14 @@ const sections: Section[] = [
       {
         p: (
           <>
-            You may stop using CodeChad at any time, delete your courses from within the app, and
-            ask us to delete your account by writing to{" "}
-            <A href={`mailto:${CONTACT}`}>{CONTACT}</A>. We may end your access if you breach these
-            terms or if the service is discontinued.
+            You may stop using CodeChad at any time. Delete individual courses from the
+            landing page, cancel a subscription from Account settings, and delete your whole
+            account from the same place — all of it immediate and none of it needing to go
+            through us. Deleting your account cancels any subscription at the end of the
+            period you have paid for; see the <A href="/privacy">Privacy Policy</A> for the
+            one billing record that tax law requires us to keep. We may end your access if you
+            breach these terms or if the service is discontinued; if we do so while you have
+            paid for a period you have not used, we will refund the unused part.
           </>
         ),
       },
@@ -174,9 +216,11 @@ export default function Terms() {
       updated={UPDATED}
       intro={
         <>
-          CodeChad is free, in beta, and run by one person. These terms say what you can expect from
-          it, what it expects from you, and what it does not promise — in particular that its AI
-          tutor can be wrong and that your data is not guaranteed to survive.
+          CodeChad is in beta and run by one person. Everything that teaches you is free; an
+          optional subscription only removes the limit on how many courses you can keep. These
+          terms say what you can expect from it, what it expects from you, and what it does not
+          promise — in particular that its AI tutor can be wrong and that your data is not
+          guaranteed to survive.
         </>
       }
       sections={sections}
