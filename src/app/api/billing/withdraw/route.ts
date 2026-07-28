@@ -21,10 +21,33 @@
 // never is inside its own first fortnight.
 
 import { NextResponse } from "next/server";
+import type Stripe from "stripe";
 import { requireUser } from "@/lib/apiAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getEntitlement } from "@/lib/billing";
 import { stripe, billingEnabled } from "@/lib/stripe";
+
+/**
+ * The PaymentIntent that actually paid an invoice.
+ *
+ * Stripe moved this. Older API versions put `payment_intent` and `charge` on the invoice;
+ * from 2025 they live under `payments[].payment.payment_intent`, and the old fields are
+ * simply absent — so code reading them gets `undefined` rather than an error. Both shapes
+ * are handled here so that pinning the API version forward or back cannot quietly stop
+ * refunds from being issued.
+ */
+function paymentIntentOf(invoice: Stripe.Invoice): string | null {
+  const modern = invoice.payments?.data?.[0]?.payment;
+  if (modern && typeof modern === "object" && "payment_intent" in modern) {
+    const pi = (modern as { payment_intent?: string | { id: string } }).payment_intent;
+    if (typeof pi === "string") return pi;
+    if (pi?.id) return pi.id;
+  }
+  const legacy = (invoice as unknown as { payment_intent?: string | { id: string } }).payment_intent;
+  if (typeof legacy === "string") return legacy;
+  if (legacy?.id) return legacy.id;
+  return null;
+}
 
 /** A short, human-quotable handle for the withdrawal. Goes to the user and to the logs. */
 function makeReference(): string {
@@ -98,10 +121,16 @@ export async function POST(request: Request) {
     let refundedMinor = 0;
     let currency = "eur";
 
+    // `payments` must be expanded. On API versions from 2025 onward an invoice no longer
+    // carries `payment_intent` or `charge` directly — payments moved to their own list
+    // object, and reading the old fields silently yields undefined rather than an error.
+    // That failure mode is the worst kind here: the subscription gets cancelled, no
+    // refund is issued, and nothing looks broken. It was caught end to end.
     const invoices = await stripe.invoices.list({
       customer: sub.stripe_customer_id,
       limit: 1,
       status: "paid",
+      expand: ["data.payments"],
     });
     const invoice = invoices.data[0];
 
@@ -123,10 +152,7 @@ export async function POST(request: Request) {
       refundedMinor = Math.ceil(invoice.amount_paid * unusedFraction);
 
       if (refundedMinor > 0) {
-        const paymentIntent =
-          typeof (invoice as { payment_intent?: string | { id: string } }).payment_intent === "string"
-            ? ((invoice as { payment_intent?: string }).payment_intent as string)
-            : (invoice as { payment_intent?: { id: string } }).payment_intent?.id;
+        const paymentIntent = paymentIntentOf(invoice);
 
         if (paymentIntent) {
           // Stripe emails the customer a refund notification automatically — that is the
