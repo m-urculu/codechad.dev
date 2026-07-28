@@ -35,6 +35,42 @@ function ts(seconds: number | null | undefined): string | null {
   return typeof seconds === "number" ? new Date(seconds * 1000).toISOString() : null;
 }
 
+/** Postgres foreign-key violation: the referenced auth.users row is not there. */
+function isMissingUser(error: { code?: string } | null): boolean {
+  return error?.code === "23503";
+}
+
+/**
+ * Upsert a billing row, tolerating a user who no longer exists.
+ *
+ * An event can arrive after the account has been deleted — someone subscribes, changes
+ * their mind, deletes everything, and Stripe's webhook lands a moment later. The FK then
+ * rejects the write, the route 500s, and Stripe retries the same doomed event for days.
+ *
+ * A deleted user is not an error here, it is a state the schema already has a word for:
+ * `on delete set null`. So the row is written with a null user_id, which is exactly what
+ * it would have become anyway. The invoice record survives, as tax law requires, and
+ * nothing points at a person who is gone.
+ */
+async function upsertTolerantly(
+  table: "billing_customers" | "subscriptions",
+  row: Record<string, unknown>,
+  onConflict: string
+): Promise<void> {
+  const { error } = await supabaseAdmin.from(table).upsert(row, { onConflict });
+  if (!error) return;
+
+  if (isMissingUser(error) && row.user_id) {
+    console.warn(`[billing/webhook] ${table}: user ${row.user_id} no longer exists; storing unlinked`);
+    const { error: retry } = await supabaseAdmin
+      .from(table)
+      .upsert({ ...row, user_id: null }, { onConflict });
+    if (retry) throw new Error(`${table} upsert (unlinked): ${retry.message}`);
+    return;
+  }
+  throw new Error(`${table} upsert: ${error.message}`);
+}
+
 /**
  * Resolve the account this subscription belongs to.
  *
@@ -95,10 +131,7 @@ async function upsertSubscription(sub: Stripe.Subscription) {
     if (existing.withdrawn_at) row.withdrawn_at = existing.withdrawn_at;
   }
 
-  const { error } = await supabaseAdmin
-    .from("subscriptions")
-    .upsert(row, { onConflict: "stripe_subscription_id" });
-  if (error) throw new Error(`subscriptions upsert: ${error.message}`);
+  await upsertTolerantly("subscriptions", row, "stripe_subscription_id");
 }
 
 /** Record the billing country — the VAT location evidence — when Stripe learns it. */
@@ -145,14 +178,15 @@ export async function POST(request: Request) {
         // Re-assert the customer↔account link. If the insert at checkout failed, this is
         // where it self-heals; if it succeeded, this is a no-op.
         if (customerId) {
-          await supabaseAdmin.from("billing_customers").upsert(
+          await upsertTolerantly(
+            "billing_customers",
             {
               stripe_customer_id: customerId,
               user_id: userId,
               email: session.customer_details?.email ?? null,
               country: session.customer_details?.address?.country ?? null,
             },
-            { onConflict: "stripe_customer_id" }
+            "stripe_customer_id"
           );
         }
 

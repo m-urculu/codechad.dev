@@ -22,6 +22,128 @@ import { getEntitlement, getOrCreateCustomer } from "@/lib/billing";
 import { stripe, billingEnabled, PRICE_ID } from "@/lib/stripe";
 import { SITE_URL } from "@/lib/site";
 
+// Does this Stripe account run "Managed Payments"?
+//
+// Discovered rather than configured, because it cannot be known from here. Managed
+// Payments is newer, is ON BY DEFAULT on accounts created recently, and makes Stripe
+// responsible for calculating AND remitting tax — which means it rejects `automatic_tax`
+// and `tax_id_collection` outright rather than ignoring them.
+//
+// So the first checkout on a fresh deployment probes: send the Stripe-Tax parameters,
+// and if Stripe says they are unsupported, remember that and retry without them. One
+// wasted call per process, then never again. The alternative — an env var — would be one
+// more thing to get wrong at 3am on a deployment that then takes no money at all.
+//
+// Either way the tax is correct. With Stripe Tax we calculate and the operator files;
+// with Managed Payments Stripe does both. What must NOT happen is charging Portuguese
+// VAT to a German consumer, and neither path does that.
+let managedPayments: boolean | null = null;
+
+// Whether this Stripe account has a Terms-of-service URL set under Public details.
+// Without one, Checkout refuses `consent_collection` outright — and it is a
+// dashboard-only setting that the API cannot write on your own account, so it cannot be
+// provisioned from here.
+//
+// Dropping it is a real if minor downgrade: the Terms are still linked on /pricing and
+// still bind, but the explicit tick at checkout is better evidence of agreement. So the
+// sale proceeds — refusing money over a missing dashboard field would be worse — and the
+// warning is written to be found.
+let tosConsentUnavailable = false;
+
+function isUnsupportedTaxParam(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /Unsupported parameter: (automatic_tax|tax_id_collection)/.test(message);
+}
+
+function isMissingTosUrl(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /cannot collect consent to your terms of service/i.test(message);
+}
+
+async function createSession(
+  customerId: string,
+  userId: string,
+  immediateStart: boolean,
+  acknowledgeWithdrawal: boolean
+) {
+  const base = {
+    mode: "subscription" as const,
+    customer: customerId,
+    line_items: [{ price: PRICE_ID, quantity: 1 }],
+
+    // The billing address is the primary piece of location evidence the VAT rules
+    // require — two non-contradictory pieces, and this is the first. Required under
+    // both tax regimes.
+    billing_address_collection: "required" as const,
+    customer_update: { address: "auto" as const, name: "auto" as const },
+
+    success_url: `${SITE_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${SITE_URL}/pricing?checkout=cancelled`,
+
+    // client_reference_id survives into every webhook event for this session, which is
+    // how the webhook attributes a payment to an account without trusting anything the
+    // browser said.
+    client_reference_id: userId,
+    subscription_data: {
+      metadata: {
+        user_id: userId,
+        // Recorded at Stripe as well as in our table: if the two ever disagree, the
+        // question "did this person consent?" has a second, independent answer.
+        immediate_start_requested: String(immediateStart),
+        withdrawal_right_acknowledged: String(acknowledgeWithdrawal),
+      },
+    },
+    metadata: { user_id: userId },
+  };
+
+  // --- VAT (§9.4) ------------------------------------------------------------
+  // Stripe Tax computes the customer's national rate. A digital service is taxed where
+  // the CUSTOMER is, so this is not optional decoration — without it, a sale to Germany
+  // is charged Portuguese VAT and the return is wrong.
+  //
+  // tax_id_collection makes an EU business VAT number reverse-charge, validated against
+  // VIES; without it every business customer is charged consumer VAT.
+  // Two independent capabilities, each discovered on first use and remembered. Built as
+  // a parameter set rather than branches so the retry logic below stays one loop.
+  const params = () => ({
+    ...base,
+    ...(managedPayments
+      ? {}
+      : { automatic_tax: { enabled: true }, tax_id_collection: { enabled: true } }),
+    ...(tosConsentUnavailable
+      ? {}
+      : { consent_collection: { terms_of_service: "required" as const } }),
+  });
+
+  // At most two adaptations, so at most three attempts. Each retry only happens after
+  // Stripe has told us specifically which parameter it will not accept.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await stripe!.checkout.sessions.create(params());
+    } catch (err) {
+      if (isUnsupportedTaxParam(err) && !managedPayments) {
+        managedPayments = true;
+        console.info(
+          "[billing/checkout] Managed Payments is enabled on this account — Stripe calculates and remits tax. Retrying without Stripe Tax parameters."
+        );
+        continue;
+      }
+      if (isMissingTosUrl(err) && !tosConsentUnavailable) {
+        tosConsentUnavailable = true;
+        console.warn(
+          "[billing/checkout] No Terms of service URL is set on the Stripe account, so checkout cannot collect terms consent. " +
+            "Set it at https://dashboard.stripe.com/settings/public — until then customers are not asked to tick agreement at checkout."
+        );
+        continue;
+      }
+      throw err;
+    }
+  }
+  // Unreachable in practice: every retry path sets a flag, so the third attempt either
+  // succeeds or throws something we do not adapt to.
+  throw new Error("Could not create a checkout session after adapting to account settings");
+}
+
 export async function POST(request: Request) {
   const who = await requireUser(request);
   if ("error" in who) return who.error;
@@ -75,45 +197,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Could not start checkout." }, { status: 502 });
     }
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerId,
-      line_items: [{ price: PRICE_ID, quantity: 1 }],
-
-      // --- VAT (§9.4) ----------------------------------------------------------
-      // Stripe Tax computes the customer's national rate. A digital service is taxed
-      // where the CUSTOMER is, so this is not optional decoration — without it, a sale
-      // to Germany is charged Portuguese VAT and the return is wrong.
-      automatic_tax: { enabled: true },
-      // The billing address is the primary piece of location evidence the VAT rules
-      // require, and Stripe needs it to compute the rate at all.
-      billing_address_collection: "required",
-      customer_update: { address: "auto", name: "auto" },
-      // B2B inside the EU reverse-charges on a validated VAT number. Stripe validates
-      // against VIES; without this every business customer is charged consumer VAT.
-      tax_id_collection: { enabled: true },
-
-      // --- Consumer terms ------------------------------------------------------
-      consent_collection: { terms_of_service: "required" },
-
-      success_url: `${SITE_URL}/billing/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${SITE_URL}/pricing?checkout=cancelled`,
-
-      // client_reference_id survives into every webhook event for this session, which is
-      // how the webhook attributes a payment to an account without trusting anything the
-      // browser said.
-      client_reference_id: who.userId,
-      subscription_data: {
-        metadata: {
-          user_id: who.userId,
-          // Recorded at Stripe as well as in our table: if the two ever disagree, the
-          // question "did this person consent?" has a second, independent answer.
-          immediate_start_requested: String(immediateStart),
-          withdrawal_right_acknowledged: String(acknowledgeWithdrawal),
-        },
-      },
-      metadata: { user_id: who.userId },
-    });
+    const session = await createSession(customerId, who.userId, immediateStart, acknowledgeWithdrawal);
 
     if (!session.url) {
       return NextResponse.json({ error: "Could not start checkout." }, { status: 502 });

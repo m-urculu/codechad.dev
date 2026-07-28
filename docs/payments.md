@@ -42,14 +42,38 @@ established → Stripe will ask for NIF.
 Products → **+ Add product**. A recurring monthly price, in EUR. Copy the **price id**
 (`price_…`, *not* the product id).
 
+**Set a tax code on the product.** Not optional and not cosmetic — it decides the VAT
+treatment in every EU country, and with Managed Payments enabled Checkout refuses to
+create a session without one (`the product tax code is missing`). Use
+**`txcd_10103000` — Software as a service (SaaS), personal use**: a cloud-hosted consumer
+subscription, not a download, not an educational institution's service.
+
+Prices are quoted **VAT-inclusive** on the pricing page, so set `tax_behavior: inclusive`
+on the price. A €6.00 price then shows €6.00 total with the VAT broken out inside it,
+rather than €6.00 + tax at the last step — which is both friendlier and what EU consumer
+pricing rules expect.
+
 Prices are read from Stripe at render time by `/pricing`, never hard-coded — a number
 typed into a page is a number that will one day disagree with what the customer is
 actually charged, and that gap is a consumer-law problem rather than a typo.
 
-### 3. Stripe Tax
+### 3. Tax — and which of two regimes your account is on
 
-Settings → Tax → **enable**, and set the origin address to Portugal. Checkout is created
-with `automatic_tax: { enabled: true }` and `tax_id_collection`, so:
+Stripe now has **two** ways of handling tax, and which one applies is an account setting
+you may not have chosen:
+
+- **Stripe Tax** — Stripe calculates, *you* file and remit.
+- **Managed Payments** — Stripe calculates **and remits**. On by default for accounts
+  created recently. It **rejects** `automatic_tax` and `tax_id_collection` outright.
+
+`api/billing/checkout` **discovers which one applies on first use** and adapts: it sends
+the Stripe Tax parameters, and if Stripe says they are unsupported it remembers that and
+retries without them. One probe per process, then never again. An env var would have been
+one more thing to get wrong on a deployment that then takes no money at all.
+
+Under Managed Payments there is nothing to enable — the tax code on the product is what
+matters. Under Stripe Tax, go to Settings → Tax, **enable** it, and set the origin address
+to Portugal. Then checkout carries `automatic_tax` and `tax_id_collection`, so:
 
 - consumers are charged **their own country's** VAT rate (a digital service is taxed where
   the customer is — without this a German sale is charged Portuguese VAT and the return is
@@ -57,7 +81,17 @@ with `automatic_tax: { enabled: true }` and `tax_id_collection`, so:
 - EU businesses entering a VAT number get the **reverse charge**, validated against VIES;
 - the billing address is collected as the primary piece of **location evidence** the VAT
   rules require. Stripe stores it, and the webhook copies the country into
-  `billing_customers.country`.
+  `billing_customers.country`. This happens under **both** regimes.
+
+### 3b. Terms of service URL
+
+Dashboard → [Settings → Public details](https://dashboard.stripe.com/settings/public) →
+**Terms of service URL** → `https://www.codechad.dev/terms`.
+
+Without it, Checkout refuses `consent_collection` and the route drops the terms tickbox
+with a loud warning rather than refusing the sale. The Terms still bind — they are linked
+on `/pricing` and agreed by use — but the explicit tick is better evidence. This is a
+**dashboard-only** setting: the API cannot write it on your own account.
 
 ### 4. The webhook
 
@@ -205,7 +239,44 @@ Code cannot discharge these.
 | **Privacy policy** | Already updated with Stripe as a recipient and the retention carve-out. Re-check when the plan changes. |
 | **Test the live flow once** | With a real card, for a real euro, then refund it. Nothing else proves the live keys, the live webhook and the live tax settings agree. |
 
-The last one is the gap that matters. Everything here was verified against test keys and
-offline signatures: 21/21 on entitlement and degradation, 6/6 on webhook signature
-handling including a rejected forged-entitlement payload. **No live charge has ever been
-made through this code.**
+---
+
+## What has been verified
+
+Against Stripe's **real test API** — real customers, sessions, cards, subscriptions,
+invoices and refunds. The only simulated step is webhook *delivery*, because Stripe cannot
+reach localhost: the event is fetched back from Stripe and re-delivered with a genuine
+signature, so the payload is real even though the transport is not.
+
+| Suite | Result |
+|---|---|
+| Entitlement, limits, graceful degradation | **21/21** |
+| Webhook signature handling (offline) | **6/6** |
+| Full payment lifecycle | **31/31**, stable over three consecutive runs |
+
+The lifecycle run covers: free tier refusing a 4th course → checkout refused with only one
+affirmation → session created on Stripe's domain → **card paid on Stripe's hosted page** →
+real events delivered → entitlement becomes pro → both consents stored → billing country
+captured → limit actually lifted → second subscription refused → withdrawal refused
+without confirmation → withdrawal accepted with a `WD-…` reference → **refund verified at
+Stripe by reference and amount** → subscription cancelled at Stripe → entitlement revoked →
+second withdrawal refused → a late webhook **does not** restore access → export contains
+the subscription and no card data.
+
+### Three real bugs it caught
+
+1. **Refunds silently did nothing.** Stripe moved the payment off the invoice: from API
+   2025 onward `invoice.payment_intent` and `invoice.charge` are simply *absent*, and the
+   data lives at `payments[].payment.payment_intent` behind an `expand`. Reading the old
+   field yielded `undefined`, so withdrawal cancelled the subscription and refunded €0 —
+   with nothing in the logs looking wrong. Both shapes are handled now.
+2. **A webhook arriving after account deletion 500'd forever.** The FK rejected the write,
+   the route returned 500, and Stripe would have retried the same doomed event for days.
+   A deleted user is now written as `user_id: null` — which is what `on delete set null`
+   already says should happen.
+3. **`/pricing` was statically prerendered**, freezing the price at build time and showing
+   "unavailable" permanently for any build without the env vars.
+
+**Still true: no live charge has ever been made through this code.** Test mode and live
+mode differ in account configuration — activation state, tax registrations, the webhook
+endpoint — not in code paths. One real euro, then refund it.

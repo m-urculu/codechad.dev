@@ -521,10 +521,14 @@ takes **no automatic backups at all**, which means erasure cannot linger in one.
 VAT/OSS are things only the operator can do.
 
 **One live transaction has never been made through this code.** Everything was verified
-against test keys and offline signatures — 21/21 on entitlement and degradation, 6/6 on
-webhook signature handling including a rejected forged-entitlement payload. Nothing else
-proves that live keys, the live webhook and the live tax settings agree; do it once, with a
-real card, and refund it.
+against Stripe's real *test* API — 21/21 on entitlement and degradation, 6/6 on webhook
+signature handling including a rejected forged-entitlement payload, and **31/31 on the full
+payment lifecycle** (card paid on Stripe's hosted page, refund verified at Stripe by
+reference and amount, entitlement revoked, late webhook unable to restore access), stable
+over three consecutive runs. See [docs/payments.md](payments.md#what-has-been-verified).
+
+Test and live differ in account configuration, not code paths. Do it once with a real card
+and refund it.
 
 Remaining order: **the live smoke test**, then **P4** (VAT registration, only once sales
 justify it), then **G7**, then the CDN self-hosting question if it ever becomes pressing.
