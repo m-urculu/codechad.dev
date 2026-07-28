@@ -277,7 +277,11 @@ export default function EditorPanels({
   // The one thing a path still asks for. Stored on the tree (and so persisted with
   // it) because the level is what every lesson on the path is pitched at.
   function handlePathLevel(level: string) {
-    const next = roadmap ? { ...roadmap, level } : null;
+    // Rebuilt rather than patched: a path's curriculum COMPRESSES for a learner who
+    // already programs (pathRoadmap -> chaptersFor), and until this answer arrives
+    // there is no level to compress for. Safe to replace the tree wholesale — this
+    // is the first thing that happens in the course, so there is no progress to lose.
+    const next = path ? pathRoadmap(path, level) : roadmap ? { ...roadmap, level } : null;
     setRoadmap(next);
     showLeft("roadmap");
     // A path's curriculum is data, so it has existed since the workspace opened —
@@ -430,6 +434,7 @@ export default function EditorPanels({
           goal: tree.goal,
           kind: node.kind,
           title: node.title,
+          summary: node.summary || undefined,
           parentId: node.id,
           path,
           treeOutline: treeOutline(tree, node.id, progress),

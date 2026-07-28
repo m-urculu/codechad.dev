@@ -8,6 +8,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { GEMINI_MODELS } from "./models";
 import { RUNTIMES } from "@/lib/runtimes/registry";
+import { decompositionGuidance } from "./level";
 
 export type NodeKind = "topic" | "subtopic" | "point";
 
@@ -272,6 +273,13 @@ export async function expandNode(input: {
   goal?: string;
   kind: NodeKind;
   title: string;
+  /**
+   * What this node covers, when something already knows. Empty for a generated
+   * node (the title is all there is); a CONDENSED path chapter uses it to name
+   * every chapter it stands in for, which after compression is the only place
+   * that information survives.
+   */
+  summary?: string;
   parentId: string;
   path: string[]; // ancestor titles -> this node
   treeOutline?: string;
@@ -284,11 +292,15 @@ export async function expandNode(input: {
    */
   module?: string;
 }): Promise<RoadmapNode[]> {
-  const { skill, level, goal, kind, title, parentId, path, treeOutline, runtimeNotes, module } = input;
+  const { skill, level, goal, kind, title, summary, parentId, path, treeOutline, runtimeNotes, module } = input;
   const trail = path.join(" > ");
 
   const common =
     `Learner level: ${level ?? "unknown"}. Goal: ${goal ?? "general mastery"}.\n` +
+    // A pre-authored node can state its own brief. A condensed path chapter uses
+    // this to name every chapter it is standing in for, which is the only place
+    // that information exists once the tree has been compressed.
+    (summary ? `WHAT "${title}" COVERS (authoritative — cover exactly this): ${summary}\n` : "") +
     (treeOutline
       ? `FULL ROADMAP SO FAR ("◀ CURRENT" marks the node you are expanding, "✓done" marks completed):\n${treeOutline.slice(0, 8000)}\n` +
         `Use this context strictly: (a) children must NOT duplicate content that appears ANYWHERE else in the roadmap, ` +
@@ -311,7 +323,7 @@ export async function expandNode(input: {
       `Using REAL official documentation and best practices for "${skill}", ` +
       `decompose the topic "${title}" (path: ${trail}) into its foundational sub-topics.\n` +
       common +
-      `Typically 4-8 sub-topics — only what this topic genuinely contains.\n` +
+      `${decompositionGuidance(level, "subtopic")} Only what this topic genuinely contains.\n` +
       `Return ONLY JSON: {"children": [{"title": string, "summary": string, "description": string}]}.`;
   } else {
     // subtopic -> ordered learning points
@@ -321,7 +333,7 @@ export async function expandNode(input: {
       `list the ORDERED learning POINTS needed to fully master it — each a concrete, teachable unit ` +
       `(a specific skill, concept, or function), grounded in official documentation/best practices.\n` +
       common +
-      `Typically 4-8 points — only what this sub-topic genuinely contains.\n` +
+      `${decompositionGuidance(level, "point")} Only what this sub-topic genuinely contains.\n` +
       `Return ONLY JSON: {"children": [{"title": string, "summary": string}]}.`;
   }
 

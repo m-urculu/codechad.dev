@@ -12,12 +12,15 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { skill, level, goal, kind, title, parentId, path, treeOutline, moduleId, nodeModule } = body as {
+    const { skill, level, goal, kind, title, summary, parentId, path, treeOutline, moduleId, nodeModule } = body as {
       skill?: string;
       level?: string;
       goal?: string;
       kind?: NodeKind;
       title?: string;
+      /** What this node covers, when the tree already knows — a condensed path
+       *  chapter carries the list of chapters it has to fit in. */
+      summary?: string;
       parentId?: string;
       path?: string[];
       treeOutline?: string;
@@ -36,6 +39,7 @@ export async function POST(request: Request) {
       goal,
       kind,
       title,
+      summary: typeof summary === "string" ? summary : undefined,
       parentId,
       path: Array.isArray(path) ? path : [title],
       treeOutline: typeof treeOutline === "string" ? treeOutline : undefined,
