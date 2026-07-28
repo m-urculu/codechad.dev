@@ -424,6 +424,10 @@ a withdrawal right exists:
 A PDF form or "email us to cancel" does **not** comply. This is in force now — it is not
 something to schedule for later; it gates the launch of the paid tier.
 
+**Implemented and verified.** The portal configuration is declared in code rather than left
+to Stripe's default, so "no retention maze" is asserted by a test against the rendered
+page, not hoped for. See [payments.md](payments.md#cancellation-ux-96).
+
 ### 9.6 Cancellation UX
 
 Distinct from withdrawal: cancelling an ongoing subscription must not be harder than
@@ -506,8 +510,8 @@ institutions, or any use of conversation content for model training or profiling
 | **G9** | No processor register with DPA dates | Low | ✅ **Closed** — [§3](#processor-register). Two rows honestly read "None" |
 | **P1** | Hosted checkout, PCI scope | Blocks launch | ✅ Full redirect to Stripe; no Stripe JS on our pages; script inventory in `app/pricing/page.tsx`, asserted by test |
 | **P2** | Stripe DPA and recipient disclosure | Blocks launch | ⚠️ **Yours** — DPA applies on accepting Stripe's terms; policy already names Stripe |
-| **P3** | SCA / 3DS on recurring charges | Blocks launch | ✅ Stripe Checkout subscription mode handles the mandate and off-session retries |
-| **P4** | VAT / OSS | Blocks launch | ⚠️ **Part code, part yours** — Stripe Tax computes rates and collects the evidence; **registration and filing are administrative** |
+| **P3** | SCA / 3DS on recurring charges | Blocks launch | ✅ **Verified** — a 3DS2 challenge is presented and the subscription activates only after it is completed |
+| **P4** | VAT / OSS | Blocks launch | ✅ **Verified per country** (PT 23% = €1.12, DE 19% = €0.96 on the same €6 product); ⚠️ **registration and filing remain yours** |
 | **P5** | **Withdrawal function (Art. 11a)** | Blocks launch | ✅ `api/billing/withdraw` + `BillingSection.tsx`; live window check, two-step confirm, pro-rata refund, reference |
 | **P6** | **Split erasure vs invoices** | Blocks launch | ✅ 0008 uses `on delete set null`; `check:erasure` asserts **both** directions |
 
