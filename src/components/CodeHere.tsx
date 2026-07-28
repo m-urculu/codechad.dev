@@ -11,6 +11,15 @@ import { enrichLanguages } from "@/lib/monacoLanguages";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), { ssr: false });
 
+// Shortcut labels for tooltips. Rendered from the platform so a Mac user is not told to
+// press a key their keyboard does not have — Monaco's CtrlCmd resolves the same way.
+const IS_MAC =
+  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const MOD_LABEL = {
+  run: "Shift+Enter",
+  submit: IS_MAC ? "\u2318+Shift+Enter" : "Ctrl+Shift+Enter",
+};
+
 type LoadCode = { code: string; html?: string; nonce: number } | null;
 
 const LINE_COLOR: Record<OutLine["kind"], string> = {
@@ -170,6 +179,16 @@ export default function CodeHere({
     onSubmit?.(codeRef.current, output.map((l) => l.text).join("\n"));
   }
 
+  // Keyboard shortcuts need the LATEST run/submit, not the ones that existed when the
+  // editor mounted. Monaco registers a command once and keeps that closure forever, so
+  // binding the functions directly would freeze `running`, `spec` and `output` at their
+  // first-render values — the classic stale-closure bug, and here it would mean Shift+Enter
+  // quietly running against the wrong module after switching lessons.
+  const runRef = useRef(run);
+  const submitRef = useRef(submit);
+  runRef.current = run;
+  submitRef.current = submit;
+
   return (
     <div className="flex flex-1 min-w-0">
       <div className="h-full w-full min-w-0">
@@ -199,6 +218,29 @@ export default function CodeHere({
                   editor.setValue(pendingRef.current);
                   pendingRef.current = null;
                 }
+
+                // Shift+Enter runs, Ctrl/Cmd+Shift+Enter submits.
+                //
+                // Both deliberately take a modifier: plain Enter has to stay a newline in a
+                // code editor, and a learner mid-expression pressing Enter and having their
+                // half-written code run would be worse than no shortcut at all.
+                //
+                // addAction rather than addCommand so they appear in the command palette
+                // (F1) with their keybinding shown — discoverable without being documented.
+                editor.addAction({
+                  id: "codechad.run",
+                  label: "Run code",
+                  keybindings: [monaco.KeyMod.Shift | monaco.KeyCode.Enter],
+                  run: () => void runRef.current(),
+                });
+                editor.addAction({
+                  id: "codechad.submit",
+                  label: "Submit to tutor",
+                  // CtrlCmd maps to ⌘ on macOS and Ctrl elsewhere, so this is one binding
+                  // that reads correctly on both.
+                  keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter],
+                  run: () => void submitRef.current(),
+                });
                 // JetBrains Mono arrives asynchronously (a CSS @import to Google
                 // Fonts with display=swap), so on a cold visit Monaco measures the
                 // fallback face and caches its advance. Measured: 8.0273 px/char
@@ -287,7 +329,7 @@ export default function CodeHere({
               <button
                 onClick={running ? stop : run}
                 disabled={!spec.runnable}
-                title={spec.runnable ? "Run your code" : "No runtime for this module yet — use Submit"}
+                title={spec.runnable ? `Run your code (${MOD_LABEL.run})` : "No runtime for this module yet — use Submit"}
                 className={[
                   "px-2 py-1 text-xs font-semibold transition-colors duration-150 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed",
                   running
@@ -314,7 +356,7 @@ export default function CodeHere({
               <button
                 onClick={submit}
                 disabled={running}
-                title="Send your code + output to the tutor"
+                title={`Send your code + output to the tutor (${MOD_LABEL.submit})`}
                 className="px-2 py-1 bg-accent text-surface-0 hover:bg-accent-bright text-xs font-semibold transition-colors duration-150 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

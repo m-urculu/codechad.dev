@@ -115,33 +115,36 @@ export default function FeedbackButton({ context }: { context?: FeedbackContext 
 
   return (
     <>
-      {/* Bottom right, above everything except a modal. `fixed` so it survives the
-          workspace's own scrolling panes. */}
+      {/* Lives in the nav, immediately left of the account button.
+
+          It used to float bottom-right, which cost a running battle with the workspace's
+          own chrome: on a phone the chat composer occupies the bottom edge (measured at
+          390x844: y 732-831, Send at 763-801), so the button needed bottom-32 to clear it,
+          and any future bottom-anchored control would have restarted the argument. The nav
+          is the one strip of the app that is always present, never scrolls, and has no
+          competition for the corner. */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Send feedback"
         aria-expanded={open}
         title="Send feedback"
-        // On a phone the workspace runs the chat composer along the bottom edge — measured
-        // at 390x844: it occupies y 732-831, with Send at 763-801. A button at bottom-4,
-        // or even bottom-20, lands on top of Send. 128px clears the composer entirely.
-        // From md up the composer no longer reaches the corner, so it drops back down.
-        className="fixed bottom-32 right-4 z-40 flex h-11 w-11 items-center justify-center
-                   border border-line-strong bg-surface-1 text-ink-muted backdrop-blur-md
-                   transition-colors duration-150
+        className="flex h-9 w-9 items-center justify-center border border-line-strong
+                   bg-transparent text-ink-muted transition-colors duration-150
                    hover:border-line-active hover:bg-surface-2 hover:text-ink
-                   focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active
-                   md:bottom-4 md:h-12 md:w-12"
+                   focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active"
       >
-        <MessageSquarePlus className="h-5 w-5" />
+        <MessageSquarePlus className="h-[18px] w-[18px]" />
       </button>
 
       {mounted &&
         open &&
         createPortal(
           <div
-            className="fixed inset-0 z-50 flex items-end justify-end bg-scrim p-4 backdrop-blur-sm sm:p-6"
+            // Anchored to the top now that the trigger is, so the panel opens beneath the
+            // button rather than travelling to the opposite corner. pt-16 clears the 64px
+            // nav; on a phone the panel fills the width it is given.
+            className="fixed inset-0 z-50 flex items-start justify-end bg-scrim p-4 pt-16 backdrop-blur-sm sm:p-6 sm:pt-[68px]"
             onMouseDown={(e) => {
               if (e.target === e.currentTarget) close();
             }}
@@ -151,7 +154,7 @@ export default function FeedbackButton({ context }: { context?: FeedbackContext 
               role="dialog"
               aria-modal="true"
               aria-labelledby="feedback-title"
-              className="relative mb-14 w-full max-w-sm border border-line-strong bg-surface-0 p-5"
+              className="relative w-full max-w-sm border border-line-strong bg-surface-0 p-5"
             >
               <button
                 type="button"

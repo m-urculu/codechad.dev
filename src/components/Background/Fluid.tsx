@@ -407,6 +407,12 @@ export type FluidConfig = {
   pixelSize: number;
   color: [number, number, number];
   animate: boolean;
+  /**
+   * Multiplier on the simulation timestep. 1 is real time; below that the whole field —
+   * drift, curl, dissipation and the wave — slows together rather than any one of them
+   * being tuned down independently, which would change the look as well as the pace.
+   */
+  timeScale: number;
 };
 
 class FluidSim {
@@ -678,6 +684,12 @@ function Simulation({ config }: { config: FluidConfig }) {
   // receive pointer events itself — the listener has to be on the window. (This
   // is why the old Dither's mouse interaction never actually fired.)
   useEffect(() => {
+    // splatForce 0 means the pointer is not meant to disturb the fluid at all — in the
+    // workspace, and under reduced motion. Returning early keeps a pointermove listener
+    // off the window entirely rather than running it to compute a force of zero, which
+    // matters because this fires on every mouse movement over the whole app.
+    if (config.splatForce <= 0) return;
+
     const prev = { x: 0, y: 0, valid: false };
 
     function onMove(e: PointerEvent) {
@@ -716,7 +728,9 @@ function Simulation({ config }: { config: FluidConfig }) {
 
     // Clamp: a backgrounded tab or a long GC pause hands back a huge delta, and
     // one giant advection step would smear the whole field in a single frame.
-    const dt = Math.min(delta, 1 / 30);
+    // Clamp first, then scale — scaling a huge delta down would let a stalled tab
+    // through the guard.
+    const dt = Math.min(delta, 1 / 30) * sim.config.timeScale;
 
     for (const s of splats.current) sim.splat(s);
     splats.current.length = 0;
@@ -749,6 +763,7 @@ export const DEFAULT_FLUID_CONFIG: FluidConfig = {
   pixelSize: 1,
   color: [0.34, 0.34, 0.34],
   animate: true,
+  timeScale: 1,
 };
 
 export default function Fluid(props: Partial<FluidConfig>) {
