@@ -8,7 +8,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { GEMINI_MODELS } from "./models";
 import { RUNTIMES } from "@/lib/runtimes/registry";
-import { decompositionGuidance } from "./level";
+import { decompositionGuidance, overviewGuidance } from "./level";
 
 export type NodeKind = "topic" | "subtopic" | "point";
 
@@ -220,8 +220,10 @@ export async function generateOverview(input: {
         `NEVER include topics about installing the language, setting up environments/editors/IDEs, or running scripts from a terminal — the environment already exists. ` +
         `Skip topics that cannot be practiced in that sandbox (real file I/O, OS integration, networking, C APIs) unless they are core to the skill and can be simulated.\n`
       : "") +
-    `Calibrate the number of topics to what is genuinely needed (typically 6-10), fundamentals first.\n` +
-    `CALIBRATE TO THE LEVEL: if the learner is new/a beginner, the FIRST topics must start from absolute basics — the simplest possible reading and writing of the language — and ramp up gradually. Edge-case material (overflow, precision pitfalls, performance tuning) belongs AFTER the plain everyday operations it qualifies, never in the opening topics.\n` +
+    // Per-tier, from level.ts. Both of these used to be fixed: "typically 6-10"
+    // whoever was asking, and a calibration paragraph that only described what to
+    // do for a beginner — so an experienced learner got a beginner's topic list.
+    `${overviewGuidance(level)}\n` +
     `Topics MUST be MUTUALLY EXCLUSIVE: every concept appears in exactly ONE topic. No umbrella topics that restate other topics, no two topics covering the same ground (e.g. don't list "Variables and Data Types" AND "Data Types and Operators").\n` +
     // "title" is the course's NAME in the learner's course list, so it has to earn
     // its place there: a course is created before its content exists and starts out
