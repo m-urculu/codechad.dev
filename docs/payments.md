@@ -208,6 +208,16 @@ Stripe's portal, deliberately: no retention maze, no discount interception, no
 confirmshaming. Cancelling must not be harder than subscribing, and the **Digital Fairness
 Act** is aimed squarely at flows that make it so.
 
+The portal **configuration is declared in `api/billing/portal/route.ts`**, not left to
+Stripe's implicit default. The default is fine today — but a promise that rests on a third
+party's default is not a promise this repository can keep, and anyone with dashboard access
+could add a retention offer next month with nothing here noticing. Declaring it puts what
+the customer sees in version control, where a test can assert it.
+
+Two deliberate settings: the **cancellation-reason survey is off** (subscribing asks no
+questions, so cancelling should not either), and **plan changes are off** (there is one
+plan, so that screen is a dead end).
+
 ### Erasure vs invoices (§9.7)
 
 The one place the previous design would have broken a promise it already made.
@@ -253,6 +263,7 @@ signature, so the payload is real even though the transport is not.
 | Entitlement, limits, graceful degradation | **21/21** |
 | Webhook signature handling (offline) | **6/6** |
 | Full payment lifecycle | **31/31**, stable over three consecutive runs |
+| Consumer-law and tax behaviour | **17/17** |
 
 The lifecycle run covers: free tier refusing a 4th course → checkout refused with only one
 affirmation → session created on Stripe's domain → **card paid on Stripe's hosted page** →
@@ -262,6 +273,35 @@ without confirmation → withdrawal accepted with a `WD-…` reference → **ref
 Stripe by reference and amount** → subscription cancelled at Stripe → entitlement revoked →
 second withdrawal refused → a late webhook **does not** restore access → export contains
 the subscription and no card data.
+
+The consumer-law suite covers the claims that were previously asserted rather than
+demonstrated:
+
+| Claim | Evidence |
+|---|---|
+| **VAT is charged where the customer is** (P4) | Same €6.00 product, two checkouts: Portugal shows **€1.12** VAT (23%), Germany **€0.96** (19%). If the seller's rate were applied to everyone these would be identical and every EU return would be wrong. |
+| **SCA / 3DS on the first charge** (P3) | Card `4000 0025 0000 3155` produces a real 3D Secure 2 challenge; the subscription activates only after it is completed, and entitlement follows. |
+| **A declined card grants nothing** | Card `4000 0000 0000 0002` never reaches the success page, and entitlement stays free with the 3-course limit intact. |
+| **Cancellation is free of friction** (§9.6) | The portal page contains no retention offer, no discount interception, no pause-instead prompt and no "why are you leaving" survey — asserted against the rendered page, not the configuration. |
+| **The cancellation UX is ours, not a default** | The declared configuration (`codechad-portal-v1`) is the one in force: cancel enabled, at period end, reason survey off, invoice history on. |
+
+### What a sandbox cannot prove
+
+This was all run in a **Stripe sandbox** (`charges_enabled: false`). Sandboxes are fully
+isolated: settings made in one do **not** carry to the live account. So when you activate,
+the product, tax code, Terms URL and webhook endpoint must all be created again on the
+live account — the four environment variables change too.
+
+What a sandbox therefore cannot establish:
+
+- that a real card is actually charged and settled;
+- that your **tax registrations** are correct — a sandbox has none, and under Managed
+  Payments Stripe uses your live registrations to decide what to remit;
+- payout timing, or your bank details;
+- that live keys, the live webhook secret and the live endpoint URL agree.
+
+Everything above is configuration rather than code, which is the point: the code paths are
+identical, and they are the part that is now proven.
 
 ### Three real bugs it caught
 
