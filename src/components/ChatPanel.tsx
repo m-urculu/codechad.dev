@@ -871,9 +871,14 @@ export default function ChatPanel({
       const data = await res.json();
       if (data.roadmap) {
         onRoadmap?.(data.roadmap);
+        // The workspace is already building the first lesson (EditorPanels), so
+        // this says what is happening rather than giving directions to do it by
+        // hand. The Roadmap tab still gets a mention — it is how you go somewhere
+        // OTHER than next.
         pushMessage(
           "bot",
-          `Your **${meta.title}** roadmap is ready in the Roadmap tab → expand a topic to reveal its sub-topics and learning points, then hit **Start lesson** on any point and we'll dive in here.`
+          `Your **${meta.title}** roadmap is ready — starting you on the first lesson now. ` +
+            `The whole plan is in the Roadmap tab whenever you want to jump elsewhere.`
         );
       } else {
         onRoadmapFailed?.(level, goal); // store the course shell — listed, resumable, deletable
@@ -915,8 +920,8 @@ export default function ChatPanel({
       onPathLevel?.(v);
       pushMessage(
         "bot",
-        `Got it — *${v}*. Your **${pathTitle}** path is waiting in the Roadmap tab: start at the top and work down. ` +
-          `Open a chapter to reveal its lessons, hit **Start lesson** on one, and we'll dive in here.`
+        `Got it — *${v}*. Starting you on the first lesson of the **${pathTitle}** path now. ` +
+          `The whole curriculum is in the Roadmap tab: work down it, or jump wherever you like.`
       );
     } else if (calib.step === "level") {
       setCalib((c) => ({ ...c, step: "goal", level: v }));

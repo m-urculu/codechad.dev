@@ -277,8 +277,13 @@ export default function EditorPanels({
   // The one thing a path still asks for. Stored on the tree (and so persisted with
   // it) because the level is what every lesson on the path is pitched at.
   function handlePathLevel(level: string) {
-    setRoadmap((r) => (r ? { ...r, level } : r));
+    const next = roadmap ? { ...roadmap, level } : null;
+    setRoadmap(next);
     showLeft("roadmap");
+    // A path's curriculum is data, so it has existed since the workspace opened —
+    // but it is not the learner's course until they have answered this. Only now
+    // is starting the first lesson for them the right thing to do.
+    if (next) void startFirstLesson(next);
   }
 
   // Signing in mid-run has to take effect without a reload. userId is what every
@@ -368,8 +373,12 @@ export default function EditorPanels({
 
   function handleRoadmap(r: Roadmap) {
     setRoadmap(r);
-    showLeft("roadmap");
+    showLeft("roadmap"); // the curriculum, the moment it exists
     void nameCourseFromContent(r);
+    // Then straight into the first lesson. The switch back to the chat happens
+    // when it is ready, so the learner reads their new roadmap while it builds
+    // rather than watching a spinner.
+    void startFirstLesson(r);
   }
 
   // The course was created before it had any content, so it is still called after
@@ -403,21 +412,27 @@ export default function EditorPanels({
     }).catch(() => {});
   }
 
-  async function handleExpand(node: RoadmapNode, path: string[]) {
-    if (!roadmap || node.children !== null) return;
+  // Generate one node's children. Returns them as well as storing them, because the
+  // auto-start below has to keep walking down the tree and cannot wait a render for
+  // state it needs on the next line.
+  async function expandNode(
+    tree: Roadmap,
+    node: RoadmapNode,
+    path: string[]
+  ): Promise<RoadmapNode[]> {
     try {
       const res = await apiFetch("/api/roadmap/expand", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          skill: roadmap.skill,
-          level: roadmap.level,
-          goal: roadmap.goal,
+          skill: tree.skill,
+          level: tree.level,
+          goal: tree.goal,
           kind: node.kind,
           title: node.title,
           parentId: node.id,
           path,
-          treeOutline: treeOutline(roadmap, node.id, progress),
+          treeOutline: treeOutline(tree, node.id, progress),
           moduleId: moduleId ?? undefined,
           nodeModule: node.module,
         }),
@@ -425,12 +440,57 @@ export default function EditorPanels({
       const data = await res.json();
       const children: RoadmapNode[] = Array.isArray(data.children) ? data.children : [];
       setRoadmap((rm) => (rm ? setChildren(rm, node.id, children) : rm));
+      return children;
     } catch {
       setRoadmap((rm) => (rm ? setChildren(rm, node.id, []) : rm));
+      return [];
     }
   }
 
-  function handleActivateLesson(node: RoadmapNode) {
+  async function handleExpand(node: RoadmapNode, path: string[]) {
+    if (!roadmap || node.children !== null) return;
+    await expandNode(roadmap, node, path);
+  }
+
+  // The first lesson of a brand-new course, opened for the learner.
+  //
+  // A generated roadmap arrives as top-level topics with nothing under them — the
+  // curriculum is expanded a branch at a time, on demand — so "the first lesson"
+  // is two or three generation calls below the surface, and the learner had to go
+  // and find it: open the Roadmap tab, expand a topic, expand a sub-topic, press
+  // Start lesson. That is four deliberate actions between asking to learn
+  // something and being taught anything.
+  //
+  // So: walk down the leftmost branch, generating as it goes, and start what it
+  // finds. Bounded, because this is the one place that generates without being
+  // asked and a bug here would be an unbounded loop of paid calls.
+  const autoStarted = useRef(false);
+  async function startFirstLesson(rm: Roadmap) {
+    if (autoStarted.current) return;
+    autoStarted.current = true;
+    let tree = rm;
+    // topics -> sub-topics -> lessons is three levels; one spare, no more.
+    for (let depth = 0; depth < 4; depth++) {
+      const points = flattenPoints(tree);
+      if (points.length > 0) {
+        handleActivateLesson(points[0], tree);
+        return;
+      }
+      // The leftmost node that has never been expanded, with the path to it.
+      const trail: RoadmapNode[] = [];
+      let node: RoadmapNode | undefined = tree.topics[0];
+      while (node && node.children && node.children.length > 0) {
+        trail.push(node);
+        node = node.children[0];
+      }
+      if (!node || node.children !== null) return; // nothing left to open
+      const children = await expandNode(tree, node, trail.map((n) => n.title));
+      if (children.length === 0) return; // generation failed; the tab still works
+      tree = setChildren(tree, node.id, children);
+    }
+  }
+
+  function handleActivateLesson(node: RoadmapNode, tree?: Roadmap) {
     // Opening a lesson never raises the sign-in prompt. Finishing one is the only
     // moment that earns the ask, and interrupting someone on their way INTO a
     // lesson asks for an account before they have been given anything.
@@ -438,9 +498,13 @@ export default function EditorPanels({
     setActiveNodeId(node.id);
     setActiveModule(node.module ?? moduleId ?? null);
     showLeft("chat");
+    // `tree` is for callers holding a version of the roadmap newer than state —
+    // the auto-start above has just expanded branches this render has not seen,
+    // and the outline is what stops the generator repeating what already exists.
+    const outlineTree = tree ?? roadmap;
     setLessonRequest({
       node,
-      outline: roadmap ? treeOutline(roadmap, node.id, progress) : undefined,
+      outline: outlineTree ? treeOutline(outlineTree, node.id, progress) : undefined,
       nonce: Date.now(),
     });
   }
