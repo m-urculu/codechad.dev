@@ -17,6 +17,7 @@ import {
 } from "react-icons/fi";
 import type { RoadmapSummary } from "@/components/Landing";
 import { apiFetch } from "@/lib/apiFetch";
+import { clearCourses, patchCourse } from "@/lib/courseCache";
 import { getPathByTitle, pathModules } from "@/lib/paths";
 
 type Progress = Record<string, { done?: boolean; passed?: unknown; built?: { objectives?: unknown[] } }>;
@@ -185,6 +186,11 @@ export default function CourseSettings({
   const dirtyCalibration = level !== (course.level ?? "") || goal !== (course.goal ?? "");
   const messageCount = 0; // not summarised server-side; the action states its own effect
 
+  // Actions that change the SHAPE of a course — its topics, its calibration, or
+  // its progress — and so invalidate every cached figure on its card. Renaming is
+  // not one of them: it changes a single field we can patch exactly (see below).
+  const STRUCTURAL = new Set(["reset", "recalibrate", "saveTopics", "regenerate"]);
+
   async function post(body: Record<string, unknown>) {
     if (!userId) return null;
     try {
@@ -193,7 +199,11 @@ export default function CourseSettings({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...body, course_id: course.courseId }),
       });
-      return await res.json();
+      const json = await res.json();
+      // Drop the cached list rather than repaint the landing page with topic
+      // counts and percentages this call has just invalidated.
+      if (STRUCTURAL.has(String(body.action))) clearCourses(userId);
+      return json;
     } catch {
       return null;
     }
@@ -203,6 +213,7 @@ export default function CourseSettings({
     const trimmed = name.trim();
     if (!trimmed || trimmed === savedName) return;
     await post({ action: "rename", name: trimmed });
+    patchCourse(userId, course.courseId, { name: trimmed });
     setSavedName(trimmed);
     setSaved("name");
     setTimeout(() => setSaved(null), 2000);

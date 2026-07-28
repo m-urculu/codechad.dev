@@ -9,6 +9,12 @@ import { CONTACT_EMAIL, SITE_NAME } from "@/lib/site";
 import type { IconType } from "react-icons";
 import { apiFetch } from "@/lib/apiFetch";
 import {
+  readCourses,
+  writeCourses,
+  mergeCourses,
+  type RoadmapSummary,
+} from "@/lib/courseCache";
+import {
   FiSettings,
   FiChevronDown,
   FiChevronUp,
@@ -130,22 +136,9 @@ const MODULE_BY_ID = new Map(SECTIONS.flatMap((s) => s.modules).map((m) => [m.id
 
 // ---- My courses (stored roadmaps) --------------------------------
 
-export type RoadmapSummary = {
-  courseId: string;
-  skill: string;
-  module?: string;
-  name: string; // display label; a duplicate gets "Python (2)"
-  level?: string;
-  goal?: string;
-  createdAt?: string;
-  updatedAt: string;
-  doneCount: number;
-  /** Lessons generated so far, not the size of the course — never a denominator. */
-  totalCount: number;
-  topicsDone: number;
-  topicsTotal: number;
-  ratio?: number; // continuous completion [0,1] — matches the roadmap tab's overall bar
-};
+// Defined alongside the cache that stores it (src/lib/courseCache.ts), and
+// re-exported here because this is where every consumer already imports it from.
+export type { RoadmapSummary };
 
 
 // A stored roadmap's `skill` is the module's registry title — map it back to the
@@ -169,6 +162,12 @@ function relativeTime(iso: string): string {
 
 // Loads the signed-in user's stored roadmaps; re-fetches on auth changes.
 // `remove` deletes a course optimistically (card disappears at once, API call follows).
+//
+// Cache-first: the cards paint from localStorage on the first frame and the
+// network response then updates the progress figures in place (see courseCache.ts
+// for why the list request is expensive enough to be worth avoiding on the
+// critical path). Every mutation below writes the cache too, so a deleted course
+// does not reappear on the next visit and a rename survives the reload.
 function useStoredRoadmaps(): {
   roadmaps: RoadmapSummary[];
   remove: (r: RoadmapSummary) => void;
@@ -181,18 +180,39 @@ function useStoredRoadmaps(): {
 
   useEffect(() => {
     let cancelled = false;
+    // getUser() and the INITIAL_SESSION event below both report the same signed-in
+    // user on every page load, and each used to fire its own list request — the
+    // expensive one, twice, for one visit. Only a CHANGE of user reloads now.
+    let loadedFor: string | null | undefined = undefined;
     async function load(uid: string | null) {
+      if (loadedFor === uid) return;
+      loadedFor = uid;
       if (!cancelled) setUserId(uid);
       if (!uid) {
+        // Signed out shows no courses. The cache is left in place, keyed by the
+        // user id — signing back in repaints instantly instead of starting cold.
         if (!cancelled) setRoadmaps([]);
         return;
       }
+
+      // 1) Whatever we already know, on this frame.
+      const cached = readCourses(uid);
+      if (cached && !cancelled) setRoadmaps(cached);
+
+      // 2) The truth, a round trip later — folded in so unchanged cards keep
+      //    their object identity and only the progress numbers move.
       try {
         const res = await apiFetch("/api/roadmap/list");
         const data = await res.json();
-        if (!cancelled) setRoadmaps(Array.isArray(data.roadmaps) ? data.roadmaps : []);
+        if (cancelled) return;
+        const fresh: RoadmapSummary[] = Array.isArray(data.roadmaps) ? data.roadmaps : [];
+        const merged = mergeCourses(cached, fresh);
+        setRoadmaps(merged);
+        writeCourses(uid, merged);
       } catch {
-        if (!cancelled) setRoadmaps([]);
+        // Offline or a paused project: keep showing the cached list rather than
+        // blanking a page full of work. An empty cache still renders as empty.
+        if (!cached && !cancelled) setRoadmaps([]);
       }
     }
     supabase.auth.getUser().then(({ data }) => load(data.user?.id ?? null));
@@ -206,7 +226,12 @@ function useStoredRoadmaps(): {
   }, [nonce]);
 
   function remove(r: RoadmapSummary) {
-    setRoadmaps((list) => list.filter((x) => x.courseId !== r.courseId));
+    // Kept out of the state updater on purpose: an updater must stay pure (React
+    // may run it twice), and writing storage from inside one is exactly the kind
+    // of effect that misbehaves under StrictMode.
+    const next = roadmaps.filter((x) => x.courseId !== r.courseId);
+    setRoadmaps(next);
+    writeCourses(userId, next); // or the card returns on the next visit
     if (!userId) return;
     const qs = `course_id=${encodeURIComponent(r.courseId)}`;
     apiFetch(`/api/roadmap/state?${qs}`, { method: "DELETE" }).catch(() => {});

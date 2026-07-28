@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ChevronRight, ChevronDown, Play, Check, Loader2, Circle } from "lucide-react";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
+import { nodeRatio, overallRatio } from "@/lib/courseProgress";
 
 type RoadmapPanelProps = {
   roadmap: Roadmap | null;
@@ -51,28 +52,16 @@ export default function RoadmapPanel({
   // A lesson's completion in [0,1]: its objective-level ratio, falling back to done/not.
   const pointOf = (id: string) => pointRatio?.[id] ?? (doneNodeIds.includes(id) ? 1 : 0);
 
-  // Continuous completion of a node in [0,1]. Each level weights its DIRECT children
-  // EQUALLY, so the bar drills down for partial credit: a topic = mean of its sub-topics,
-  // a sub-topic = mean of its lessons, a lesson = fraction of its objectives passed. So
-  // with 6 topics, finishing #1 and starting #2 fills 1/6 plus a slice of the next sixth —
-  // the width of that slice is however far into #2 (its sub-topics/lessons/objectives) you
-  // are. Ungenerated branches count as 0 (nothing to credit yet).
-  function ratio(node: RoadmapNode): number {
-    if (node.kind === "point") return pointOf(node.id);
-    if (!node.children || node.children.length === 0) return 0;
-    return node.children.reduce((sum, c) => sum + ratio(c), 0) / node.children.length;
-  }
+  // Roll-up rules live in courseProgress.ts, shared with the course card so the two
+  // bars cannot drift apart.
+  const ratio = (node: RoadmapNode) => nodeRatio(node, pointOf);
 
   // Whether an expandable node has generated substructure worth drawing a bar for.
   function hasStructure(node: RoadmapNode): boolean {
     return node.kind !== "point" && !!node.children && node.children.length > 0;
   }
 
-  // Overall roadmap completion = equal-weighted mean across the top-level topics.
-  const overall =
-    roadmap && roadmap.topics.length > 0
-      ? roadmap.topics.reduce((s, t) => s + ratio(t), 0) / roadmap.topics.length
-      : 0;
+  const overall = overallRatio(roadmap, pointOf);
 
   function Node({ node, depth, path }: { node: RoadmapNode; depth: number; path: string[] }) {
     const expandable = node.kind !== "point";
