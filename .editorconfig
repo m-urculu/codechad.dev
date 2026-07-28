@@ -1,0 +1,33 @@
+# Editor conventions, so they hold regardless of who or what is writing the file.
+#
+# The one that matters here is `insert_final_newline`. A file that ends without a newline
+# makes git report "\ No newline at end of file" and turns the last line into part of the
+# next diff every time it is touched — a line nobody edited showing up as changed. Every
+# editor worth using reads this file, so the rule is enforced rather than remembered.
+
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+charset = utf-8
+indent_style = space
+indent_size = 2
+
+# Go's own tooling is not negotiable about tabs, and the path modules include Go lessons.
+[*.go]
+indent_style = tab
+
+[*.md]
+# Two trailing spaces are a hard line break in Markdown; trimming them silently reflows
+# the paragraph.
+trim_trailing_whitespace = false
+
+# Binary-ish and generated files: leave them exactly as produced.
+[*.{svg,ico,png,jpg,jpeg,gif,webp,woff,woff2}]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+[package-lock.json]
+insert_final_newline = false
