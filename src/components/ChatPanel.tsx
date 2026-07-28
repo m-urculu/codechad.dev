@@ -22,7 +22,7 @@ hljs.registerLanguage('html', xml);
 // Local UI components
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import { supabase } from "@/lib/supabaseBrowser";
+import { cachedUserId, supabase } from "@/lib/supabaseBrowser";
 import { LEVELS, getModuleMeta } from "@/lib/modules";
 import { getRuntime } from "@/lib/runtimes/registry";
 import { gradeSubmission } from "@/lib/agents/grade";
@@ -161,13 +161,13 @@ export default function ChatPanel({
   // lesson and agent prompts are told the subject is. A path course opened in Python
   // is not a Python course, and a Go lesson inside it must not be framed as one.
   const subject = skill || meta?.title || "";
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 0,
-      text: "What job you're looking to land or what skills do you want to learn?",
-      role: 'bot',
-    },
-  ]);
+  // Starts EMPTY, and is filled a moment later by the cache (useLayoutEffect below)
+  // or by the boot effect. It used to start with a hardcoded "What job you're
+  // looking to land…", which every path then replaced — so the pane opened on a
+  // question nobody had been asked, and on a resumed course that question sat there
+  // for the length of two network requests before the real conversation arrived.
+  // An empty pane for one frame is honest; the wrong question is not.
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -380,6 +380,45 @@ export default function ChatPanel({
   const chatRestored = useRef(false);
   // Set once a trial conversation has been carried into a signed-in session.
   const adoptedTrial = useRef(false);
+  // What the cache put on screen, if anything — so the network path below knows
+  // whether it is replacing something the learner can already see.
+  const cachePainted = useRef<Message[] | null>(null);
+
+  // Paint the cached conversation BEFORE the browser paints anything.
+  //
+  // This deliberately does not wait for `boot`, for `userId`, or for the boot
+  // effect below. Those all depend on network round trips — EditorPanels has to
+  // load the course row before `boot` leaves "loading", and getUser() resolves a
+  // promise before `userId` exists — and waiting on either is exactly the delay
+  // this cache was built to remove. The user id comes from storage synchronously
+  // (cachedUserId) for the same reason.
+  //
+  // useLayoutEffect, not useEffect: this runs after hydration but before paint, so
+  // the conversation is on the first frame the learner actually sees, with no flash
+  // of an empty pane. It cannot be a lazy useState initializer — the server renders
+  // this component too, and a client-only value there is a hydration mismatch.
+  useLayoutEffect(() => {
+    if (cachePainted.current || !courseId) return;
+    const hit = readChat(cachedUserId(), courseId);
+    if (!hit?.messages?.length) return;
+    const next = stripResumeRecaps(hit.messages).map((m, i) => ({
+      id: i + 1,
+      role: (m.role === "user" ? "user" : "bot") as "user" | "bot",
+      text: m.text,
+      lessonId: m.lessonId,
+    }));
+    cachePainted.current = next;
+    setMessages(next);
+    setCalib({
+      step: (hit.calib?.step as CalibStep) ?? "done",
+      level: hit.calib?.level ?? savedLevel,
+      goal: hit.calib?.goal ?? savedGoal,
+    });
+    chatRestored.current = true;
+    resetToLatest(); // open on the latest interactions, not the top of the history
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseId]);
+
   useEffect(() => {
     if (!meta || boot === "loading") return;
     const key = `${courseId ?? moduleId}|${userId ?? "anon"}`;
@@ -436,14 +475,9 @@ export default function ChatPanel({
       return next;
     };
 
-    // 0) Whatever the landing page already warmed for this course, on this frame.
-    //    The workspace opens showing the last thing that happened in the course
-    //    rather than an empty pane that fills in a round trip later.
-    let painted: { role: string; text: string }[] | null = null;
-    if (userId && courseId) {
-      const hit = readChat(userId, courseId);
-      if (hit?.messages?.length) painted = adopt(hit);
-    }
+    // The cache may already have put this conversation on screen (see the layout
+    // effect above); if so, everything below is a revalidation, not a load.
+    const painted = cachePainted.current;
 
     (async () => {
       // 1) Saved conversation? Restore it verbatim (messages + calibration).

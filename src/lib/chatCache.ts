@@ -46,6 +46,18 @@ const MAX_COURSES = 12;
 const prefix = (userId: string) => `codechad:chat:v${VERSION}:${userId}:`;
 const keyFor = (userId: string, courseId: string) => prefix(userId) + courseId;
 
+// Courses cleared during this page session.
+//
+// The background warm-up is a queue of requests that outlives the moment it was
+// started, so a course can be DELETED while its own prefetch is in flight — and
+// the response then writes the conversation of a deleted course back into the
+// cache, where it would be read the next time something with that id is opened.
+// Found by testing the delete path against a warm-up that was still running.
+//
+// In memory, because that is exactly the lifetime of the race: a reload has no
+// in-flight requests left to lose to.
+const tombstoned = new Set<string>();
+
 function ownKeys(userId: string): string[] {
   const p = prefix(userId);
   const out: string[] = [];
@@ -88,9 +100,25 @@ export function readChat(userId: string | null, courseId: string | null): Cached
 export function writeChat(
   userId: string | null,
   courseId: string | null,
-  state: { messages: CachedChatMsg[]; calib?: CachedChatCalib; courseUpdatedAt?: string }
+  state: { messages: CachedChatMsg[]; calib?: CachedChatCalib; courseUpdatedAt?: string },
+  /**
+   * A speculative write is one nobody asked for — the background warm-up. It is
+   * refused for a course cleared during this session, because it may be the
+   * answer to a request that was already in flight when the course was deleted.
+   *
+   * An ordinary write is the opposite: it carries a conversation the learner is
+   * having RIGHT NOW, which is also how a cleared course legitimately comes back
+   * (reset the course, then keep talking). So it clears the tombstone.
+   */
+  opts: { speculative?: boolean } = {}
 ): void {
   if (!userId || !courseId) return;
+  const tomb = keyFor(userId, courseId);
+  if (opts.speculative) {
+    if (tombstoned.has(tomb)) return;
+  } else {
+    tombstoned.delete(tomb);
+  }
   const payload: CachedChat = {
     messages: state.messages.slice(-MAX_MESSAGES),
     calib: state.calib ?? {},
@@ -115,6 +143,7 @@ export function writeChat(
 
 export function clearChat(userId: string | null, courseId: string | null): void {
   if (!userId || !courseId) return;
+  tombstoned.add(keyFor(userId, courseId));
   try {
     localStorage.removeItem(keyFor(userId, courseId));
   } catch {
@@ -125,7 +154,10 @@ export function clearChat(userId: string | null, courseId: string | null): void 
 export function clearAllChats(userId: string | null): void {
   if (!userId) return;
   try {
-    for (const k of ownKeys(userId)) localStorage.removeItem(k);
+    for (const k of ownKeys(userId)) {
+      tombstoned.add(k);
+      localStorage.removeItem(k);
+    }
   } catch {
     /* ignore */
   }
@@ -161,11 +193,12 @@ export async function prefetchChats(
       const state = await fetcher(course.courseId);
       if (opts.signal?.aborted) break;
       if (!state?.messages?.length) continue;
-      writeChat(userId, course.courseId, {
-        messages: state.messages,
-        calib: state.calib,
-        courseUpdatedAt: course.updatedAt,
-      });
+      writeChat(
+        userId,
+        course.courseId,
+        { messages: state.messages, calib: state.calib, courseUpdatedAt: course.updatedAt },
+        { speculative: true }
+      );
       warmed++;
     } catch {
       // One unreachable course must not stop the rest from warming.
