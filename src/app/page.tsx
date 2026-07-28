@@ -4,6 +4,7 @@ import NavBar from "@/components/NavBar";
 import Background from "@/components/Background/Background";
 import Landing, { type RoadmapSummary } from "@/components/Landing";
 import CourseSettings from "@/components/CourseSettings";
+import FeedbackButton from "@/components/FeedbackButton";
 import AccountSettings from "@/components/AccountSettings";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseBrowser";
@@ -112,6 +113,15 @@ export default function Home() {
         ) : (
           <EditorPanels moduleId={moduleId} courseId={courseId} pathId={pathId} />
         )}
+      </div>
+      {/* Feedback, floating bottom-right — DESKTOP ONLY. The phone gets the same
+          control in the nav instead (NavBar), where it cannot collide with the
+          chat composer that owns the bottom edge of a small screen. */}
+      <div className="hidden md:block">
+        <FeedbackButton
+          context={{ view, module: moduleId, courseId }}
+          placement="floating"
+        />
       </div>
     </div>
   );
