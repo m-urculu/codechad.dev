@@ -14,6 +14,7 @@ import {
   mergeCourses,
   type RoadmapSummary,
 } from "@/lib/courseCache";
+import { clearChat, prefetchChats } from "@/lib/chatCache";
 import {
   FiSettings,
   FiChevronDown,
@@ -180,6 +181,10 @@ function useStoredRoadmaps(): {
 
   useEffect(() => {
     let cancelled = false;
+    // Handed to the background prefetch so it stops mid-list when the learner
+    // navigates away — a queue of chat requests must never outlive the page that
+    // started it, least of all into the workspace it would be competing with.
+    const prefetchAbort = { aborted: false };
     // getUser() and the INITIAL_SESSION event below both report the same signed-in
     // user on every page load, and each used to fire its own list request — the
     // expensive one, twice, for one visit. Only a CHANGE of user reloads now.
@@ -209,6 +214,16 @@ function useStoredRoadmaps(): {
         const merged = mergeCourses(cached, fresh);
         setRoadmaps(merged);
         writeCourses(uid, merged);
+
+        // Warm the conversations in the background, most recent session first —
+        // the list already arrives newest-first. Opening a course then shows the
+        // thread straight away instead of after a round trip. Nothing here
+        // affects what is on screen, and it stops the moment this unmounts.
+        void prefetchChats(uid, merged, async (courseId) => {
+          const r = await apiFetch(`/api/chat/state?course_id=${encodeURIComponent(courseId)}`);
+          const { state } = await r.json();
+          return state ?? null;
+        }, { signal: prefetchAbort });
       } catch {
         // Offline or a paused project: keep showing the cached list rather than
         // blanking a page full of work. An empty cache still renders as empty.
@@ -221,6 +236,7 @@ function useStoredRoadmaps(): {
     });
     return () => {
       cancelled = true;
+      prefetchAbort.aborted = true;
       sub.subscription.unsubscribe();
     };
   }, [nonce]);
@@ -232,6 +248,7 @@ function useStoredRoadmaps(): {
     const next = roadmaps.filter((x) => x.courseId !== r.courseId);
     setRoadmaps(next);
     writeCourses(userId, next); // or the card returns on the next visit
+    clearChat(userId, r.courseId); // its conversation goes with it
     if (!userId) return;
     const qs = `course_id=${encodeURIComponent(r.courseId)}`;
     apiFetch(`/api/roadmap/state?${qs}`, { method: "DELETE" }).catch(() => {});
