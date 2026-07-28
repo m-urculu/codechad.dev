@@ -445,7 +445,7 @@ export default function ChatPanel({
           {
             id: 0,
             role: "bot",
-            text: `Welcome back to **${subject}**. Your roadmap and progress are restored — open the Roadmap tab to pick up where you left off, or ask me anything.`,
+            text: `Welcome back to **${subject}**. Your roadmap and progress are restored — ask me anything, or open the Roadmap tab to pick your next lesson.`,
           },
         ]);
         return;

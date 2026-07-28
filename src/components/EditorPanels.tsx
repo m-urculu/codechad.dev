@@ -14,6 +14,8 @@ import { resolveDocUrl } from "@/lib/docs-index";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
 import { apiFetch } from "@/lib/apiFetch";
+import { patchCourse } from "@/lib/courseCache";
+import { flattenPoints, lessonRatio, overallRatio, topicCounts } from "@/lib/courseProgress";
 import { openLogin } from "@/lib/authModal";
 import { isTrialUsed, markTrialUsed } from "@/lib/trial";
 
@@ -72,19 +74,6 @@ function treeOutline(roadmap: Roadmap, markId?: string, progress?: Progress): st
   };
   walk(roadmap.topics, 0);
   return lines.join("\n");
-}
-
-// Pre-order flatten of all lesson leaves ("point" nodes) in roadmap order.
-function flattenPoints(roadmap: Roadmap | null): RoadmapNode[] {
-  const out: RoadmapNode[] = [];
-  const walk = (nodes: RoadmapNode[]) => {
-    for (const n of nodes) {
-      if (n.kind === "point") out.push(n);
-      if (n.children) walk(n.children);
-    }
-  };
-  if (roadmap) walk(roadmap.topics);
-  return out;
 }
 
 // The lesson point immediately after `pointId` in roadmap order, or null if it's
@@ -200,11 +189,7 @@ export default function EditorPanels({
   // lesson is 1, otherwise the fraction of its objectives passed. This is the deepest
   // accounting layer; the roadmap rolls it up through lessons → sub-topics → topics.
   const pointRatio: Record<string, number> = {};
-  for (const [id, e] of Object.entries(progress)) {
-    const total = e.built?.objectives?.length ?? 0;
-    const passed = e.passed?.length ?? 0;
-    pointRatio[id] = e.done ? 1 : total > 0 ? Math.min(1, passed / total) : 0;
-  }
+  for (const [id, e] of Object.entries(progress)) pointRatio[id] = lessonRatio(e);
 
   // Load saved state on mount / module change.
   useEffect(() => {
@@ -247,7 +232,11 @@ export default function EditorPanels({
           );
           setSavedLevel(state.level);
           setSavedGoal(state.goal);
-          setLeftView("roadmap");
+          // Resuming lands in the CHAT, at the bottom — the last thing that
+          // happened in this course, which is where the learner left off. The
+          // roadmap is an index; opening on it makes someone who was mid-lesson
+          // navigate back to their own place before they can continue.
+          setLeftView("chat");
           setBoot("resumed");
         } else {
           // A course row with no tree (generation failed, or freshly recalibrated)
@@ -353,6 +342,24 @@ export default function EditorPanels({
           progress,
         }),
       }).catch(() => {});
+
+      // Keep the cached course card in step with what just happened here, so
+      // going back to the landing page shows this progress on the first paint
+      // instead of the previous figure jumping a moment later. The list request
+      // still runs and still wins; this only removes the flicker before it lands.
+      // Recomputed here rather than closed over: the render-scope `pointRatio` is
+      // a fresh object every render, so listing it as a dependency would restart
+      // this timer on every keystroke and the save would never fire.
+      const pointOf = (id: string) => lessonRatio(progress[id]);
+      const topics = topicCounts(roadmap, pointOf);
+      patchCourse(userId, cid, {
+        doneCount: Object.values(progress).filter((p) => p?.done).length,
+        totalCount: flattenPoints(roadmap).length,
+        topicsDone: topics.done,
+        topicsTotal: topics.total,
+        ratio: overallRatio(roadmap, pointOf),
+        updatedAt: new Date().toISOString(),
+      });
     }, 800);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
