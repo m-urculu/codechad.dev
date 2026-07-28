@@ -19,6 +19,8 @@ import { FiArrowLeft, FiCheck } from "react-icons/fi";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabaseBrowser";
 import { apiFetch } from "@/lib/apiFetch";
+import { clearCourses } from "@/lib/courseCache";
+import { clearAllChats } from "@/lib/chatCache";
 import type { RoadmapSummary } from "@/components/Landing";
 import BillingSection from "@/components/BillingSection";
 
@@ -278,6 +280,12 @@ export default function AccountSettings({ onBack }: { onBack: () => void }) {
       setDeleting(false);
       return;
     }
+    // Erasure has to cover this device too. The course list and the conversations
+    // are cached in localStorage for speed; leaving them behind would mean the
+    // account was deleted server-side while its content still sat readable in the
+    // browser of whoever asked for it to be gone.
+    clearCourses(user?.id ?? null);
+    clearAllChats(user?.id ?? null);
     // The row is gone; the token in this tab now points at nobody. Clear it and
     // land on a signed-out home rather than a page quietly failing every request.
     await supabase.auth.signOut().catch(() => {});

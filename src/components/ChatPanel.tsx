@@ -31,6 +31,7 @@ import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
 import { Check, Circle, RotateCcw, Sparkles } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { readChat, writeChat, type CachedChatMsg } from "@/lib/chatCache";
 import { canResolveDocTerm } from "@/lib/docs-index";
 
 marked.setOptions({ breaks: false });
@@ -409,6 +410,41 @@ export default function ChatPanel({
     }
 
     chatBootKey.current = key;
+
+    // Adopt a stored conversation: newest batch in view, calibration restored.
+    // Shared by the cache path and the network path so the two cannot land the
+    // learner in different places.
+    const adopt = (state: {
+      messages?: unknown;
+      calib?: { step?: string; level?: string; goal?: string };
+    }) => {
+      const raw = (state.messages ?? []) as { role: string; text: string; lessonId?: string }[];
+      const next = stripResumeRecaps(raw).map((m, i: number) => ({
+        id: i + 1,
+        role: (m.role === "user" ? "user" : "bot") as "user" | "bot",
+        text: m.text,
+        lessonId: m.lessonId,
+      }));
+      setMessages(next);
+      setCalib({
+        step: (state.calib?.step as CalibStep) ?? "done",
+        level: state.calib?.level ?? savedLevel,
+        goal: state.calib?.goal ?? savedGoal,
+      });
+      chatRestored.current = true;
+      resetToLatest(); // land on the newest batch, not the top of the history
+      return next;
+    };
+
+    // 0) Whatever the landing page already warmed for this course, on this frame.
+    //    The workspace opens showing the last thing that happened in the course
+    //    rather than an empty pane that fills in a round trip later.
+    let painted: { role: string; text: string }[] | null = null;
+    if (userId && courseId) {
+      const hit = readChat(userId, courseId);
+      if (hit?.messages?.length) painted = adopt(hit);
+    }
+
     (async () => {
       // 1) Saved conversation? Restore it verbatim (messages + calibration).
       //    Only a course that already exists can have one.
@@ -417,26 +453,30 @@ export default function ChatPanel({
           const res = await apiFetch(`/api/chat/state?course_id=${encodeURIComponent(courseId)}`);
           const { state } = await res.json();
           if (state?.messages?.length) {
-            setMessages(
-              stripResumeRecaps(state.messages as { role: string; text: string; lessonId?: string }[]).map((m, i: number) => ({
-                id: i + 1,
-                role: m.role === "user" ? "user" : "bot" as 'user' | 'bot',
-                text: m.text,
-                lessonId: m.lessonId,
-              }))
-            );
-            setCalib({
-              step: (state.calib?.step as CalibStep) ?? "done",
-              level: state.calib?.level ?? savedLevel,
-              goal: state.calib?.goal ?? savedGoal,
-            });
+            // The server is authoritative — but only over what the cache painted.
+            // If the learner has already said something in the time this took,
+            // replacing the thread would delete their message in front of them.
+            const raw = state.messages as CachedChatMsg[];
+            const unchanged =
+              !painted ||
+              (messagesRef.current.length === painted.length &&
+                messagesRef.current[messagesRef.current.length - 1]?.text ===
+                  painted[painted.length - 1]?.text);
+            const same =
+              painted &&
+              painted.length === stripResumeRecaps(raw).length &&
+              painted[painted.length - 1]?.text === raw[raw.length - 1]?.text;
+            if (unchanged && !same) adopt(state);
+            writeChat(userId, courseId, { messages: raw, calib: state.calib });
             chatRestored.current = true;
-            resetToLatest(); // land on the newest batch, not the whole history
             return;
           }
         } catch {
-          /* fall through to fresh */
+          // Offline: the cached thread stays on screen rather than being replaced
+          // by a cold-start greeting for a course that plainly has a history.
+          if (painted) return;
         }
+        if (painted) return;
       }
       // 2) Roadmap resumed but no saved chat -> welcome back.
       if (boot === "resumed") {
@@ -478,17 +518,28 @@ export default function ChatPanel({
       // said, so create it now and key the conversation to it.
       const cid = courseId ?? (await ensureCourseId?.());
       if (!cid) return;
+      // Persist everything, carrying the lesson tag so orientation messages stay deduped.
+      const persisted = messages.map((m) => ({
+        role: m.role,
+        text: m.text,
+        ...(m.lessonId ? { lessonId: m.lessonId } : {}),
+      }));
       apiFetch("/api/chat/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
                     course_id: cid,
           module: moduleId,
-          // Persist everything, carrying the lesson tag so orientation messages stay deduped.
-          messages: messages.map((m) => ({ role: m.role, text: m.text, ...(m.lessonId ? { lessonId: m.lessonId } : {}) })),
+          messages: persisted,
           calib: { step: calib.step, level: calib.level, goal: calib.goal },
         }),
       }).catch(() => {});
+      // Cache what we just saved, so leaving and coming back is instant — and so a
+      // failed save still leaves the learner's own words on screen next time.
+      writeChat(userId, cid, {
+        messages: persisted,
+        calib: { step: calib.step, level: calib.level, goal: calib.goal },
+      });
     }, 800);
     return () => {
       if (chatSaveTimer.current) clearTimeout(chatSaveTimer.current);

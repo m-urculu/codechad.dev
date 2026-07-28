@@ -18,6 +18,7 @@ import {
 import type { RoadmapSummary } from "@/components/Landing";
 import { apiFetch } from "@/lib/apiFetch";
 import { clearCourses, patchCourse } from "@/lib/courseCache";
+import { clearChat } from "@/lib/chatCache";
 import { getPathByTitle, pathModules } from "@/lib/paths";
 
 type Progress = Record<string, { done?: boolean; passed?: unknown; built?: { objectives?: unknown[] } }>;
@@ -202,7 +203,12 @@ export default function CourseSettings({
       const json = await res.json();
       // Drop the cached list rather than repaint the landing page with topic
       // counts and percentages this call has just invalidated.
-      if (STRUCTURAL.has(String(body.action))) clearCourses(userId);
+      if (STRUCTURAL.has(String(body.action))) {
+        clearCourses(userId);
+        // Resetting wipes the conversation server-side; a cached copy would put it
+        // straight back on screen the next time the course is opened.
+        clearChat(userId, course.courseId);
+      }
       return json;
     } catch {
       return null;
