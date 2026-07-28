@@ -10,6 +10,7 @@
 
 import { groundedText, extractJSON } from "./snowflake";
 import { geminiJSON } from "./llm";
+import { difficultyGuidance } from "./level";
 import { gradeSubmission } from "./grade";
 import { getRuntime, type RuntimeSpec, type ForbidLang } from "@/lib/runtimes/registry";
 import { formatConsoleArgs } from "@/lib/runtimes/consoleFormat";
@@ -200,7 +201,9 @@ function buildPrompt(
     `create a focused, hands-on micro-lesson for the learning point "${pointTitle}"` +
     (pointSummary ? ` (${pointSummary})` : "") +
     `.\nLearner level: ${level ?? "unknown"}. Goal: ${goal ?? "general mastery"}.\n` +
-    `DIFFICULTY CALIBRATION: fit the exercise to that level and to how early this point sits in the roadmap. For a new/beginner learner in the roadmap's early points, teach ONE new concept: the task should be a few short, simple lines applying just that concept — do NOT stack auxiliary requirements (e.g. casting + aggregation + grouping + ordering at once); split ambition like that into the objectives of LATER points that cover it. A beginner must be able to complete the first lessons from the intro text alone.\n` +
+    // Per-tier, from level.ts. This used to be a single paragraph written for
+    // beginners, which is what every learner got regardless of what they answered.
+    `${difficultyGuidance(level)}\n` +
     (treeOutline
       ? `ROADMAP CONTEXT — the module's full curriculum ("◀ CURRENT" marks this lesson's point, "✓done" marks what the learner already completed):\n${treeOutline.slice(0, 8000)}\n` +
         `Teach ONLY the current point. Assume ✓done and earlier material is known — build on it, never re-teach it. ` +
@@ -280,7 +283,7 @@ function buildPrompt(
       ? `1. "html": the page scaffold the code runs against (a live Preview is shown). It MUST contain the ACTUAL elements the objectives and starterCode reference, with the EXACT ids/classes used. If this point doesn't need markup, set "html" to "".\n`
       : `1. "html": always "" for this module.\n`) +
     `2. "starterCode" is the EXACT ${spec.langName} in the learner's editor. It MUST already DECLARE, with sensible initial values, every identifier any objective refers to${spec.allowDom ? " (selectors must match elements in html)" : ""}. CRITICAL GAP RULE: the starter must LEAVE THE OBJECTIVES UNDONE — it must NOT already contain the statements/expressions that satisfy any objective's check. Where the learner must write code, put a TODO comment describing the task, NOT the answer. If the starter were run as-is, it MUST FAIL the objective checks; only the "solution" satisfies them. (E.g. never pre-write \`print(10 + 2 * 5)\` if an objective is to print that result — leave a \`# TODO\` instead.)\n` +
-    `3. "intro": markdown teaching text, instructional voice, no pleasantries. Structure it in two parts: (a) a PRACTICAL, TECHNICAL explanation of the topic — what it is, how it actually works, the relevant syntax/semantics/API behavior, and when/why it's used, so the learner understands the task on a technical level BEFORE writing code; (b) then describe the ACTUAL starterCode${spec.allowDom ? "/html" : ""} the learner sees and what the task requires them to change — never an unrelated example. Be concise but genuinely explanatory; use a short code snippet or bullet list where it aids understanding.\n` +
+    `3. "intro": markdown teaching text, instructional voice, no pleasantries. Structure it in two parts: (a) a PRACTICAL, TECHNICAL explanation of the topic — what it is, how it actually works, the relevant syntax/semantics/API behavior, and when/why it's used, so the learner understands the task on a technical level BEFORE writing code; (b) then describe the ACTUAL starterCode${spec.allowDom ? "/html" : ""} the learner sees and what the task requires them to change — never an unrelated example. Be concise but genuinely explanatory; use a short code snippet or bullet list where it aids understanding. PLAIN MARKDOWN ONLY — never LaTeX or math delimiters: write O(1), not $O(1)$, which renders literally here.\n` +
     `4. "objectives": 2 to 4 CONCRETE, CHECKABLE tasks completed by EDITING the starterCode. Each objective's DESCRIPTION must state exactly the observable thing its "check" verifies (e.g. "print X", "define function Y that returns Z") — describe the gradeable ACTION, never an ungradeable mental step like "predict", "notice", "understand", or "observe". Each references only identifiers that already exist and is verifiable from the run output or code. No vague or stylistic objectives.`
   );
 }

@@ -29,9 +29,15 @@
 // runtime notes say plainly that nothing executes so no lesson promises otherwise.
 
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
+import { tierOf, type Tier } from "@/lib/agents/level";
 
-/** A chapter, or a chapter that is practiced in a different runtime than its course. */
-export type PathChapter = string | { title: string; module: string };
+/**
+ * A chapter. A bare string inherits its course's runtime and carries no summary;
+ * the object form is for a chapter practiced in a DIFFERENT runtime than its
+ * course, or one that needs to tell the generator what it covers (which is how a
+ * condensed chapter says what it has to fit in — see chaptersFor).
+ */
+export type PathChapter = string | { title: string; module?: string; summary?: string };
 
 export type PathCourseKind = "course" | "project" | "portfolio";
 
@@ -43,6 +49,18 @@ export type PathCourse = {
   /** RUNTIMES id every chapter inherits. */
   module: string;
   chapters: PathChapter[];
+  /**
+   * Ground an experienced programmer plausibly already has — the language from
+   * zero, the shell, version control, objects, functions as values.
+   *
+   * A path's curriculum is fixed, which is its whole point, but "fixed" cannot
+   * mean "identical for someone who has written code for ten years": they said
+   * Experienced and were still handed a lesson called Variables. Marking a course
+   * as foundation is what lets pathRoadmap compress it for a higher level. It is
+   * NOT a judgement about how important the course is — Git is marked, and Git
+   * matters — only about how likely it is to be already known.
+   */
+  foundation?: boolean;
 };
 
 export type LearningPath = {
@@ -71,6 +89,7 @@ const PYTHON_BASICS: PathCourse = {
   title: "Learn to Code in Python",
   summary: "The language from zero: values, control flow, the built-in collections, and errors.",
   kind: "course",
+  foundation: true,
   module: "python",
   chapters: [
     "Introduction", "Variables", "Functions", "Scope", "Testing and Debugging",
@@ -83,6 +102,7 @@ const LINUX: PathCourse = {
   title: "Learn Linux",
   summary: "The command line as a working tool: files, pipes, permissions and processes.",
   kind: "course",
+  foundation: true,
   module: "linux",
   chapters: [
     "The Command Line", "Filesystems", "Programs", "Input/Output", "Local CLI",
@@ -102,6 +122,7 @@ const GIT: PathCourse = {
   title: "Learn Git",
   summary: "Version control for real: commits, branches, merges, rebases and remotes.",
   kind: "course",
+  foundation: true,
   module: "git",
   chapters: [
     "Setup", "Repositories", "Internals", "Config", "Branching", "Merge",
@@ -113,6 +134,7 @@ const OOP: PathCourse = {
   title: "Learn Object Oriented Programming",
   summary: "Classes as a design tool — and when the four pillars help rather than hurt.",
   kind: "course",
+  foundation: true,
   module: "python",
   chapters: [
     "Clean Code", "Classes", "Encapsulation", "Abstraction", "Inheritance", "Polymorphism",
@@ -138,6 +160,7 @@ const FUNCTIONAL: PathCourse = {
   title: "Learn Functional Programming",
   summary: "Functions as values: purity, recursion, closures, currying and decorators.",
   kind: "course",
+  foundation: true,
   module: "python",
   chapters: [
     "What is Functional Programming?", "First-Class Functions", "Pure Functions",
@@ -496,7 +519,7 @@ function chapterTitle(c: PathChapter): string {
 }
 
 function chapterModule(c: PathChapter, fallback: string): string {
-  return typeof c === "string" ? fallback : c.module;
+  return typeof c === "string" ? fallback : c.module ?? fallback;
 }
 
 /**
@@ -508,22 +531,78 @@ function chapterModule(c: PathChapter, fallback: string): string {
  * the learning points under one are still generated on demand, when the learner opens
  * it, exactly as in a generated course.
  */
+/**
+ * The chapters a course contributes AT THIS LEVEL.
+ *
+ * A foundation course is where a fixed curriculum has to bend. Someone who
+ * answered "Experienced" and is then walked through Variables, Functions, Scope
+ * has been asked a question that changed nothing — which is worse than not being
+ * asked. So for an experienced learner a foundation course collapses to a single
+ * chapter, and the generator is told (through its summary) exactly what that one
+ * chapter has to cover: a bridge for someone who already programs, not a first
+ * course. Combined with the level rubric in agents/level.ts — 1-3 dense lessons
+ * per chapter rather than 3-6 gentle ones — fifteen chapters of Python basics
+ * become a handful of lessons about what is specific to Python.
+ *
+ * Everything that is NOT foundation is untouched at every level: the path still
+ * teaches Go, SQL, Docker and the projects in full. Compression is about what the
+ * learner already brings, never about giving a paying learner less.
+ */
+function chaptersFor(course: PathCourse, tier: Tier): PathChapter[] {
+  if (tier === "beginner" || !course.foundation) return course.chapters;
+  const titles = course.chapters.map(chapterTitle);
+  if (tier === "advanced") {
+    return [
+      {
+        title: "Condensed",
+        module: course.module,
+        summary:
+          `A fast bridge for someone who already programs, covering the whole of ` +
+          `"${course.title}" in a few dense lessons: ${titles.join(", ")}. ` +
+          `Assume the general concepts are known — teach only what is specific to this ` +
+          `technology, commonly got wrong, or genuinely different from how it works elsewhere.`,
+      },
+    ];
+  }
+  // Intermediate: keep the structure, halve the chapters by pairing neighbours —
+  // they are authored in thematic order, so adjacent ones belong together.
+  const out: PathChapter[] = [];
+  for (let i = 0; i < course.chapters.length; i += 2) {
+    const pair = titles.slice(i, i + 2);
+    out.push({
+      title: pair.join(" & "),
+      module: chapterModule(course.chapters[i], course.module),
+      summary: `Covers ${pair.join(" and ")} together, for a learner who can already program.`,
+    });
+  }
+  return out;
+}
+
 export function pathRoadmap(path: LearningPath, level?: string): Roadmap {
-  const topics: RoadmapNode[] = path.courses.map((course, i) => ({
-    id: `t${i}`,
-    kind: "topic",
-    title: course.title,
-    summary: course.summary,
-    module: course.module,
-    children: course.chapters.map((chapter, j) => ({
-      id: `t${i}-s${j}`,
-      kind: "subtopic" as const,
-      title: chapterTitle(chapter),
-      summary: "",
-      module: chapterModule(chapter, course.module),
-      children: null,
-    })),
-  }));
+  const tier = tierOf(level);
+  const topics: RoadmapNode[] = path.courses.map((course, i) => {
+    const chapters = chaptersFor(course, tier);
+    const compressed = chapters.length < course.chapters.length;
+    return {
+      id: `t${i}`,
+      kind: "topic",
+      title: course.title,
+      // Say so on the card rather than letting a shorter list look like missing
+      // content. The learner chose this; they should be able to see that it happened.
+      summary: compressed
+        ? `${course.summary} — condensed for your level.`
+        : course.summary,
+      module: course.module,
+      children: chapters.map((chapter, j) => ({
+        id: `t${i}-s${j}`,
+        kind: "subtopic" as const,
+        title: chapterTitle(chapter),
+        summary: typeof chapter === "string" ? "" : (chapter.summary ?? ""),
+        module: chapterModule(chapter, course.module),
+        children: null,
+      })),
+    };
+  });
 
   return {
     skill: path.title,
