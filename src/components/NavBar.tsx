@@ -38,9 +38,15 @@ export default function NavBar({
       <div className="flex-1" />
       {/* Feedback, then the account button. Feedback sits to its LEFT so the account
           control keeps the far corner it has always had — the position people reach for
-          without looking. */}
+          without looking.
+
+          PHONES ONLY. On desktop the button floats bottom-right (rendered in
+          app/page.tsx); down here the workspace's chat composer owns the bottom edge,
+          which is what moved it into the nav in the first place. */}
       <div className="flex items-center gap-2 sm:gap-3">
-        <FeedbackButton context={feedbackContext} />
+        <span className="md:hidden">
+          <FeedbackButton context={feedbackContext} placement="nav" />
+        </span>
         <LoginButton onOpenAccount={onOpenAccount} />
       </div>
       {/* Add more nav content here if needed */}

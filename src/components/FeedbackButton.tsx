@@ -1,8 +1,20 @@
 "use client";
 
-// The floating feedback button, bottom right.
+// The feedback button — floating in the bottom-right corner on desktop, and in the
+// nav bar on a phone.
 //
-// Two decisions worth stating.
+// The split is not cosmetic. On a phone the workspace's chat composer occupies the
+// bottom edge (measured at 390x844: y 732-831, Send at 763-801), so a floating
+// button either overlaps it or needs an ever-growing bottom offset to dodge it, and
+// every future bottom-anchored control restarts that argument. The nav is the one
+// strip that is always present and never scrolls. On desktop there is no such
+// contest for the corner, and the corner is where people look for this.
+//
+// `placement` decides both the trigger's shape and which corner the panel opens
+// from; the two are rendered as separate instances, each hidden at the other's
+// breakpoint (see NavBar and app/page.tsx).
+//
+// Two more decisions worth stating.
 //
 // It works SIGNED OUT. The people best placed to say what is wrong are the ones who
 // tried the trial and left, and they have no account and no reason to make one. The
@@ -33,7 +45,14 @@ const KINDS = [
 
 type Kind = (typeof KINDS)[number]["id"];
 
-export default function FeedbackButton({ context }: { context?: FeedbackContext }) {
+export default function FeedbackButton({
+  context,
+  placement = "nav",
+}: {
+  context?: FeedbackContext;
+  /** "nav": inline, sized to the nav's other controls. "floating": fixed, bottom right. */
+  placement?: "nav" | "floating";
+}) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<Kind>("general");
   const [message, setMessage] = useState("");
@@ -113,38 +132,48 @@ export default function FeedbackButton({ context }: { context?: FeedbackContext 
     "placeholder:text-ink-faint transition-colors duration-150 " +
     "focus:border-line-active focus:outline-none disabled:opacity-50";
 
+  const floating = placement === "floating";
+
   return (
     <>
-      {/* Lives in the nav, immediately left of the account button.
-
-          It used to float bottom-right, which cost a running battle with the workspace's
-          own chrome: on a phone the chat composer occupies the bottom edge (measured at
-          390x844: y 732-831, Send at 763-801), so the button needed bottom-32 to clear it,
-          and any future bottom-anchored control would have restarted the argument. The nav
-          is the one strip of the app that is always present, never scrolls, and has no
-          competition for the corner. */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Send feedback"
         aria-expanded={open}
         title="Send feedback"
-        className="flex h-9 w-9 items-center justify-center border border-line-strong
-                   bg-transparent text-ink-muted transition-colors duration-150
-                   hover:border-line-active hover:bg-surface-2 hover:text-ink
-                   focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active"
+        className={[
+          "flex items-center justify-center border border-line-strong text-ink-muted",
+          "transition-colors duration-150 hover:border-line-active hover:bg-surface-2 hover:text-ink",
+          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-line-active",
+          floating
+            // The geometry it had before it was moved into the nav: bottom-4 right-4,
+            // 48px. `fixed` so it survives the workspace's own scrolling panes, and
+            // opaque because it sits over both scrolling content and the WebGL
+            // background, neither of which it should read as part of.
+            ? "fixed bottom-4 right-4 z-40 h-12 w-12 bg-surface-1 backdrop-blur-md"
+            // Sized to the account button beside it, and transparent so the nav
+            // reads as one strip rather than a row of boxes.
+            : "h-9 w-9 bg-transparent",
+        ].join(" ")}
       >
-        <MessageSquarePlus className="h-[18px] w-[18px]" />
+        <MessageSquarePlus className={floating ? "h-5 w-5" : "h-[18px] w-[18px]"} />
       </button>
 
       {mounted &&
         open &&
         createPortal(
           <div
-            // Anchored to the top now that the trigger is, so the panel opens beneath the
-            // button rather than travelling to the opposite corner. pt-16 clears the 64px
-            // nav; on a phone the panel fills the width it is given.
-            className="fixed inset-0 z-50 flex items-start justify-end bg-scrim p-4 pt-16 backdrop-blur-sm sm:p-6 sm:pt-[68px]"
+            // The panel opens from the same corner as the trigger that summoned it —
+            // anything else sends the eye across the screen to find what it just
+            // clicked. The nav variant's pt-16 clears the 64px bar; on a phone the
+            // panel fills the width it is given.
+            className={[
+              "fixed inset-0 z-50 flex bg-scrim backdrop-blur-sm",
+              floating
+                ? "items-end justify-end p-4 sm:p-6"
+                : "items-start justify-end p-4 pt-16 sm:p-6 sm:pt-[68px]",
+            ].join(" ")}
             onMouseDown={(e) => {
               if (e.target === e.currentTarget) close();
             }}
