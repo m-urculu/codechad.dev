@@ -10,7 +10,9 @@ import { apiFetch } from "@/lib/apiFetch";
 export type TTSStatus = "idle" | "loading" | "generating" | "speaking";
 export type TTSState = { status: TTSStatus; activeId: string | null };
 
-const EDGE_VOICE = "en-US-AriaNeural"; // natural neural female
+// Christopher is Microsoft's deep, authoritative male neural voice — it matches the
+// site's tone better than the lighter Aria did. (Guy is the flatter alternative.)
+const EDGE_VOICE = "en-US-ChristopherNeural";
 
 // ---- external store (useSyncExternalStore) ---------------------------------------------
 let state: TTSState = { status: "idle", activeId: null };
@@ -151,11 +153,18 @@ function pickNativeVoice(): SpeechSynthesisVoice | null {
   if (!voices.length) return null;
   const en = voices.filter((v) => /^en([-_]|$)/i.test(v.lang));
   const pool = en.length ? en : voices;
-  for (const re of [/natural/i, /neural/i, /google/i, /samantha/i, /siri/i]) {
-    const hit = pool.find((v) => re.test(v.name));
+  // Match the neural voice's gender in the fallback too, or read-aloud changes sex
+  // whenever the route is down. Names are the only signal the Web Speech API gives
+  // us — these are the male voices actually shipped by macOS, Windows and Chrome.
+  const MALE =
+    /\b(male|christopher|guy|andrew|brian|eric|roger|steffan|david|mark|daniel|alex|aaron|fred|tom|arthur|oliver|james|rishi)\b/i;
+  const male = pool.filter((v) => MALE.test(v.name));
+  const ranked = male.length ? male : pool;
+  for (const re of [/natural/i, /neural/i, /google/i]) {
+    const hit = ranked.find((v) => re.test(v.name));
     if (hit) return hit;
   }
-  return pool[0];
+  return ranked[0];
 }
 function nativeChunk(text: string): string[] {
   const parts = text.match(/[^.!?]+[.!?]*\s*/g) ?? [text];

@@ -5,7 +5,7 @@
 // changes it, the client falls back to the browser's native voice.
 //   Body: { text: string, voice?: string } -> audio/mpeg
 //
-// Note: neural voices are named like "en-US-AriaNeural", "en-US-GuyNeural", etc.
+// Note: neural voices are named like "en-US-ChristopherNeural", "en-US-AriaNeural", etc.
 
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
@@ -21,7 +21,7 @@ const EDGE_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0";
 const WSS_URL =
   "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1";
-const DEFAULT_VOICE = "en-US-AriaNeural";
+const DEFAULT_VOICE = "en-US-ChristopherNeural";
 const WIN_EPOCH_OFFSET = 11644473600; // seconds between 1601-01-01 and 1970-01-01
 
 // Microsoft's DRM token: SHA-256 of (Windows file-time rounded to 5 min + trusted token).
