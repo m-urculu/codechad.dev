@@ -10,8 +10,9 @@ import { apiFetch } from "@/lib/apiFetch";
 export type TTSStatus = "idle" | "loading" | "generating" | "speaking";
 export type TTSState = { status: TTSStatus; activeId: string | null };
 
-// Christopher is Microsoft's deep, authoritative male neural voice — it matches the
-// site's tone better than the lighter Aria did. (Guy is the flatter alternative.)
+// Christopher is Microsoft's deepest usable male neural voice. The route drops its
+// pitch further (DEFAULT_PITCH there); we deliberately do NOT send a pitch from here,
+// so the depth has one definition rather than two that can drift apart.
 const EDGE_VOICE = "en-US-ChristopherNeural";
 
 // ---- external store (useSyncExternalStore) ---------------------------------------------
@@ -190,6 +191,7 @@ function nativeNext(id: string, voice: SpeechSynthesisVoice | null) {
   }
   const u = new SpeechSynthesisUtterance(next);
   if (voice) u.voice = voice;
+  u.pitch = 0.7; // match the neural voice's deliberately low pitch (1 is the default)
   u.onend = () => nativeNext(id, voice);
   u.onerror = () => nativeNext(id, voice);
   window.speechSynthesis.speak(u);

@@ -3,7 +3,7 @@
 // Edge's Read Aloud uses), authenticate with the required Sec-MS-GEC token, send SSML, and
 // stream the MP3 audio back to the browser. This is an UNOFFICIAL endpoint — if Microsoft
 // changes it, the client falls back to the browser's native voice.
-//   Body: { text: string, voice?: string } -> audio/mpeg
+//   Body: { text: string, voice?: string, pitch?: string } -> audio/mpeg
 //
 // Note: neural voices are named like "en-US-ChristopherNeural", "en-US-AriaNeural", etc.
 
@@ -22,6 +22,11 @@ const EDGE_UA =
 const WSS_URL =
   "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1";
 const DEFAULT_VOICE = "en-US-ChristopherNeural";
+// Christopher is the deepest of Edge's usable US male voices at ~110 Hz, which is only
+// mid-range for a man. Dropping the prosody pitch takes it to ~94 Hz — a chest voice.
+// Do not push this much further: measured on real synthesis, -20% starts to thin the
+// voice and -40Hz (~83 Hz) goes dull and buzzy as the shift outruns the model.
+const DEFAULT_PITCH = "-15%";
 const WIN_EPOCH_OFFSET = 11644473600; // seconds between 1601-01-01 and 1970-01-01
 
 // Microsoft's DRM token: SHA-256 of (Windows file-time rounded to 5 min + trusted token).
@@ -48,14 +53,14 @@ function escapeXml(s: string): string {
     .replace(/'/g, "&apos;");
 }
 
-function buildSSML(text: string, voice: string): string {
+function buildSSML(text: string, voice: string, pitch: string): string {
   return (
     `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>` +
-    `<voice name='${voice}'><prosody rate='0%' pitch='0%'>${escapeXml(text)}</prosody></voice></speak>`
+    `<voice name='${voice}'><prosody rate='0%' pitch='${pitch}'>${escapeXml(text)}</prosody></voice></speak>`
   );
 }
 
-function synthesize(text: string, voice: string): Promise<Buffer> {
+function synthesize(text: string, voice: string, pitch: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const gec = generateSecMsGec();
     const url =
@@ -90,7 +95,7 @@ function synthesize(text: string, voice: string): Promise<Buffer> {
       const reqId = crypto.randomUUID().replace(/-/g, "");
       ws.send(
         `X-RequestId:${reqId}\r\nContent-Type:application/ssml+xml\r\nX-Timestamp:${ts}\r\nPath:ssml\r\n\r\n` +
-          buildSSML(text, voice)
+          buildSSML(text, voice, pitch)
       );
     });
 
@@ -135,12 +140,16 @@ export async function POST(request: Request) {
   if ("error" in who) return who.error;
 
   try {
-    const { text, voice } = await request.json();
+    const { text, voice, pitch } = await request.json();
     if (!text || typeof text !== "string") {
       return NextResponse.json({ error: "text required" }, { status: 400 });
     }
     const v = typeof voice === "string" && voice ? voice : DEFAULT_VOICE;
-    const audio = await synthesize(text.slice(0, 5000), v);
+    // Anything but a plain percentage or Hz offset is SSML we did not write — refuse it
+    // rather than interpolate a caller's string into the document.
+    const p =
+      typeof pitch === "string" && /^[+-]?\d{1,3}(%|Hz)$/.test(pitch) ? pitch : DEFAULT_PITCH;
+    const audio = await synthesize(text.slice(0, 5000), v, p);
     if (audio.length === 0) return NextResponse.json({ error: "no audio" }, { status: 502 });
     return new Response(new Uint8Array(audio), {
       headers: { "Content-Type": "audio/mpeg", "Cache-Control": "no-store" },
