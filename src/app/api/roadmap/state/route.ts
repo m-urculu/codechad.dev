@@ -17,6 +17,7 @@ import {
   saveRoadmapState,
   uniqueCourseName,
 } from "@/app/api/supabase/roadmap-state";
+import { syncCourseSkills } from "@/app/api/supabase/skills";
 import { requireUser } from "@/lib/apiAuth";
 import { canCreateCourse, limitResponse } from "@/lib/billing";
 
@@ -78,6 +79,24 @@ export async function POST(request: Request) {
       tree,
       progress,
     });
+    // Keep the skills ledger in step with what the learner just finished. This is
+    // the one funnel every progress change flows through, which is why it is here
+    // and not in the client: nothing has to remember to report a completion.
+    //
+    // Awaited rather than fired and forgotten — on a serverless runtime the
+    // function can be frozen the moment the response is returned, so a floating
+    // promise is a write that sometimes happens. It is one indexed delete plus one
+    // upsert of a handful of short rows, against a save that is already debounced
+    // to 800ms on the client.
+    if (id && tree !== undefined && progress !== undefined) {
+      await syncCourseSkills(who.userId, id, {
+        tree,
+        progress,
+        module: moduleId,
+        technology: skill,
+        courseName: finalName,
+      });
+    }
     return NextResponse.json({ ok: !!id, course_id: id });
   } catch (error) {
     console.error("[roadmap/state] error:", error);

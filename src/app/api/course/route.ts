@@ -20,6 +20,7 @@ import {
   resetCourseProgress,
   saveRoadmapState,
 } from "@/app/api/supabase/roadmap-state";
+import { resyncCourseSkills } from "@/app/api/supabase/skills";
 import { requireUser } from "@/lib/apiAuth";
 import { canCreateCourse, limitResponse } from "@/lib/billing";
 
@@ -58,6 +59,10 @@ export async function POST(request: Request) {
       }
       case "reset": {
         const ok = await resetCourseProgress(user_id, course_id);
+        // Retaking a course means unlearning it, as far as the ledger is concerned:
+        // otherwise the lessons it is about to re-teach are the exact ones the
+        // generators have been told to skip.
+        if (ok) await resyncCourseSkills(user_id, course_id);
         return NextResponse.json({ ok });
       }
       case "rename": {
@@ -88,6 +93,8 @@ export async function POST(request: Request) {
           tree: [],
           progress: {},
         });
+        // The curriculum is gone, so nothing in it is evidence of anything.
+        if (id) await resyncCourseSkills(user_id, course_id);
         return NextResponse.json({ ok: !!id });
       }
       // Apply an edited topic list verbatim — no model involved. Topics the learner

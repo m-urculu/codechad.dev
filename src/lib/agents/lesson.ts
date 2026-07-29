@@ -11,6 +11,7 @@
 import { groundedText, extractJSON } from "./snowflake";
 import { geminiJSON } from "./llm";
 import { difficultyGuidance } from "./level";
+import { knownSkillsBlock, type KnownSkill } from "@/lib/skills";
 import { gradeSubmission } from "./grade";
 import { getRuntime, type RuntimeSpec, type ForbidLang } from "@/lib/runtimes/registry";
 import { formatConsoleArgs } from "@/lib/runtimes/consoleFormat";
@@ -184,9 +185,18 @@ function mkLesson(data: RawLesson, sources: string[], spec: RuntimeSpec): Lesson
 
 function buildPrompt(
   spec: RuntimeSpec,
-  input: { skill: string; level?: string; goal?: string; pointTitle: string; pointSummary?: string; moduleId?: string; treeOutline?: string }
+  input: {
+    skill: string;
+    level?: string;
+    goal?: string;
+    pointTitle: string;
+    pointSummary?: string;
+    moduleId?: string;
+    treeOutline?: string;
+    known?: KnownSkill[];
+  }
 ): string {
-  const { skill, level, goal, pointTitle, pointSummary, moduleId, treeOutline } = input;
+  const { skill, level, goal, pointTitle, pointSummary, moduleId, treeOutline, known } = input;
 
   // Only modules whose docs are embeddable (DevDocs) get inline doc links; the external-
   // doc modules stay plain prose. The label steers the model toward canonical entry names.
@@ -204,6 +214,10 @@ function buildPrompt(
     // Per-tier, from level.ts. This used to be a single paragraph written for
     // beginners, which is what every learner got regardless of what they answered.
     `${difficultyGuidance(level)}\n` +
+    // Completed in OTHER courses. treeOutline's "✓done" only covers this one, so
+    // without this the lesson re-explains ground the learner finished last week
+    // under a different course name.
+    knownSkillsBlock(known ?? [], moduleId) +
     (treeOutline
       ? `ROADMAP CONTEXT — the module's full curriculum ("◀ CURRENT" marks this lesson's point, "✓done" marks what the learner already completed):\n${treeOutline.slice(0, 8000)}\n` +
         `Teach ONLY the current point. Assume ✓done and earlier material is known — build on it, never re-teach it. ` +
@@ -296,6 +310,8 @@ export async function buildLesson(input: {
   pointSummary?: string;
   moduleId?: string;
   treeOutline?: string;
+  /** Completed in other courses — see src/lib/skills.ts. */
+  known?: KnownSkill[];
 }): Promise<Lesson | null> {
   const spec = getRuntime(input.moduleId);
   const prompt = buildPrompt(spec, input);

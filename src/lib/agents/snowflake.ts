@@ -9,6 +9,7 @@ import { GoogleGenAI } from "@google/genai";
 import { GEMINI_MODELS } from "./models";
 import { RUNTIMES } from "@/lib/runtimes/registry";
 import { decompositionGuidance, overviewGuidance } from "./level";
+import { knownSkillsBlock, type KnownSkill } from "@/lib/skills";
 
 export type NodeKind = "topic" | "subtopic" | "point";
 
@@ -175,6 +176,14 @@ export async function generateOverview(input: {
   runtimeNotes?: string;
   /** Other courses the learner has for this same technology. */
   siblings?: SiblingCourse[];
+  /**
+   * What the learner has actually COMPLETED, anywhere in the app. Distinct from
+   * `siblings`, which is the topic list of other courses whether or not a lesson in
+   * them was ever opened — enrolment, not knowledge. See src/lib/skills.ts.
+   */
+  known?: KnownSkill[];
+  /** Runtime this course is generated for; decides which known skills are native. */
+  moduleId?: string;
   /** A topic list the learner edited by hand, used as a strong draft. */
   draftTopics?: string[];
   /** Free-text steer from the learner ("assume I know general Python syntax"). */
@@ -187,7 +196,7 @@ export async function generateOverview(input: {
    */
   modules?: { id: string; title: string; langName: string }[];
 }): Promise<Roadmap | null> {
-  const { skill, level, goal, runtimeNotes, siblings, draftTopics, guidance, modules } = input;
+  const { skill, level, goal, runtimeNotes, siblings, known, draftTopics, guidance, modules, moduleId } = input;
 
   // Only siblings that actually got as far as having topics are useful context.
   const covered = (siblings ?? []).filter((s) => s.topics.length > 0);
@@ -207,6 +216,10 @@ export async function generateOverview(input: {
         `\nDo NOT rebuild that material. This course must earn its place beside those: spend its topics on what THIS goal ("${goal ?? "general mastery"}") needs and the other courses do not deliver. ` +
         `If a covered concept is a genuine prerequisite, you may assume it rather than teach it. Only re-teach something already covered when this goal demands a materially different treatment of it — and say so in that topic's description.\n`
       : "") +
+    // What they have FINISHED, across every course. Placed before the draft list and
+    // the level rubric on purpose: it is the strongest statement we can make about
+    // this learner, because it is the only one backed by graded work.
+    knownSkillsBlock(known ?? [], moduleId) +
     (draftTopics?.length
       ? `LEARNER'S DRAFT TOPIC LIST — the learner wrote this themselves and it carries more weight than your own preferences:\n` +
         draftTopics.map((t, i) => `  ${i + 1}. ${t}`).join("\n") +
@@ -286,6 +299,8 @@ export async function expandNode(input: {
   path: string[]; // ancestor titles -> this node
   treeOutline?: string;
   runtimeNotes?: string;
+  /** Completed elsewhere — see generateOverview. */
+  known?: KnownSkill[];
   /**
    * The runtime the node being expanded belongs to, inherited by its children.
    * A path tags topics, not every leaf; without this, expanding a Go topic would
@@ -294,7 +309,7 @@ export async function expandNode(input: {
    */
   module?: string;
 }): Promise<RoadmapNode[]> {
-  const { skill, level, goal, kind, title, summary, parentId, path, treeOutline, runtimeNotes, module } = input;
+  const { skill, level, goal, kind, title, summary, parentId, path, treeOutline, runtimeNotes, known, module } = input;
   const trail = path.join(" > ");
 
   const common =
@@ -309,6 +324,9 @@ export async function expandNode(input: {
         `(b) treat everything BEFORE the current node as already learned — build on it, never recap it, ` +
         `(c) leave material that belongs to LATER nodes to those nodes.\n`
       : "") +
+    // The tree outline above only rules out duplication INSIDE this course. This is
+    // what stops a sub-topic re-teaching something finished in a different one.
+    knownSkillsBlock(known ?? [], module) +
     `STRICT DECOMPOSITION: children must break down ONLY the content of "${title}" itself. ` +
     `NO prerequisite/review/"getting started" children, NO installation or environment-setup items, ` +
     `NO recaps of other parts of the roadmap.\n` +

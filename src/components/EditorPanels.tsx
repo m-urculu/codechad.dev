@@ -440,6 +440,9 @@ export default function EditorPanels({
           treeOutline: treeOutline(tree, node.id, progress),
           moduleId: moduleId ?? undefined,
           nodeModule: node.module,
+          // So the server can exclude this course from the skills ledger it feeds
+          // in — a course is not prior knowledge of itself.
+          course_id: courseIdRef.current ?? undefined,
         }),
       });
       const data = await res.json();

@@ -1130,6 +1130,8 @@ export default function ChatPanel({
             pointTitle: node.title,
             pointSummary: node.summary || node.description,
             treeOutline: lessonRequest.outline,
+            // Lets the lesson skip what this learner finished in OTHER courses.
+            course_id: courseId ?? undefined,
           }),
         });
         const data = await res.json();
