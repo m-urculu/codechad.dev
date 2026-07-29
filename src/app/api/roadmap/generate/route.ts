@@ -10,6 +10,7 @@ import { NextResponse } from "next/server";
 import { generateOverview } from "@/lib/agents/snowflake";
 import { getRuntime, RUNTIMES } from "@/lib/runtimes/registry";
 import { siblingCourses } from "@/app/api/supabase/roadmap-state";
+import { loadKnownSkills } from "@/app/api/supabase/skills";
 import { userOrTrial } from "@/lib/apiAuth";
 
 export async function POST(request: Request) {
@@ -35,12 +36,18 @@ export async function POST(request: Request) {
     // Trial visitors have no other courses to build on, by definition.
     const siblings =
       who.userId && moduleId ? await siblingCourses(who.userId, moduleId, course_id) : [];
+    // What they have actually finished, in every course including other technologies.
+    // Excludes THIS course: regenerating a course must not be told its own topics are
+    // already covered, or it has nothing left to build.
+    const known = who.userId ? await loadKnownSkills(who.userId, course_id) : [];
     const roadmap = await generateOverview({
       skill,
       level,
       goal,
       runtimeNotes,
       siblings,
+      known,
+      moduleId,
       draftTopics: Array.isArray(draftTopics)
         ? draftTopics.map(String).filter(Boolean).slice(0, 20)
         : undefined,

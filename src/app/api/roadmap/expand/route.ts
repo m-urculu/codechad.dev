@@ -4,6 +4,7 @@
 import { NextResponse } from "next/server";
 import { expandNode, type NodeKind } from "@/lib/agents/snowflake";
 import { getRuntime } from "@/lib/runtimes/registry";
+import { loadKnownSkills } from "@/app/api/supabase/skills";
 import { userOrTrial } from "@/lib/apiAuth";
 
 export async function POST(request: Request) {
@@ -12,7 +13,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { skill, level, goal, kind, title, summary, parentId, path, treeOutline, moduleId, nodeModule } = body as {
+    const { skill, level, goal, kind, title, summary, parentId, path, treeOutline, moduleId, nodeModule, course_id } = body as {
       skill?: string;
       level?: string;
       goal?: string;
@@ -27,11 +28,15 @@ export async function POST(request: Request) {
       moduleId?: string;
       /** The runtime of the node being expanded, for a path that spans several. */
       nodeModule?: string;
+      /** Excluded from the skills ledger — a course is not prior knowledge of itself. */
+      course_id?: string;
     };
 
     if (!skill || !title || !parentId || (kind !== "topic" && kind !== "subtopic")) {
       return NextResponse.json({ error: "skill, title, parentId and a valid kind are required" }, { status: 400 });
     }
+
+    const known = who.userId ? await loadKnownSkills(who.userId, course_id) : [];
 
     const children = await expandNode({
       skill,
@@ -43,6 +48,9 @@ export async function POST(request: Request) {
       parentId,
       path: Array.isArray(path) ? path : [title],
       treeOutline: typeof treeOutline === "string" ? treeOutline : undefined,
+      // Finished in OTHER courses. treeOutline only rules out duplication within
+      // this one, which is why a second course could rebuild the first from scratch.
+      known,
       // The node's OWN runtime decides what can be practiced under it. On a path the
       // course module is only the fallback — decomposing a Docker topic against
       // Python's sandbox rules is how you get children that teach the wrong thing.
