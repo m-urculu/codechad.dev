@@ -37,6 +37,7 @@ import {
   SiRuby,
   SiPhp,
   SiC,
+  SiCplusplus,
   SiGit,
   SiLinux,
   SiGo,
@@ -66,68 +67,79 @@ type Section = { label: string; modules: Module[] };
 // Only technologies we are confident run FULLY client-side in the browser.
 // (See docs/browser-learning-capabilities.md)
 //
-// ORDER IS DELIBERATE: sections, and modules within them, run most to least
-// profitable for the learner — expected earnings, which is pay AND how many jobs
-// actually exist, not pay alone.
+// ORDER IS DELIBERATE: sections, and modules within them, run strictly by PAY —
+// the US average annual salary attached to each technology as a keyword, highest
+// first. Groups are ranked by the median of their modules' figures.
 //
-// It is also RESEARCHED, not guessed: the figures, the reasoning and the sources
-// are in docs/module-ordering.md (July 2026). The short version —
-//   • Languages first: best paid ($155-175k) and the largest hiring surface.
-//   • Tools second: Linux leads to the highest-paid IC role measured (cloud
-//     infrastructure engineer, $189k) and Docker is the most-used technology of
-//     all at 73.8%. An earlier ordering had this group fourth on the guess that
-//     nobody is hired for Linux; the survey says the opposite.
-//   • Databases fourth despite SQL/Postgres being on ~60% of professional stacks:
-//     as a PRIMARY skill they pay analyst money. Hired WITH, not hired AS.
-//   • Graphics & AI last despite the best pay per role — the market is thin, and
-//     our module teaches in-browser inference, not the PyTorch work those
-//     postings hire for.
+// This replaced an expected-earnings ordering (pay AND hiring volume) on
+// 2026-07-30 at the owner's direction. The difference is not cosmetic: volume was
+// the term that kept JavaScript high and kept thin, well-paid niches low, so
+// dropping it moved Graphics & AI from last to first and pushed Languages to
+// third. Read docs/module-ordering.md before "fixing" anything here that looks
+// wrong — several entries look wrong because the pay data IS wrong, and the doc
+// says which ones and why.
+//
+// Three figures in particular do not mean what they appear to mean:
+//   • Lua ($127,901) lands above Python ($127,875) on a ZipRecruiter keyword page
+//     with a tiny, Roblox-skewed sample. Nobody should read that as "Lua pays
+//     like Python".
+//   • WebAssembly (~$54,800) is last because its keyword page matches non-
+//     engineering jobs. It is a bad number, not a cheap skill.
+//   • Git, SQLite and DuckDB have NO keyword salary at all — nobody is hired as a
+//     "SQLite developer" — so they sort last within their groups on a proxy.
 // Keep new modules in rank rather than appending, or the grid stops meaning
 // anything — and when you do, update the doc with the number that justified it.
 const SECTIONS: Section[] = [
-  {
-    label: "Languages",
-    modules: [
-      { id: "go", title: "Go", blurb: "Yaegi interpreter in a worker", Icon: SiGo, color: "#00ADD8" },
-      { id: "typescript", title: "TypeScript", blurb: "Live types + transpile in-tab", Icon: SiTypescript, color: "#3178C6" },
-      { id: "python", title: "Python", blurb: "CPython via Pyodide · numpy, pandas", Icon: SiPython, color: "#3776AB" },
-      { id: "javascript", title: "JavaScript", blurb: "Runs natively on the JS engine", Icon: SiJavascript, color: "#F7DF1E" },
-      { id: "c", title: "C", blurb: "Real Clang compiled to WASM", Icon: SiC, color: "#A8B9CC" },
-      { id: "ruby", title: "Ruby", blurb: "Real CRuby via ruby.wasm", Icon: SiRuby, color: "#CC342D" },
-      { id: "php", title: "PHP", blurb: "Real PHP via php-wasm", Icon: SiPhp, color: "#777BB4" },
-      { id: "lua", title: "Lua", blurb: "Lua VM via fengari", Icon: SiLua, color: "#8895d9" },
-    ],
-  },
-  {
-    label: "Tools",
-    modules: [
-      { id: "linux", title: "Linux", blurb: "A shell, pipes and permissions", Icon: SiLinux, color: "#FCC624" },
-      { id: "git", title: "Git", blurb: "A real repo in your browser", Icon: SiGit, color: "#F05032" },
-    ],
-  },
-  {
-    label: "Web & Runtimes",
-    modules: [
-      { id: "react", title: "React", blurb: "Build apps with live preview", Icon: SiReact, color: "#61DAFB" },
-      { id: "vue", title: "Vue", blurb: "Build apps with live preview", Icon: SiVuedotjs, color: "#42B883" },
-      { id: "css", title: "CSS", blurb: "Style a real page, live", Icon: SiCss, color: "#663399" },
-      { id: "tailwind", title: "Tailwind CSS", blurb: "Utility classes, compiled in-tab", Icon: SiTailwindcss, color: "#38BDF8" },
-      { id: "wasm", title: "WebAssembly", blurb: "Run C / C++ / Rust / Go output", Icon: SiWebassembly, color: "#654FF0" },
-    ],
-  },
-  {
-    label: "Databases",
-    modules: [
-      { id: "postgres", title: "PostgreSQL", blurb: "Real Postgres via PGlite", Icon: SiPostgresql, color: "#4169E1" },
-      { id: "duckdb", title: "DuckDB", blurb: "Analytics on CSV / Parquet", Icon: SiDuckdb, color: "#FFF000" },
-      { id: "sqlite", title: "SQLite", blurb: "Real DB via sql.js", Icon: SiSqlite, color: "#7ac5e8" },
-    ],
-  },
+  // median $155,967 — the two best-paid figures on the grid, and the smallest group.
   {
     label: "Graphics & AI",
     modules: [
-      { id: "ml", title: "AI / ML", blurb: "Run real models via transformers.js", Icon: SiHuggingface, color: "#FFD21E" },
-      { id: "graphics", title: "Three.js · WebGPU", blurb: "GPU compute & 3D visuals", Icon: SiThreedotjs, color: "#ffffff" },
+      { id: "ml", title: "AI / ML", blurb: "Run real models via transformers.js", Icon: SiHuggingface, color: "#FFD21E" }, // $190,810
+      { id: "graphics", title: "Three.js · WebGPU", blurb: "GPU compute & 3D visuals", Icon: SiThreedotjs, color: "#ffffff" }, // $121,124
+    ],
+  },
+  // median $139,290 — carried entirely by Linux; Git has no keyword salary at all.
+  {
+    label: "Tools",
+    modules: [
+      { id: "linux", title: "Linux", blurb: "A shell, pipes and permissions", Icon: SiLinux, color: "#FCC624" }, // $139,290
+      { id: "git", title: "Git", blurb: "A real repo in your browser", Icon: SiGit, color: "#F05032" }, // no figure
+    ],
+  },
+  // median $127,875 (Python) — the widest spread on the grid, $83.8k to $142.4k.
+  {
+    label: "Languages",
+    modules: [
+      { id: "cpp", title: "C++", blurb: "Real Clang++ with the STL", Icon: SiCplusplus, color: "#00599C" }, // $142,385
+      { id: "go", title: "Go", blurb: "Yaegi interpreter in a worker", Icon: SiGo, color: "#00ADD8" }, // $130,219
+      { id: "typescript", title: "TypeScript", blurb: "Live types + transpile in-tab", Icon: SiTypescript, color: "#3178C6" }, // $129,348
+      { id: "lua", title: "Lua", blurb: "Lua VM via fengari", Icon: SiLua, color: "#8895d9" }, // $127,901 — see the caveat above
+      { id: "python", title: "Python", blurb: "CPython via Pyodide · numpy, pandas", Icon: SiPython, color: "#3776AB" }, // $127,875
+      { id: "ruby", title: "Ruby", blurb: "Real CRuby via ruby.wasm", Icon: SiRuby, color: "#CC342D" }, // $119,243 (n=44)
+      { id: "c", title: "C", blurb: "Real Clang compiled to WASM", Icon: SiC, color: "#A8B9CC" }, // $112,000
+      { id: "javascript", title: "JavaScript", blurb: "Runs natively on the JS engine", Icon: SiJavascript, color: "#F7DF1E" }, // $111,629
+      { id: "php", title: "PHP", blurb: "Real PHP via php-wasm", Icon: SiPhp, color: "#777BB4" }, // $83,800
+    ],
+  },
+  // median $111,845 (CSS) — and the group holding the grid's worst data point.
+  {
+    label: "Web & Runtimes",
+    modules: [
+      { id: "vue", title: "Vue", blurb: "Build apps with live preview", Icon: SiVuedotjs, color: "#42B883" }, // $138,932
+      { id: "react", title: "React", blurb: "Build apps with live preview", Icon: SiReact, color: "#61DAFB" }, // $129,348
+      { id: "css", title: "CSS", blurb: "Style a real page, live", Icon: SiCss, color: "#663399" }, // $111,845
+      { id: "tailwind", title: "Tailwind CSS", blurb: "Utility classes, compiled in-tab", Icon: SiTailwindcss, color: "#38BDF8" }, // $70,866
+      { id: "wasm", title: "WebAssembly", blurb: "Run C / C++ / Rust / Go output", Icon: SiWebassembly, color: "#654FF0" }, // ~$54,800 — bad figure, see above
+    ],
+  },
+  // median $110,489 — only Postgres has a real figure; the other two use a proxy,
+  // which is why this group sorts last rather than because analytics pays badly.
+  {
+    label: "Databases",
+    modules: [
+      { id: "postgres", title: "PostgreSQL", blurb: "Real Postgres via PGlite", Icon: SiPostgresql, color: "#4169E1" }, // $123,262
+      { id: "duckdb", title: "DuckDB", blurb: "Analytics on CSV / Parquet", Icon: SiDuckdb, color: "#FFF000" }, // proxy $110,489
+      { id: "sqlite", title: "SQLite", blurb: "Real DB via sql.js", Icon: SiSqlite, color: "#7ac5e8" }, // proxy $110,489
     ],
   },
 ];
@@ -730,18 +742,18 @@ export default function Landing({
             <div>
               <h3 className="text-sm font-bold text-ink">What it does</h3>
               <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-                {`You pick a technology — Python, JavaScript, PostgreSQL and a dozen more — and
+                {`You pick a technology — Python, JavaScript, C++, PostgreSQL and a dozen more — and
                 describe your level and what you are trying to achieve. ${SITE_NAME} generates a
                 learning roadmap for exactly that, breaks it into topics and lessons, and walks
                 you through them one at a time.`}
               </p>
               <p className="mt-3 text-sm leading-relaxed text-ink-muted">
                 Every lesson is hands-on. You write real code in the built-in editor and run it
-                immediately: Python through Pyodide, PostgreSQL through PGlite, Ruby, PHP and Lua
-                through WebAssembly — all inside your browser, with nothing installed and no
-                server executing your code. An AI tutor sits beside the editor to explain, hint
-                and review, and each exercise is graded by actually running it and checking the
-                output.
+                immediately: Python through Pyodide, PostgreSQL through PGlite, C and C++ through
+                a real Clang compiler, Ruby, PHP and Lua through WebAssembly — all inside your
+                browser, with nothing installed and no server executing your code. An AI tutor
+                sits beside the editor to explain, hint and review, and each exercise is graded
+                by actually running it and checking the output.
               </p>
             </div>
           </div>
