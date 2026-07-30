@@ -17,6 +17,8 @@ exercised in a real browser session.
 | **JavaScript** | Web Worker | isolated worker, hard-killable, 5s timeout | full JS, console capture, async/await; DOM lessons → sandboxed iframe + live Preview | no require/Node APIs/network | ✅ in-browser (earlier sessions) |
 | **TypeScript** | sucrase → worker | types erased via sucrase (CDN), runs as JS in the worker | types/interfaces/generics lessons; same JS sandbox | transpile-only (no type-checking at run; Monaco shows type errors live) | ✅ Node-verified |
 | **Python** | Pyodide v0.26 | real CPython (WASM), main thread | full language + stdlib, classes, comprehensions; print() captured; errors surfaced | ~10 MB first load; main-thread (no hard-kill); no network/subprocess | ✅ Node-verified |
+| **C** | @yowasp/clang 22 | real Clang + LLD (WASM) compile `main.c`, the program then runs under our own WASI host (`wasi.ts`) | honest `sizeof`, pointer arithmetic and undefined behaviour; compiler diagnostics shown verbatim | ~23 MB first load (prefetched with a progress line); no network/files/shell/threads/stdin; wasm memory is flat from address 0, so null derefs and small overruns do NOT trap | ✅ Node-verified |
+| **C++** | @yowasp/clang 22 (`clang++`) | the SAME toolchain download as C, driven as `clang++ -std=c++20 -fno-exceptions` | STL (string/vector/map/set/algorithm/optional), RAII, virtual dispatch, operator overloading, templates, lambdas, smart pointers, C++20 ranges, `std::format` | **no exceptions** — the sysroot's libc++ has no unwinder, so `try`/`throw`/`catch` are compile errors and a would-be throw (`v.at(10)`) prints and aborts; `std::thread` compiles but aborts; otherwise as C | ✅ Node-verified |
 | **SQLite** | sql.js 1.13 | fresh in-memory DB each Run; multi-statement; SELECTs render as text tables | schema design, CRUD, joins, indexes | ~1 MB load; exercises must create their own schema | ✅ Node-verified |
 | **PostgreSQL** | PGlite 0.3 | fresh in-memory Postgres each Run; same table rendering | real PG semantics: serial, RETURNING, CTEs, window fns | ~12 MB load; single-connection; no extensions | ✅ Node-verified |
 | **DuckDB** | duckdb-wasm 1.29 | session AsyncDuckDB (worker), per-statement queries, schema reset after Run | analytics SQL: aggregates, window fns, generate_series | ~35 MB load; no file/URL reads | ⚠️ browser-verify pending (Node worker-shim test inconclusive; browser path is the documented official pattern, CDN 200) |
@@ -50,7 +52,7 @@ the codebase as the fallback for any future module mid-rollout.
   default code), the Run dispatch, the lesson generator's language/self-containment
   rules, the tutor's system prompt, and the evaluator's language label.
 - **Self-containment per language** (`lesson.ts`): forbidden-API lists + comment/string
-  scrubbers for js/python/sql/ruby/lua/php; SQL lessons must create their own schema
+  scrubbers for js/python/sql/ruby/lua/php/c/cpp/go; SQL lessons must create their own schema
   (fresh DB per Run); generate→scan→regenerate→sanitize pipeline unchanged.
 - **Cancellation honesty**: only the JS/TS worker is hard-killable. Main-thread WASM
   engines (Python, SQL, Ruby, PHP) can't be interrupted mid-run — Stop resets the UI.
@@ -71,3 +73,35 @@ the codebase as the fallback for any future module mid-rollout.
 - Lesson generator per module: js/ts/python/sqlite/postgres/duckdb/lua/ruby/php/react/
   wasm/csharp all produce correct-language, self-contained starter code ✓
 - CDN assets: 15/16 jsDelivr 200; php-wasm moved to unpkg (jsDelivr 150 MB limit) ✓
+
+## C++ verification log (2026-07-30, Node 24 / WSL)
+
+Run against the same `@yowasp/clang` core the browser loads, with the exact argv the
+engine builds. Every claim in the C++ `runNotes` comes from this run, not from docs:
+
+- **Exceptions are not optional to disable.** Without `-fno-exceptions`, `#include <string>`
+  plus a concatenation already fails: `wasm-ld: undefined symbol: __cxa_throw` /
+  `__cxa_allocate_exception`. Same for `<vector>`, `<map>`, `<ranges>`, `<format>`. Only the
+  bare `<iostream>` hello, plain templates and a virtual-dispatch class linked without it.
+- **With the flag**, all of the above compile and run: sorted vector ✓, map iteration with
+  structured bindings ✓, `std::string` concatenation ✓, `unique_ptr`/`make_unique` + virtual
+  `area()` → `9` ✓, `shared_ptr` use_count 2→1 with destructor order ✓, `std::optional` ✓,
+  `operator+`/`operator<<` overloads → `(4, 6)` ✓, ranges `views::filter` → `2 4` ✓,
+  `std::format("{} and {}")` → `1 and two` ✓.
+- `try`/`throw` become **compile errors** ("cannot use 'throw' with exceptions disabled").
+- `v.at(10)` prints `out_of_range was thrown in -fno-exceptions mode with message "vector"`
+  to stderr, then traps `unreachable`. `std::thread` does the same ("thread constructor
+  failed", error 58) — it compiles, so only a run reveals it.
+- **Memory, measured**: `v[10]` past the end printed `0` and continued; `*(int*)nullptr`
+  printed `0` and continued; reading after `delete` printed `42` and continued. Identical to
+  the C module — no trap. A failed `assert()` does trap.
+- **Output**: `std::cout` flushes at exit without `endl`. Default precision is 6 significant
+  digits — `1.0`→`1`, `1.0/3.0`→`0.333333`, `1e8`→`1e+08` — and `bool` prints `1`, not `true`.
+  Both facts are stated in `outputFormat` so generated stdout checks match reality.
+- **stdin**: `std::getline(std::cin, line)` returns false immediately (no stdin under WASI).
+- Both modules' registry `defaultCode` compiled and ran clean under their real flag lists
+  (C → `0 1 4`; C++ → the shelf sorted `Solaris, Ubik, Dune`).
+- The six `cpp` forbidden-API rules were checked against legitimate code (including a comment
+  containing "throw" and a string containing "catch") — no false positives — and against
+  try/throw, bare `throw`, `std::cin`, bare `cin`, `ifstream`, `<thread>` and `system()` — all
+  caught.

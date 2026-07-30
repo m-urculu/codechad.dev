@@ -6,6 +6,7 @@ export type EngineKind =
   | "worker-js"   // Web Worker JS sandbox (hard-killable)
   | "typescript"  // sucrase transpile -> worker-js
   | "clang"       // real Clang/LLD in WASM -> WASI (CDN)
+  | "clangxx"     // the same toolchain driven as clang++ (CDN; one shared download)
   | "yaegi"       // Go interpreter in WASM, in a Worker (CDN)
   | "git"         // real repo via isomorphic-git on an in-memory FS (CDN)
   | "shell"       // POSIX-ish shell + coreutils on an in-memory FS (CDN)
@@ -20,7 +21,7 @@ export type EngineKind =
   | "ml"          // transformers.js (CDN; downloads models)
   | "none";       // no client runtime — guided lessons only
 
-export type ForbidLang = "js" | "python" | "sql" | "ruby" | "lua" | "php" | "c" | "go" | "none";
+export type ForbidLang = "js" | "python" | "sql" | "ruby" | "lua" | "php" | "c" | "cpp" | "go" | "none";
 
 export type RuntimeSpec = {
   id: string;
@@ -140,6 +141,42 @@ export const RUNTIMES: Record<string, RuntimeSpec> = {
     defaultCode:
       '#include <stdio.h>\n#include <stdlib.h>\n\nint main() {\n  int *nums = malloc(sizeof(int) * 3);\n  for (int i = 0; i < 3; i++) nums[i] = i * i;\n  printf("%d %d %d\\n", nums[0], nums[1], nums[2]);\n  free(nums);\n  return 0;\n}',
     loadNote: "Loading the C compiler (≈23 MB, first run only)…",
+  },
+  cpp: {
+    id: "cpp", title: "C++", monacoLang: "cpp", engine: "clangxx",
+    runnable: true, allowDom: false, langName: "C++", printHow: "std::cout << ...",
+    outputFormat:
+      "exactly what the stream operators write — no framework formats values for you. " +
+      "std::cout uses its DEFAULT formatting unless the lesson changes it: 6 significant digits, so " +
+      "1.0 prints `1`, 1.0/3.0 prints `0.333333` and 1e8 prints `1e+08`; a bool prints `1`/`0`, not " +
+      "`true`/`false`. A stdout check must match that, or set the flags (std::boolalpha, " +
+      "std::setprecision) in the code it checks.",
+    runNotes:
+      "Real Clang/LLD compiled to WebAssembly, running in the browser; the program then runs under a WASI host. " +
+      "The SAME compiler download as the C module, driven as `clang++ -std=c++20`. " +
+      "WORKS (measured): the STL — string, vector, map, set, algorithm, numeric, optional — classes, " +
+      "constructors/destructors and RAII, virtual dispatch and abstract bases, operator overloading, templates, " +
+      "lambdas, unique_ptr/shared_ptr, range-based for, structured bindings, C++20 ranges and views, and std::format. " +
+      "NO EXCEPTIONS — this is the one hard limitation and it is forced, not chosen: the sysroot's libc++ has no " +
+      "unwinder, so the module is compiled with -fno-exceptions and `try`, `throw` and `catch` are COMPILE ERRORS. " +
+      "Never write a lesson, an exercise or a solution that uses them; teach error handling the way the constraint " +
+      "allows — return codes, std::optional, a validity flag, or checking before acting. A standard-library failure " +
+      "that would have thrown (v.at(10) out of range, constructing a std::thread) prints a message and aborts instead. " +
+      "Also unavailable: threads (<thread>, <mutex>, <future> compile but a std::thread aborts at run time), " +
+      "network, files, shell, fork/exec, and stdin (std::cin reads end-of-file immediately, so a program must never " +
+      "wait for input). " +
+      "MEMORY BEHAVIOUR (measured, do not assume otherwise): wasm memory is one flat region starting at address 0, so a " +
+      "null dereference, a `v[10]` overrun past the end of a vector and a use-after-free all keep running and read " +
+      "whatever is there. Only a far-out pointer, stack overflow from runaway recursion, a failed assert() and integer " +
+      "divide-by-zero actually trap. So never write an objective whose expected output depends on a crash: prove memory " +
+      "bugs with printed values, sizeof, or assert(). " +
+      "CHECKS: C++ has several correct spellings of the same thing — `(*p).x` equals `p->x`, `struct` and `class` differ " +
+      "only in default access, `std::` may be spelled out or pulled in with `using namespace std;`, `auto` may replace a " +
+      "written-out type, and whitespace is free. A code_matches regexp must accept all of them or it fails correct answers.",
+    forbid: "cpp", badgeColor: "#00599C",
+    defaultCode:
+      '#include <algorithm>\n#include <iostream>\n#include <string>\n#include <vector>\n\nstruct Book {\n  std::string title;\n  int pages;\n};\n\nint main() {\n  std::vector<Book> shelf{{"Dune", 412}, {"Ubik", 224}, {"Solaris", 204}};\n\n  std::sort(shelf.begin(), shelf.end(),\n            [](const Book &a, const Book &b) { return a.pages < b.pages; });\n\n  for (const Book &b : shelf) {\n    std::cout << b.title << " (" << b.pages << " pages)\\n";\n  }\n}',
+    loadNote: "Loading the C/C++ compiler (≈23 MB, first run only)…",
   },
   go: {
     id: "go", title: "Go", monacoLang: "go", engine: "yaegi",

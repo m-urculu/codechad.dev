@@ -1,10 +1,15 @@
-// C engine — real Clang and LLD, compiled to WebAssembly, running in the tab.
+// C and C++ engine — real Clang and LLD, compiled to WebAssembly, running in the tab.
 //
 // Not an interpreter and not a subset: the learner's code goes through the same
 // compiler front end they would use on a laptop, so `sizeof` is honest, pointer
 // arithmetic is honest, and undefined behaviour is undefined rather than politely
 // corrected. That matters more here than in any other module — the course this
 // serves is about memory, and a simulator that fakes memory teaches the wrong thing.
+//
+// One toolchain serves both languages: the same ~23 MB download compiles C and C++,
+// so a learner who does both pays for the compiler once. Only the driver, the source
+// file name and the standard flags differ — see LANGS below, and read the note there
+// about -fno-exceptions before touching it.
 //
 // It is NOT a machine with memory protection, and the lessons must not pretend it
 // is: wasm memory is one flat region starting at address 0, so a null dereference
@@ -40,6 +45,23 @@ const CORE_WASM = `https://cdn.jsdelivr.net/npm/@yowasp/clang@${VERSION}/gen/llv
 
 let toolchainP: Promise<Command> | null = null;
 
+// The two languages the one toolchain drives.
+//
+// -fno-exceptions on C++ is NOT a stylistic choice, it is forced. The sysroot ships a
+// libc++ built without an unwinder (wasip1 has none), so `__cxa_throw` and
+// `__cxa_allocate_exception` are undefined at link time — and because std::string,
+// std::vector and std::map all throw internally, WITHOUT this flag even
+// `#include <string>` plus a concatenation fails to link. Measured: with the flag,
+// STL containers, ranges, std::format, virtual dispatch, smart pointers and lambdas
+// all compile and run; `try`/`throw` become compile errors, and a libc++ failure that
+// would have thrown (v.at(10) out of range) prints its message and traps instead.
+const LANGS = {
+  c: { driver: "clang", file: "main.c", std: "-std=c17", extra: [] as string[] },
+  "c++": { driver: "clang++", file: "main.cc", std: "-std=c++20", extra: ["-fno-exceptions"] },
+} as const;
+
+type Lang = keyof typeof LANGS;
+
 /**
  * Streams the compiler into the HTTP cache, reporting progress as it goes.
  *
@@ -64,7 +86,7 @@ async function prefetchCompiler(onLine: OnLine): Promise<void> {
       const pct = Math.floor((done / total) * 10) * 10;
       if (pct > lastPct && pct < 100) {
         lastPct = pct;
-        onLine({ kind: "system", text: `Downloading the C compiler… ${pct}%` });
+        onLine({ kind: "system", text: `Downloading the C/C++ compiler… ${pct}%` });
       }
     }
   } catch {
@@ -74,7 +96,7 @@ async function prefetchCompiler(onLine: OnLine): Promise<void> {
 
 async function getClang(onLine: OnLine, loadNote?: string): Promise<Command> {
   if (!toolchainP) {
-    onLine({ kind: "system", text: loadNote || "Loading the C compiler…" });
+    onLine({ kind: "system", text: loadNote || "Loading the C/C++ compiler…" });
     toolchainP = (async () => {
       await prefetchCompiler(onLine);
       const mod = await extImport(BUNDLE);
@@ -117,12 +139,28 @@ function lineWriter(kind: "log" | "error", onLine: OnLine) {
   };
 }
 
-export async function runC(code: string, onLine: OnLine, loadNote?: string): Promise<void> {
+/** C — `clang -std=c17`. */
+export function runC(code: string, onLine: OnLine, loadNote?: string): Promise<void> {
+  return compileAndRun("c", code, onLine, loadNote);
+}
+
+/** C++ — `clang++ -std=c++20 -fno-exceptions` (see LANGS for why the flag is forced). */
+export function runCpp(code: string, onLine: OnLine, loadNote?: string): Promise<void> {
+  return compileAndRun("c++", code, onLine, loadNote);
+}
+
+async function compileAndRun(
+  lang: Lang,
+  code: string,
+  onLine: OnLine,
+  loadNote?: string
+): Promise<void> {
+  const spec = LANGS[lang];
   let clang: Command;
   try {
     clang = await getClang(onLine, loadNote);
   } catch (e) {
-    onLine({ kind: "error", text: "Failed to load the C compiler: " + String(e) });
+    onLine({ kind: "error", text: "Failed to load the compiler: " + String(e) });
     return;
   }
 
@@ -133,8 +171,8 @@ export async function runC(code: string, onLine: OnLine, loadNote?: string): Pro
   let program: Uint8Array | undefined;
   try {
     const out = await clang(
-      ["clang", "main.c", "-o", "prog", "-Wall", "-std=c17"],
-      { "main.c": code },
+      [spec.driver, spec.file, "-o", "prog", "-Wall", spec.std, ...spec.extra],
+      { [spec.file]: code },
       {
         stderr: (b) => diagnostics.write(b),
         stdout: (b) => diagnostics.write(b),
@@ -181,10 +219,17 @@ export async function runC(code: string, onLine: OnLine, loadNote?: string): Pro
       // divide by zero trap. A null dereference, a small array overrun and a
       // use-after-free do NOT — they read whatever is there, exactly as an
       // unlucky program on a real machine does.
+      // The C++ abort path has one extra cause worth naming: with exceptions off,
+      // a libc++ failure that would have thrown (v.at(10), a failed std::thread)
+      // prints its own message to stderr — already shown above — and then traps.
+      const aborted =
+        lang === "c++"
+          ? "the program aborted — a failed assert(), a call to abort(), or a standard-library error that would have thrown (see the line above)"
+          : "the program aborted — a failed assert(), or a call to abort()";
       const hint = /divide by zero/i.test(e.message)
         ? "an integer divided by zero"
         : /unreachable/i.test(e.message)
-          ? "the program aborted — a failed assert(), or a call to abort()"
+          ? aborted
           : "memory outside the program was touched — a wild pointer, or runaway recursion overflowing the stack";
       onLine({ kind: "error", text: `Crash: ${e.message} — ${hint}.` });
     } else {
