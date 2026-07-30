@@ -90,6 +90,22 @@ const FORBIDDEN_BY_LANG: Record<ForbidLang, Rule[]> = {
     { re: /\b(system|popen|fork|exec[lv])\s*\(/, name: "system/fork/exec" },
     { re: /^\s*#include\s*<(unistd|sys\/socket|netinet|pthread|dlfcn)\.h>/m, name: "process/network/thread header" },
   ],
+  cpp: [
+    { re: /\bstd::(ifstream|ofstream|fstream)\b|\bfopen\s*\(/, name: "file I/O" },
+    { re: /\b(system|popen|fork|exec[lv])\s*\(/, name: "system/fork/exec" },
+    { re: /^\s*#include\s*<(unistd|sys\/socket|netinet|pthread|dlfcn)\.h>/m, name: "process/network/thread header" },
+    // The sandbox reads end-of-file immediately, so anything waiting on stdin
+    // produces a lesson whose objectives can never be met.
+    // `using namespace std;` is common enough in teaching code that the bare
+    // spelling has to be caught too.
+    { re: /\b(std::)?cin\b/, name: "std::cin (there is no stdin)" },
+    // Not a sandbox policy but a hard compiler fact: the module is built with
+    // -fno-exceptions (no unwinder in the sysroot's libc++), so these do not
+    // compile at all. Catching them here is what stops a generated lesson whose
+    // own solution fails to build. See engineC.ts.
+    { re: /\bthrow\b|^\s*try\s*\{|\bcatch\s*\(/m, name: "try/throw/catch (exceptions are disabled)" },
+    { re: /^\s*#include\s*<(thread|mutex|future|condition_variable)>/m, name: "threads (std::thread aborts here)" },
+  ],
   go: [
     { re: /"net\/http"|"net"|"os\/exec"|"syscall"|"os\/signal"/, name: "network/process import" },
     { re: /\bos\.(Open|Create|ReadFile|WriteFile|Remove)\b/, name: "os file access" },
@@ -109,6 +125,7 @@ const SYNTAX_BY_LANG: Record<ForbidLang, Syntax> = {
   lua: { line: ["--"], block: [["--[[", "]]"]], strings: ["'", '"'] },
   php: { line: ["//", "#"], block: [["/*", "*/"]], strings: ["'", '"'] },
   c: { line: ["//"], block: [["/*", "*/"]], strings: ["'", '"'] },
+  cpp: { line: ["//"], block: [["/*", "*/"]], strings: ["'", '"'] },
   go: { line: ["//"], block: [["/*", "*/"]], strings: ["'", '"', "`"] },
   none: { line: [], block: [], strings: [] },
 };
