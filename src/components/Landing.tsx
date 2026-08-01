@@ -71,13 +71,18 @@ type Section = { label: string; modules: Module[] };
 // the US average annual salary attached to each technology as a keyword, highest
 // first. Groups are ranked by the median of their modules' figures.
 //
+// EXCEPT the first slot: Languages is pinned to the front of the grid (owner
+// direction, 2026-08-01), ahead of Graphics & AI's higher median. Everything
+// after it — Graphics & AI, Tools, Web & Runtimes, Databases — keeps the
+// pay-only order from 2026-07-30 among themselves. See docs/module-ordering.md.
+//
 // This replaced an expected-earnings ordering (pay AND hiring volume) on
 // 2026-07-30 at the owner's direction. The difference is not cosmetic: volume was
 // the term that kept JavaScript high and kept thin, well-paid niches low, so
 // dropping it moved Graphics & AI from last to first and pushed Languages to
-// third. Read docs/module-ordering.md before "fixing" anything here that looks
-// wrong — several entries look wrong because the pay data IS wrong, and the doc
-// says which ones and why.
+// third (before the 2026-08-01 pin above). Read docs/module-ordering.md before
+// "fixing" anything here that looks wrong — several entries look wrong because
+// the pay data IS wrong, and the doc says which ones and why.
 //
 // Three figures in particular do not mean what they appear to mean:
 //   • Lua ($127,901) lands above Python ($127,875) on a ZipRecruiter keyword page
@@ -90,6 +95,22 @@ type Section = { label: string; modules: Module[] };
 // Keep new modules in rank rather than appending, or the grid stops meaning
 // anything — and when you do, update the doc with the number that justified it.
 const SECTIONS: Section[] = [
+  // Pinned first (2026-08-01) — see the note above; not ranked by median here.
+  // median $127,875 (Python) — the widest spread on the grid, $83.8k to $142.4k.
+  {
+    label: "Languages",
+    modules: [
+      { id: "cpp", title: "C++", blurb: "Real Clang++ with the STL", Icon: SiCplusplus, color: "#00599C" }, // $142,385
+      { id: "go", title: "Go", blurb: "Yaegi interpreter in a worker", Icon: SiGo, color: "#00ADD8" }, // $130,219
+      { id: "typescript", title: "TypeScript", blurb: "Live types + transpile in-tab", Icon: SiTypescript, color: "#3178C6" }, // $129,348
+      { id: "lua", title: "Lua", blurb: "Lua VM via fengari", Icon: SiLua, color: "#8895d9" }, // $127,901 — see the caveat above
+      { id: "python", title: "Python", blurb: "CPython via Pyodide · numpy, pandas", Icon: SiPython, color: "#3776AB" }, // $127,875
+      { id: "ruby", title: "Ruby", blurb: "Real CRuby via ruby.wasm", Icon: SiRuby, color: "#CC342D" }, // $119,243 (n=44)
+      { id: "c", title: "C", blurb: "Real Clang compiled to WASM", Icon: SiC, color: "#A8B9CC" }, // $112,000
+      { id: "javascript", title: "JavaScript", blurb: "Runs natively on the JS engine", Icon: SiJavascript, color: "#F7DF1E" }, // $111,629
+      { id: "php", title: "PHP", blurb: "Real PHP via php-wasm", Icon: SiPhp, color: "#777BB4" }, // $83,800
+    ],
+  },
   // median $155,967 — the two best-paid figures on the grid, and the smallest group.
   {
     label: "Graphics & AI",
@@ -104,21 +125,6 @@ const SECTIONS: Section[] = [
     modules: [
       { id: "linux", title: "Linux", blurb: "A shell, pipes and permissions", Icon: SiLinux, color: "#FCC624" }, // $139,290
       { id: "git", title: "Git", blurb: "A real repo in your browser", Icon: SiGit, color: "#F05032" }, // no figure
-    ],
-  },
-  // median $127,875 (Python) — the widest spread on the grid, $83.8k to $142.4k.
-  {
-    label: "Languages",
-    modules: [
-      { id: "cpp", title: "C++", blurb: "Real Clang++ with the STL", Icon: SiCplusplus, color: "#00599C" }, // $142,385
-      { id: "go", title: "Go", blurb: "Yaegi interpreter in a worker", Icon: SiGo, color: "#00ADD8" }, // $130,219
-      { id: "typescript", title: "TypeScript", blurb: "Live types + transpile in-tab", Icon: SiTypescript, color: "#3178C6" }, // $129,348
-      { id: "lua", title: "Lua", blurb: "Lua VM via fengari", Icon: SiLua, color: "#8895d9" }, // $127,901 — see the caveat above
-      { id: "python", title: "Python", blurb: "CPython via Pyodide · numpy, pandas", Icon: SiPython, color: "#3776AB" }, // $127,875
-      { id: "ruby", title: "Ruby", blurb: "Real CRuby via ruby.wasm", Icon: SiRuby, color: "#CC342D" }, // $119,243 (n=44)
-      { id: "c", title: "C", blurb: "Real Clang compiled to WASM", Icon: SiC, color: "#A8B9CC" }, // $112,000
-      { id: "javascript", title: "JavaScript", blurb: "Runs natively on the JS engine", Icon: SiJavascript, color: "#F7DF1E" }, // $111,629
-      { id: "php", title: "PHP", blurb: "Real PHP via php-wasm", Icon: SiPhp, color: "#777BB4" }, // $83,800
     ],
   },
   // median $111,845 (CSS) — and the group holding the grid's worst data point.
@@ -183,6 +189,7 @@ function relativeTime(iso: string): string {
 // does not reappear on the next visit and a rename survives the reload.
 function useStoredRoadmaps(): {
   roadmaps: RoadmapSummary[];
+  userId: string | null;
   remove: (r: RoadmapSummary) => void;
   duplicate: (r: RoadmapSummary) => Promise<void>;
   reload: () => void;
@@ -280,7 +287,7 @@ function useStoredRoadmaps(): {
     setNonce((n) => n + 1); // refetch so the copy appears with a server-assigned id
   }
 
-  return { roadmaps, remove, duplicate, reload: () => setNonce((n) => n + 1) };
+  return { roadmaps, userId, remove, duplicate, reload: () => setNonce((n) => n + 1) };
 }
 
 // Continuous completion in [0,1] — same metric as the roadmap tab.
@@ -631,7 +638,46 @@ export default function Landing({
   onSelect: (moduleId: string, courseId?: string, pathId?: string) => void;
   onSettings: (r: RoadmapSummary) => void;
 }) {
-  const { roadmaps, remove, duplicate } = useStoredRoadmaps();
+  const { roadmaps, userId, remove, duplicate } = useStoredRoadmaps();
+
+  // The free tier's course cap, read-only here (src/lib/billing.ts is the one
+  // enforcement that matters — a client that can be told "you are pro" can also
+  // decide it is). This is purely so the grid doesn't invite a click that the
+  // server was always going to refuse: undefined until loaded, null means no
+  // cap (pro). A status fetch that fails leaves it undefined, which never
+  // blocks — the same fail-open rule /api/roadmap/state itself follows.
+  const [courseLimit, setCourseLimit] = useState<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (!userId) {
+      setCourseLimit(undefined);
+      return;
+    }
+    let cancelled = false;
+    apiFetch("/api/billing/status")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setCourseLimit(typeof data.courseLimit === "number" ? data.courseLimit : null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const atCap = typeof courseLimit === "number" && roadmaps.length >= courseLimit;
+  const [showLimitModal, setShowLimitModal] = useState(false);
+
+  // Only a NEW course can hit the cap — resuming one of the existing ones (a
+  // RoadmapCard click, which always supplies its own courseId) must never be
+  // blocked, so this wraps just the two "start something new" entry points.
+  function selectOrBlock(moduleId: string, courseId?: string, pathId?: string) {
+    if (!courseId && atCap) {
+      setShowLimitModal(true);
+      return;
+    }
+    onSelect(moduleId, courseId, pathId);
+  }
+
   return (
     <div className="relative z-10 h-full w-full overflow-y-auto">
       <div className="mx-auto flex max-w-5xl flex-col px-6 py-12 sm:py-16">
@@ -697,7 +743,7 @@ export default function Landing({
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {PATHS.map((p) => (
-              <PathCard key={p.id} p={p} onSelect={onSelect} />
+              <PathCard key={p.id} p={p} onSelect={selectOrBlock} />
             ))}
           </div>
         </section>
@@ -711,12 +757,47 @@ export default function Landing({
               </h2>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {section.modules.map((m) => (
-                  <ModuleCard key={m.id} m={m} onSelect={onSelect} />
+                  <ModuleCard key={m.id} m={m} onSelect={(id) => selectOrBlock(id)} />
                 ))}
               </div>
             </section>
           ))}
         </div>
+
+        {/* Free-tier course cap: reached by clicking a new module/path while
+            already at the limit. Never reachable from a RoadmapCard (resume),
+            which always supplies its own courseId and bypasses this entirely. */}
+        {showLimitModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 backdrop-blur-sm"
+            onClick={() => setShowLimitModal(false)}
+          >
+            <div
+              className="max-w-sm border border-line-strong bg-surface-1 p-5 text-center leading-relaxed shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-sm text-ink">
+                Free accounts can keep <span className="font-bold">{courseLimit}</span> courses.
+                Delete one, or go unlimited to keep as many as you like.
+              </p>
+              <div className="mt-4 flex justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLimitModal(false)}
+                  className="border border-line-strong px-3 py-1.5 text-xs font-semibold text-ink-dim transition-colors duration-150 hover:bg-surface-2"
+                >
+                  Close
+                </button>
+                <Link
+                  href="/pricing"
+                  className="bg-accent px-3 py-1.5 text-xs font-semibold text-ink transition-colors duration-150 hover:bg-accent-bright"
+                >
+                  Go unlimited
+                </Link>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footnote */}
         {/* Kept accurate as runtimes land: Linux and Go used to be listed here as

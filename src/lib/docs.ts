@@ -25,6 +25,8 @@ const DOCS: Record<string, DocSource> = {
   tailwind: { kind: "devdocs", slug: "tailwindcss", label: "Tailwind CSS" },
   react: { kind: "devdocs", slug: "react", label: "React" },
   vue: { kind: "devdocs", slug: "vue~3", label: "Vue 3" },
+  cpp: { kind: "devdocs", slug: "cpp", label: "C++ (cppreference)" },
+  c: { kind: "devdocs", slug: "c", label: "C (cppreference)" },
   // No DevDocs coverage → official docs (these block framing), open externally.
   duckdb: { kind: "external", url: "https://duckdb.org/docs/", label: "DuckDB docs" },
   wasm: { kind: "external", url: "https://developer.mozilla.org/en-US/docs/WebAssembly", label: "WebAssembly (MDN)" },

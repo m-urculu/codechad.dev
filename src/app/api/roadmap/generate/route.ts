@@ -12,6 +12,7 @@ import { getRuntime, RUNTIMES } from "@/lib/runtimes/registry";
 import { siblingCourses } from "@/app/api/supabase/roadmap-state";
 import { loadKnownSkills } from "@/app/api/supabase/skills";
 import { userOrTrial } from "@/lib/apiAuth";
+import { canCreateCourse, limitResponse } from "@/lib/billing";
 
 export async function POST(request: Request) {
   const who = await userOrTrial(request);
@@ -23,6 +24,16 @@ export async function POST(request: Request) {
       await request.json();
     if (!skill || typeof skill !== "string") {
       return NextResponse.json({ error: "skill is required" }, { status: 400 });
+    }
+    // Same boundary as POST /api/roadmap/state's create check: only a BRAND NEW
+    // course can be blocked by the free-tier cap. Regenerating or expanding a
+    // course that already exists must never be refused for being over the limit —
+    // it isn't adding to the count. Checked here, before the LLM call, so a
+    // blocked account never pays for a generation it can't save (previously the
+    // cap was only enforced later, in roadmap/state, after this call already ran).
+    if (who.userId && !course_id) {
+      const check = await canCreateCourse(who.userId);
+      if (!check.allowed) return limitResponse(check);
     }
     // A course that SPANS runtimes (a career path being regenerated) tells the
     // generator which ones it may tag topics with. Unknown ids are dropped here

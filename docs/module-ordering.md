@@ -197,6 +197,17 @@ leaves them exactly as they were:
 rarely a *first* job — it is normally reached through development experience, which is
 why our own DevOps path teaches Go and HTTP servers before it teaches Kubernetes.
 
+## Languages pinned first (2026-08-01)
+
+The grid's first slot is no longer decided by the pay-only rule above. **Languages is
+pinned to the front**, ahead of Graphics & AI's higher median ($155,967 vs Languages'
+$127,875) — owner direction, not a pay finding. Every group after it, and every module
+within every group including Languages itself, is still ordered by the pay-only rule
+exactly as documented above; only the Languages-vs-Graphics&AI position at the very top
+was overridden.
+
+Resulting order: **Languages · Graphics & AI · Tools · Web & Runtimes · Databases.**
+
 ## Caveats
 
 Three things this ordering does not know, and one place it is deliberately conservative:

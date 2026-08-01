@@ -71,6 +71,23 @@ function sameCollection(got: string, want: string): boolean {
   return isCollection(want) && collapse(got).includes(collapse(want));
 }
 
+// The exact strings the runtime engines emit when the learner's program never got a
+// chance to run at all — a failed compile/transpile, or a toolchain that didn't load
+// (see src/lib/runtimes/engine*.ts). A `code_matches` check only looks at source text,
+// so a program that fails to compile can still textually contain the right constructs
+// and pass. These markers close that gap: if none of the code actually ran, nothing was
+// accomplished, regardless of what any individual check says.
+const NEVER_RAN = [
+  /^Compilation failed\b/m,
+  /^Compilation produced no program\.$/m,
+  /^TypeScript error:/m,
+  /^Failed to (load|start) .+:/m,
+];
+
+function neverRan(output: string): boolean {
+  return NEVER_RAN.some((re) => re.test(output));
+}
+
 function checkOne(obj: Objective, code: string, output: string): GradeResult {
   const c = obj.check;
   if (!c) return { id: obj.id, passed: false, detail: "no deterministic check" };
@@ -108,6 +125,14 @@ function checkOne(obj: Objective, code: string, output: string): GradeResult {
 // should then fall back to LLM grading for backward compatibility with older lessons.
 export function gradeSubmission(objectives: Objective[], code: string, output: string): Grade {
   const gradable = objectives.length > 0 && objectives.every((o) => !!o.check);
+  if (gradable && neverRan(output)) {
+    const results = objectives.map((o) => ({
+      id: o.id,
+      passed: false,
+      detail: "the program didn't run — fix the error in the console before objectives can pass",
+    }));
+    return { results, allPassed: false, gradable };
+  }
   const results = objectives.map((o) => checkOne(o, code, output));
   return { results, allPassed: gradable && results.every((r) => r.passed), gradable };
 }

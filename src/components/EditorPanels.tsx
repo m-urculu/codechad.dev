@@ -9,6 +9,7 @@ import { MessageSquare, Map, Code2, BookOpen } from "lucide-react";
 import { supabase } from "@/lib/supabaseBrowser";
 import { getModuleMeta } from "@/lib/modules";
 import { getPath, getPathByTitle, pathRoadmap } from "@/lib/paths";
+import { getCurriculum } from "@/lib/curricula";
 import { getDocSource } from "@/lib/docs";
 import { resolveDocUrl } from "@/lib/docs-index";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
@@ -169,6 +170,13 @@ export default function EditorPanels({
   // Persistence boot state + loaded values handed to the chat.
   const [userId, setUserId] = useState<string | null>(null);
   const [courseId, setCourseId] = useState<string | null>(initialCourseId ?? null);
+  // Set when the server refuses to create a course because the free tier's cap
+  // (canCreateCourse in src/lib/billing.ts) is already used up. The route already
+  // writes a message meant for a person to read; until now nothing ever did —
+  // ensureCourseId returned null exactly the same way it does for "not signed in
+  // yet", so a blocked course silently looked like it had never been touched.
+  // ChatPanel shows this as a normal bot message.
+  const [courseLimitMessage, setCourseLimitMessage] = useState<string | null>(null);
   // Mirrors courseId for callbacks that must not close over a stale render.
   const courseIdRef = useRef<string | null>(initialCourseId ?? null);
   const ensureInFlight = useRef<Promise<string | null> | null>(null);
@@ -315,7 +323,15 @@ export default function EditorPanels({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ skill, module: moduleId, name: skill }),
         });
-        const { course_id } = await res.json();
+        const body = await res.json().catch(() => null);
+        if (res.status === 402 && body?.code === "course_limit") {
+          // Setting the identical string on a repeated block is a no-op re-render,
+          // which is what keeps this a one-time notice rather than a nag repeated
+          // on every debounced save while the account stays over its limit.
+          setCourseLimitMessage(body.error as string);
+          return null;
+        }
+        const course_id = body?.course_id;
         if (course_id) {
           courseIdRef.current = course_id;
           setCourseId(course_id);
@@ -332,17 +348,26 @@ export default function EditorPanels({
 
   // Debounced save when the tree or progress changes (logged-in only).
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Holds the save this render's timer is waiting to fire, so a flush (below) can
+  // run the *current* save instead of losing it when the timer is only cleared.
+  const pendingSaveRef = useRef<null | (() => Promise<void>)>(null);
   useEffect(() => {
-    if (!userId || !skill || !roadmap) return;
+    if (!userId || !skill || !roadmap) {
+      pendingSaveRef.current = null;
+      return;
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(async () => {
+
+    const doSave = async () => {
       const cid = await ensureCourseId();
       if (!cid) return;
-      apiFetch("/api/roadmap/state", {
+      // keepalive lets this request survive a tab close/navigation that happens
+      // right after it's sent — the scenario the flush effect below exists for.
+      const res = await apiFetch("/api/roadmap/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-                    course_id: cid,
+          course_id: cid,
           skill,
           module: moduleId,
           level: roadmap.level,
@@ -350,7 +375,20 @@ export default function EditorPanels({
           tree: roadmap,
           progress,
         }),
-      }).catch(() => {});
+        keepalive: true,
+      }).catch((e) => {
+        console.error("[roadmap/state] save request failed:", e);
+        return null;
+      });
+      if (res) {
+        // The route fails soft (HTTP 200 with ok:false) so a Supabase/auth failure
+        // doesn't 5xx the learner's session — but that means nobody checked it
+        // until now. Log it so a dropped save is at least visible in devtools.
+        const body = await res.json().catch(() => null);
+        if (!res.ok || body?.ok === false) {
+          console.error("[roadmap/state] save was not persisted:", res.status, body);
+        }
+      }
 
       // Keep the cached course card in step with what just happened here, so
       // going back to the landing page shows this progress on the first paint
@@ -369,11 +407,46 @@ export default function EditorPanels({
         ratio: overallRatio(roadmap, pointOf),
         updatedAt: new Date().toISOString(),
       });
+    };
+
+    pendingSaveRef.current = doSave;
+    saveTimer.current = setTimeout(() => {
+      saveTimer.current = null;
+      pendingSaveRef.current = null;
+      void doSave();
     }, 800);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, [roadmap, progress, userId, skill, moduleId, ensureCourseId]);
+
+  // The debounce above only ever *clears* its timer on cleanup — a save that was
+  // waiting to fire was simply lost, which is how a lesson finished right before
+  // leaving the page never made it to the database. Flush it instead, on every
+  // signal that the page might not get another chance to run: tab hidden
+  // (switched away, minimized, closed — fires before unload and isn't blocked by
+  // bfcache the way beforeunload is), pagehide (actual navigation/unload), and
+  // true component unmount (client-side route change away from the editor).
+  useEffect(() => {
+    const flush = () => {
+      if (!saveTimer.current || !pendingSaveRef.current) return;
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      const save = pendingSaveRef.current;
+      pendingSaveRef.current = null;
+      void save();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
 
   function handleRoadmap(r: Roadmap) {
     setRoadmap(r);
@@ -694,6 +767,7 @@ export default function EditorPanels({
             moduleId={moduleId}
             courseId={courseId}
             ensureCourseId={ensureCourseId}
+            courseLimitMessage={courseLimitMessage}
             skill={skill}
             pathTitle={path?.title ?? null}
             pathGoal={path?.goal ?? null}
@@ -726,6 +800,7 @@ export default function EditorPanels({
             pointRatio={pointRatio}
             onExpand={handleExpand}
             onActivateLesson={handleActivateLesson}
+            sequential={!!getCurriculum(moduleId)}
           />
         </div>
         <div data-pane="docs" className={paneClass("docs")}>

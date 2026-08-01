@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronRight, ChevronDown, Play, Check, Loader2, Circle } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronRight, ChevronDown, Play, Check, Loader2, Circle, Lock } from "lucide-react";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import { nodeRatio, overallRatio } from "@/lib/courseProgress";
@@ -14,6 +14,15 @@ type RoadmapPanelProps = {
   pointRatio?: Record<string, number>;
   onExpand: (node: RoadmapNode, path: string[]) => Promise<void>;
   onActivateLesson: (node: RoadmapNode) => void;
+  /**
+   * Lock each lesson until the one before it is complete.
+   *
+   * Only meaningful for an AUTHORED curriculum (lib/curricula.ts), where the order is
+   * the pedagogy and lesson 40 genuinely assumes lesson 39. A generated course is a
+   * dozen independent topics the learner chose to explore, so locking one behind
+   * another there would invent a dependency nobody designed.
+   */
+  sequential?: boolean;
 };
 
 export default function RoadmapPanel({
@@ -23,6 +32,7 @@ export default function RoadmapPanel({
   pointRatio,
   onExpand,
   onActivateLesson,
+  sequential = false,
 }: RoadmapPanelProps) {
   const [openIds, setOpenIds] = useState<Set<string>>(new Set());
   const [loadingIds, setLoadingIds] = useState<Set<string>>(new Set());
@@ -62,6 +72,37 @@ export default function RoadmapPanel({
   }
 
   const overall = overallRatio(roadmap, pointOf);
+
+  // Every lesson in the order the curriculum teaches them — the sequence the lock
+  // walks. Depth-first, which is document order, which is the authored order.
+  const orderedPointIds = useMemo(() => {
+    const out: string[] = [];
+    const walk = (nodes: RoadmapNode[] | null) => {
+      for (const n of nodes ?? []) {
+        if (n.kind === "point") out.push(n.id);
+        else walk(n.children);
+      }
+    };
+    walk(roadmap?.topics ?? null);
+    return out;
+  }, [roadmap]);
+
+  // The furthest lesson the learner has earned. Everything up to and including it is
+  // open (so finished ones stay reviewable); everything past it is locked.
+  //
+  // Note this reads doneNodeIds, which is written ONLY by passing every objective
+  // (ChatPanel's grade path) — so the gate is the grader's, not a separate honour
+  // system that could disagree with it.
+  const frontierIdx = useMemo(() => {
+    const i = orderedPointIds.findIndex((id) => !doneNodeIds.includes(id));
+    return i === -1 ? orderedPointIds.length - 1 : i;
+  }, [orderedPointIds, doneNodeIds]);
+
+  function lockedPoint(id: string): boolean {
+    if (!sequential) return false;
+    const i = orderedPointIds.indexOf(id);
+    return i > frontierIdx;
+  }
 
   function Node({ node, depth, path }: { node: RoadmapNode; depth: number; path: string[] }) {
     const expandable = node.kind !== "point";
@@ -163,14 +204,24 @@ export default function RoadmapPanel({
             {/* leaf point actions */}
             {node.kind === "point" && (
               <div style={{ paddingLeft: 8 + (depth + 1) * 16 }} className="flex items-center gap-2 pb-2">
-                <button
-                  type="button"
-                  onClick={() => onActivateLesson(node)}
-                  className="flex items-center gap-1.5 border border-line-strong bg-surface-2 px-2.5 py-1 text-meta text-ink transition-colors hover:bg-surface-3"
-                >
-                  <Play className="h-3 w-3" />
-                  {done ? "Review lesson" : "Start lesson"}
-                </button>
+                {lockedPoint(node.id) ? (
+                  <span
+                    className="flex items-center gap-1.5 border border-line bg-surface-1 px-2.5 py-1 text-meta text-ink-faint"
+                    title="Finish the lesson before this one to unlock it"
+                  >
+                    <Lock className="h-3 w-3" />
+                    Locked
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onActivateLesson(node)}
+                    className="flex items-center gap-1.5 border border-line-strong bg-surface-2 px-2.5 py-1 text-meta text-ink transition-colors hover:bg-surface-3"
+                  >
+                    <Play className="h-3 w-3" />
+                    {done ? "Review lesson" : "Start lesson"}
+                  </button>
+                )}
                 {/* Completion is EARNED by passing all objectives — never toggled by hand. */}
                 {done && (
                   <span className="flex items-center gap-1.5 text-meta text-accent">
