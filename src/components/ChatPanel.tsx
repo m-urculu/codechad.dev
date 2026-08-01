@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { cachedUserId, supabase } from "@/lib/supabaseBrowser";
 import { LEVELS, getModuleMeta } from "@/lib/modules";
+import { getCurriculum, curriculumRoadmap, curriculumLessonCount } from "@/lib/curricula";
 import { getRuntime } from "@/lib/runtimes/registry";
 import { gradeSubmission } from "@/lib/agents/grade";
 import ReadAloudButton from "@/components/ReadAloudButton";
@@ -95,6 +96,9 @@ type ChatPanelProps = {
   courseId?: string | null;
   /** Creates the course row on demand (first calibration answer) and returns its id. */
   ensureCourseId?: () => Promise<string | null>;
+  /** Set by ensureCourseId when the free tier's course cap blocked creation — shown
+   *  once as a bot message so hitting the limit is never silent. */
+  courseLimitMessage?: string | null;
   /** What the course is about. Equals the module's title for an ordinary course; for a
    *  career path it is the PATH ("Backend Developer"), which is the subject every
    *  lesson on it should be framed by — not whichever language the path opened in. */
@@ -139,6 +143,7 @@ export default function ChatPanel({
   moduleId,
   courseId,
   ensureCourseId,
+  courseLimitMessage,
   skill,
   pathTitle,
   pathGoal,
@@ -619,6 +624,14 @@ export default function ChatPanel({
     };
   }, [messages, calib, userId, moduleId, courseId, ensureCourseId]);
 
+  // Surface a blocked course creation as a normal chat message. courseLimitMessage
+  // only ever changes value when the server's actual wording changes, so this
+  // fires once per distinct block rather than on every retry that hits the cap.
+  useEffect(() => {
+    if (courseLimitMessage) pushMessage("bot", courseLimitMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseLimitMessage]);
+
   // Run the agent pipeline (chat manager) and return its reply + optional roadmap.
   async function callAgent(
     message: string,
@@ -893,6 +906,22 @@ export default function ChatPanel({
     if (!meta) return;
     setLoading(true);
     try {
+      // A module with an authored curriculum does not generate its tree at all — the
+      // syllabus is data (lib/curricula.ts), so the whole thing is built locally and
+      // instantly. Level and goal are still asked and still kept: they are what each
+      // LESSON is pitched at, which is the half that stays generated.
+      const curriculum = getCurriculum(moduleId);
+      if (curriculum) {
+        const built = curriculumRoadmap(curriculum, level, goal);
+        onRoadmap?.(built);
+        pushMessage(
+          "bot",
+          `Your **${meta.title}** curriculum is ready — ${curriculumLessonCount(curriculum)} lessons ` +
+            `across ${curriculum.chapters.length} chapters, in the order the language has to be learned. ` +
+            `Starting you on the first one now; the whole plan is in the Roadmap tab.`
+        );
+        return;
+      }
       // L1: grounded overview (snowflake). The tree is generated on demand from here.
       const res = await apiFetch("/api/roadmap/generate", {
         method: "POST",
@@ -919,6 +948,11 @@ export default function ChatPanel({
           `Your **${meta.title}** roadmap is ready — starting you on the first lesson now. ` +
             `The whole plan is in the Roadmap tab whenever you want to jump elsewhere.`
         );
+      } else if (data.code === "course_limit") {
+        // Blocked before generation ever ran — there is no course shell to store
+        // (that would just hit the same cap) and nothing was saved, so the
+        // ordinary retry copy below (which promises exactly that) doesn't apply.
+        pushMessage("bot", data.error);
       } else {
         onRoadmapFailed?.(level, goal); // store the course shell — listed, resumable, deletable
         pushMessage(
