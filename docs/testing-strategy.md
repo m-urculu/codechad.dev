@@ -78,11 +78,16 @@ See [skills-ledger.md](skills-ledger.md) for the design these tests protect.
 
 | Module | What the tests guarantee | Tests | Status |
 |---|---|---|---|
-| `src/lib/agents/level.ts` (`tierOf`) | Free-text level → tier: "Experienced" → advanced, "some experience" → **intermediate** (the check order exists for exactly this case), empty → beginner, unrecognised → intermediate | ~8 | planned |
-| `src/lib/paths.ts` | Career paths: ids follow the `t0` / `t0-s1` scheme; foundation courses condensed for experienced learners and paired for intermediate ones; everything else untouched | ~14 | planned |
-| `src/lib/curricula.ts` | Fixed language curricula: lessons are leaves with `children: []` so nothing is generated; lesson counts are correct | ~6 | planned |
+| `src/lib/agents/level.ts` (`tierOf`) | Free-text level → tier: "Experienced" → advanced, "some experience" → **intermediate** (the check order exists for exactly this case), empty → beginner, unrecognised → intermediate | 19 | done |
+| `src/lib/paths.ts` | Career paths: ids follow the `t0` / `t0-s1` scheme; foundation courses condensed for experienced learners and paired for intermediate ones; everything else untouched | 16 | done |
+| `src/lib/curricula.ts` | Fixed language curricula: lessons are leaves with `children: []` so nothing is generated; the tree is the same at every level; lesson counts are correct | 9 | done |
 
 See [learning-paths.md](learning-paths.md) for how paths are meant to work.
+
+**Open bug:** `tierOf` reads a negation as its opposite. "Not experienced" and "not
+very experienced" both map to **advanced** (the keyword "experienc" matches and "not" is
+ignored), so a learner who says they are new is given condensed foundation courses.
+"Inexperienced" maps to intermediate. Reported, not yet fixed.
 
 ## Promise 4: messy AI output doesn't break the app
 
@@ -139,7 +144,7 @@ About 110 tests across 10 files.
 | 2 | Vitest setup and `grade.ts` | `test: add Vitest and cover gradeSubmission output matching` (done) |
 | 2b | The three `it.todo` cases in `grade.test.ts` | `test: cover line order, empty output and invalid-regex fallback in gradeSubmission` (done) |
 | 3 | Promise 1 (consoleFormat + contract test) and Promise 2, plus three grading and formatting fixes | one `test:` commit per file and one `fix:` commit per bug (done) |
-| 4 | Promise 3 | `test: cover level tiers and fixed curricula` |
+| 4 | Promise 3 | one `test:` commit per file (done) |
 | 5 | Promise 4 and `mergeCourses` | `test: cover AI reply parsing and course cache merging` |
 | 6 | CI workflow, README badge and "Testing" section | `ci: run lint, type check and tests on every push` |
 | optional | `billing.ts` with module mocks | — |
