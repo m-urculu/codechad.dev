@@ -69,6 +69,10 @@ npm run dev                  # http://localhost:3000
 | `npm run check:docs` | Checks that every documentation link the app ships is still live |
 | `npm run check:erasure` | Proves account deletion erases user data. **Writes to the real database**; run it knowingly |
 
+## Documentation
+
+Start with **[docs/architecture.md](docs/architecture.md)**: the whole system on one page, with a diagram. Every other document is listed in the [docs index](docs/README.md), grouped by how the app works, how it is run, and the decisions behind it.
+
 ## Testing
 
 ```bash
