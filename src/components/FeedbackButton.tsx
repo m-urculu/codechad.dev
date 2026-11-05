@@ -28,6 +28,11 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MessageSquarePlus, X, Check } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
+import { useClientValue } from "@/lib/useClientValue";
+
+// Portals need a document; rendering one during SSR is a hydration mismatch, so the
+// panel only renders once this is true — in the browser, after hydration.
+const isBrowser = () => true;
 
 export type FeedbackContext = {
   module?: string | null;
@@ -60,12 +65,9 @@ export default function FeedbackButton({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useClientValue(isBrowser, false);
   const panel = useRef<HTMLDivElement>(null);
   const firstField = useRef<HTMLTextAreaElement>(null);
-
-  // Portals need a document; rendering one during SSR is a hydration mismatch.
-  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;

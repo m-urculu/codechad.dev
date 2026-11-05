@@ -8,10 +8,30 @@ import FeedbackButton from "@/components/FeedbackButton";
 import AccountSettings from "@/components/AccountSettings";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseBrowser";
+import { useClientValue } from "@/lib/useClientValue";
+
+// False on software renderers (and with no WebGL at all), where the animated
+// background would crawl. Probed once, in the browser.
+function hasHardwareGpu(): boolean {
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = (canvas.getContext("webgl") ||
+      canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
+    if (!gl) return false;
+    const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
+    const renderer: string = debugInfo
+      ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+      : gl.getParameter(gl.RENDERER);
+    // If the renderer string contains these, it is likely software rendering.
+    return !/swiftshader|software|llvmpipe/i.test(renderer);
+  } catch {
+    return false;
+  }
+}
 
 
 export default function Home() {
-  const [gpuOk, setGpuOk] = useState(true);
+  const gpuOk = useClientValue(hasHardwareGpu, true);
   const [view, setView] = useState<"landing" | "workspace" | "settings" | "account">("landing");
   const [moduleId, setModuleId] = useState<string | null>(null);
   const [courseId, setCourseId] = useState<string | null>(null);
@@ -25,34 +45,6 @@ export default function Home() {
     supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setUserId(s?.user?.id ?? null));
     return () => sub.subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    // Only run on client
-    if (typeof window === "undefined") return;
-    let gl;
-    try {
-      const canvas = document.createElement("canvas");
-      gl = (canvas.getContext("webgl") ||
-        canvas.getContext("experimental-webgl")) as WebGLRenderingContext | null;
-      if (!gl) {
-        setGpuOk(false);
-        return;
-      }
-      const debugInfo = gl.getExtension("WEBGL_debug_renderer_info");
-      let renderer = "";
-      if (debugInfo) {
-        renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-      } else {
-        renderer = gl.getParameter(gl.RENDERER);
-      }
-      // If renderer string contains these, it's likely software rendering
-      if (/swiftshader|software|llvmpipe/i.test(renderer)) {
-        setGpuOk(false);
-      }
-    } catch {
-      setGpuOk(false);
-    }
   }, []);
 
   return (

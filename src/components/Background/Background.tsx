@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React from "react";
+import { useClientValue } from "@/lib/useClientValue";
 import Fluid from "./Fluid";
 import Dither from "./Dither";
 
@@ -37,8 +38,7 @@ function supportsFloatTargets(): boolean {
  */
 export default function Background({ calm = false }: { calm?: boolean }) {
   // null until probed, so the server and the first client render agree.
-  const [fluid, setFluid] = useState<boolean | null>(null);
-  useEffect(() => setFluid(supportsFloatTargets()), []);
+  const fluid = useClientValue<boolean | null>(supportsFloatTargets, null);
 
   return (
     <div
