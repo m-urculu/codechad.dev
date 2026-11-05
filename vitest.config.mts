@@ -7,6 +7,6 @@ export default defineConfig({
   test: {
     // Pure logic only — no DOM, no browser APIs.
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["tests/unit/**/*.test.ts"],
   },
 });
