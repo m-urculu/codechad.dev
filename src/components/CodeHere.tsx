@@ -58,18 +58,43 @@ export default function CodeHere({
 
   const [output, setOutput] = useState<OutLine[]>([]);
   const [running, setRunning] = useState(false);
-  const [hasDom, setHasDom] = useState(spec.engine === "iframe-web");
-  const [tab, setTab] = useState<"console" | "preview">("console");
+  // Whether runs go to the DOM preview: always for a web module, and for a module that
+  // allows a DOM when there is scaffold HTML (the lesson's, or the module's default).
+  const domFor = (html?: string) =>
+    spec.engine === "iframe-web" || (!!spec.allowDom && !!(html || spec.defaultHtml));
+  // Preview-centric modules (React/Vue/Three.js) open on Preview; everything else on
+  // Console. After that, Run respects whatever tab the learner has selected.
+  const startTab = (): "console" | "preview" => (spec.engine === "iframe-web" ? "preview" : "console");
+  const [hasDom, setHasDom] = useState(() => domFor(loadCode?.html));
+  const [tab, setTab] = useState<"console" | "preview">(startTab);
+
+  // State that follows the module and the loaded lesson is updated DURING RENDER when
+  // either changes (no extra render pass); the imperative half (the editor, the running
+  // program) stays in the effects below. When both change at once the module reset runs
+  // first and the lesson's values win, as before.
+  const [seenModule, setSeenModule] = useState(moduleId);
+  const [seenNonce, setSeenNonce] = useState(loadCode?.nonce);
+  if (seenModule !== moduleId) {
+    setSeenModule(moduleId);
+    setHasDom(domFor());
+    setTab(startTab());
+    setOutput([]);
+  }
+  if (seenNonce !== loadCode?.nonce) {
+    setSeenNonce(loadCode?.nonce);
+    if (loadCode) {
+      // Clear the console/preview from the previous lesson; otherwise a prior run's
+      // output (e.g. an error) persists into the new lesson after auto-advance or resume.
+      setRunning(false);
+      setOutput([]);
+      setHasDom(domFor(loadCode.html));
+    }
+  }
 
   // Reset editor + scaffold when the module changes.
   useEffect(() => {
     codeRef.current = spec.defaultCode;
     htmlRef.current = spec.defaultHtml ?? "";
-    setHasDom(spec.engine === "iframe-web" || (spec.allowDom && !!spec.defaultHtml));
-    // Preview-centric modules (React/Vue/Three.js) open on Preview; everything else
-    // on Console. After that, Run respects whatever tab the learner has selected.
-    setTab(spec.engine === "iframe-web" ? "preview" : "console");
-    setOutput([]);
     suppressChangeRef.current = true;
     if (editorRef.current) editorRef.current.setValue(spec.defaultCode);
     else pendingRef.current = spec.defaultCode;
@@ -79,15 +104,10 @@ export default function CodeHere({
   // Preload starter code (and DOM scaffold) when a lesson loads.
   useEffect(() => {
     if (!loadCode) return;
-    // Stop anything still running and clear the console/preview from the previous
-    // lesson — otherwise a prior run's output (e.g. an error) persists into the new
-    // lesson after auto-advance or resume.
+    // Stop anything still running from the previous lesson.
     cancelAll();
-    setRunning(false);
-    setOutput([]);
     codeRef.current = loadCode.code;
     htmlRef.current = loadCode.html || spec.defaultHtml || "";
-    setHasDom(spec.engine === "iframe-web" || (spec.allowDom && !!htmlRef.current));
     suppressChangeRef.current = true;
     if (editorRef.current) editorRef.current.setValue(loadCode.code);
     else pendingRef.current = loadCode.code;
