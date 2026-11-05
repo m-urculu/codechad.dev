@@ -52,6 +52,21 @@ describe("tierOf — free text ('Type my own…')", () => {
     expect(tierOf(level)).toBe("beginner");
   });
 
+  it.each([
+    ["Years of experience, not a beginner", "advanced"],
+    ["I'm not new, very experienced", "advanced"],
+    ["not professionally, but experienced", "advanced"],
+    ["Not a beginner", "intermediate"],
+    ["not my first time", "intermediate"],
+    ["Not new to it, but not an expert", "intermediate"],
+  ])("judges what is left once negated phrases are set aside: %j → %s", (level, tier) => {
+    // Regression: a negated BEGINNER word ("not a beginner") used to map to beginner,
+    // and a negated advanced word could hide a real one ("not professionally, but
+    // experienced"). A remaining positive keyword decides; otherwise the negations do:
+    // "not a beginner" is above beginner, and "not new but not an expert" is between.
+    expect(tierOf(level)).toBe(tier);
+  });
+
   it("does not treat an unrelated 'not' as negating the level", () => {
     // The negation has to be about the experience itself.
     expect(tierOf("Experienced, but not in Go")).toBe("advanced");

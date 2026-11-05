@@ -25,28 +25,42 @@ export type Tier = "beginner" | "intermediate" | "advanced";
 const ADVANCED = /\b(experienc|advanc|senior|expert|profession|fluent|proficient|years?\b|pro\b|veteran)/i;
 const BEGINNER = /\b(new to|never|zero|nothing|beginner|novice|no experience|starting out|first time|complete beginner)/i;
 const INTERMEDIATE = /\b(some|intermediate|basics|dabbl|hobby|self.?taught|a bit|familiar|rusty)/i;
-// An ADVANCED keyword that is negated: "not experienced", "not very experienced",
-// "I don't have much experience", "not an expert", "inexperienced". Up to two words may
-// sit between the negation and the keyword. Without this, the keyword alone matched and
-// a learner who said they were new got the condensed, experienced-level course.
-const NEGATED =
-  /\b(?:not|\w*n['’]t|hardly|barely|little|without|lack\w*)\s+(?:[\w'’]+\s+){0,2}(?:experienc|advanc|senior|expert|profession|fluent|proficient|pro\b|veteran)|\binexperienc/i;
+// Negated keywords. A keyword read on its own means its opposite here: "not
+// experienced" contains "experienc", "not a beginner" contains "beginner". Up to two
+// words may sit between the negation and the keyword ("not very experienced", "I don't
+// have much experience", "not my first time").
+const NEGATION = String.raw`\b(?:not|no longer|\w*n['’]t|hardly|barely|little|without|lack\w*)\s+(?:[\w'’]+\s+){0,2}`;
+const NOT_ADVANCED = new RegExp(
+  `${NEGATION}(?:experienc|advanc|senior|expert|profession|fluent|proficient|pro\\b|veteran)|\\binexperienc`,
+  "gi"
+);
+const NOT_BEGINNER = new RegExp(`${NEGATION}(?:new\\b|beginner|novice|starting out|first time)`, "gi");
 
 /**
  * Map a stated level onto a tier.
  *
- * Order matters: a negated advanced keyword ("not experienced") is tested first, and
- * "some experience" contains "experienc", so the middle is tested before the top. An
- * absent level is treated as a beginner — it is what the app did before this existed,
- * and the failure is the gentler one.
+ * Negated phrases are set aside first, and what remains is judged by keyword. Order
+ * matters there: "some experience" contains "experienc", so the middle is tested
+ * before the top. When nothing positive remains, the negations decide: "not
+ * experienced" is a beginner, "not a beginner" is above one, and both together
+ * ("not new, but not an expert") is in between.
+ *
+ * An absent level is treated as a beginner — it is what the app did before this
+ * existed, and the failure is the gentler one.
  */
 export function tierOf(level?: string | null): Tier {
   const s = (level ?? "").trim();
   if (!s) return "beginner";
-  if (NEGATED.test(s)) return "beginner";
-  if (BEGINNER.test(s)) return "beginner";
-  if (INTERMEDIATE.test(s)) return "intermediate";
-  if (ADVANCED.test(s)) return "advanced";
+
+  const withoutNotAdvanced = s.replace(NOT_ADVANCED, " ");
+  const rest = withoutNotAdvanced.replace(NOT_BEGINNER, " ");
+  const notAdvanced = withoutNotAdvanced !== s;
+  const notBeginner = rest !== withoutNotAdvanced;
+
+  if (BEGINNER.test(rest)) return "beginner";
+  if (INTERMEDIATE.test(rest)) return "intermediate";
+  if (ADVANCED.test(rest)) return "advanced";
+  if (notAdvanced && !notBeginner) return "beginner";
   return "intermediate";
 }
 
