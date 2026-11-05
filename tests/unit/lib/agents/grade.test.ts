@@ -35,7 +35,11 @@ describe("gradeSubmission — stdout_equals", () => {
     expect(r.passed).toBe(false);
   });
 
-  it.todo("fails when the expected lines appear in the reverse order");
+  it("fails when the expected lines appear in the reverse order", () => {
+    // Same lines, wrong order: the expected block must be printed in sequence.
+    const r = gradeOne({ type: "stdout_equals", value: "a\nb" }, "b\na");
+    expect(r.passed).toBe(false);
+  });
 
   it("ignores CRLF line endings, padding inside a line, and blank lines at the edges", () => {
     // SQL result tables pad cells with spaces/tabs; "a | b" must match "a    |\tb".
@@ -46,7 +50,12 @@ describe("gradeSubmission — stdout_equals", () => {
     expect(r.passed).toBe(true);
   });
 
-  it.todo("an empty expected value only matches empty output, not arbitrary output");
+  it("an empty expected value only matches empty output, not arbitrary output", () => {
+    // "Print nothing" is a real expectation: an empty check must not pass every program.
+    const check = { type: "stdout_equals", value: "" } as const;
+    expect(gradeOne(check, "").passed).toBe(true);
+    expect(gradeOne(check, "hello").passed).toBe(false);
+  });
 
   it.each([
     ["spacing differs", "[ 99, 2, 3 ]", "[99,2,3]"],
@@ -113,7 +122,13 @@ describe("gradeSubmission — code_matches", () => {
     expect(r.detail).toBe("code should satisfy /while/");
   });
 
-  it.todo("falls back to a plain substring check when the value is not a valid regex");
+  it("falls back to a plain substring check when the value is not a valid regex", () => {
+    // "print(" is a broken regex (unclosed group). The grader must not crash: it looks
+    // for the exact text instead — and that is still a real check, not a free pass.
+    const check = { type: "code_matches", value: "print(" } as const;
+    expect(gradeOne(check, "", "print('hi')").passed).toBe(true);
+    expect(gradeOne(check, "", "console.log('hi')").passed).toBe(false);
+  });
 });
 
 describe("gradeSubmission — gradability", () => {
