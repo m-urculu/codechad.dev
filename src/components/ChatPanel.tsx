@@ -302,6 +302,57 @@ export default function ChatPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Set when a conversation is restored (from the cache or the server).
+  const chatRestored = useRef(false);
+  // What the cache put on screen, if anything — so the network path below knows
+  // whether it is replacing something the learner can already see.
+  const [cachePainted, setCachePainted] = useState<Message[] | null>(null);
+  const [cacheCheckedFor, setCacheCheckedFor] = useState<string | null>(null);
+
+  // Paint the cached conversation in the FIRST render, so it is on the first frame the
+  // learner sees, with no flash of an empty pane.
+  //
+  // This deliberately does not wait for `boot`, for `userId`, or for the boot effect
+  // below. Those all depend on network round trips — EditorPanels has to load the course
+  // row before `boot` leaves "loading", and getUser() resolves a promise before `userId`
+  // exists — and waiting on either is exactly the delay this cache was built to remove.
+  // The user id comes from storage synchronously (cachedUserId) for the same reason.
+  //
+  // Reading localStorage during render is safe here because this component is never
+  // server-rendered: the workspace only mounts after the learner opens a course. The
+  // window check keeps a server render, should one ever happen, from touching storage.
+  // Each course id is checked once, and nothing is painted over a conversation already
+  // painted from the cache.
+  if (!cachePainted && courseId && cacheCheckedFor !== courseId && typeof window !== "undefined") {
+    setCacheCheckedFor(courseId);
+    const hit = readChat(cachedUserId(), courseId);
+    if (hit?.messages?.length) {
+      const next = stripResumeRecaps(hit.messages).map((m, i) => ({
+        id: i + 1,
+        role: (m.role === "user" ? "user" : "bot") as "user" | "bot",
+        text: m.text,
+        lessonId: m.lessonId,
+      }));
+      setCachePainted(next);
+      setMessages(next);
+      setCalib({
+        step: (hit.calib?.step as CalibStep) ?? "done",
+        level: hit.calib?.level ?? savedLevel,
+        goal: hit.calib?.goal ?? savedGoal,
+      });
+      setVisibleCount(BATCH); // open on the latest interactions, not the top of the history
+    }
+  }
+
+  // The imperative half of a cache paint. Declared BEFORE the alignment effect below so
+  // that, in the same commit, it lands the view on the newest message.
+  useLayoutEffect(() => {
+    if (!cachePainted) return;
+    chatRestored.current = true;
+    pendingBottomRef.current = true;
+    followingRef.current = true;
+  }, [cachePainted]);
+
   // After each render: preserve position when older messages were prepended, otherwise align
   // the newest message's top to the top of the chat area (init / new message, if following).
   useLayoutEffect(() => {
@@ -386,47 +437,8 @@ export default function ChatPanel({
 
   // Boot the conversation: restore the saved chat (logged-in) or start fresh.
   const chatBootKey = useRef<string | null>(null);
-  const chatRestored = useRef(false);
   // Set once a trial conversation has been carried into a signed-in session.
   const adoptedTrial = useRef(false);
-  // What the cache put on screen, if anything — so the network path below knows
-  // whether it is replacing something the learner can already see.
-  const cachePainted = useRef<Message[] | null>(null);
-
-  // Paint the cached conversation BEFORE the browser paints anything.
-  //
-  // This deliberately does not wait for `boot`, for `userId`, or for the boot
-  // effect below. Those all depend on network round trips — EditorPanels has to
-  // load the course row before `boot` leaves "loading", and getUser() resolves a
-  // promise before `userId` exists — and waiting on either is exactly the delay
-  // this cache was built to remove. The user id comes from storage synchronously
-  // (cachedUserId) for the same reason.
-  //
-  // useLayoutEffect, not useEffect: this runs after hydration but before paint, so
-  // the conversation is on the first frame the learner actually sees, with no flash
-  // of an empty pane. It cannot be a lazy useState initializer — the server renders
-  // this component too, and a client-only value there is a hydration mismatch.
-  useLayoutEffect(() => {
-    if (cachePainted.current || !courseId) return;
-    const hit = readChat(cachedUserId(), courseId);
-    if (!hit?.messages?.length) return;
-    const next = stripResumeRecaps(hit.messages).map((m, i) => ({
-      id: i + 1,
-      role: (m.role === "user" ? "user" : "bot") as "user" | "bot",
-      text: m.text,
-      lessonId: m.lessonId,
-    }));
-    cachePainted.current = next;
-    setMessages(next);
-    setCalib({
-      step: (hit.calib?.step as CalibStep) ?? "done",
-      level: hit.calib?.level ?? savedLevel,
-      goal: hit.calib?.goal ?? savedGoal,
-    });
-    chatRestored.current = true;
-    resetToLatest(); // open on the latest interactions, not the top of the history
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [courseId]);
 
   useEffect(() => {
     if (!meta || boot === "loading") return;
@@ -512,7 +524,7 @@ export default function ChatPanel({
 
     // The cache may already have put this conversation on screen (see the layout
     // effect above); if so, everything below is a revalidation, not a load.
-    const painted = cachePainted.current;
+    const painted = cachePainted;
 
     (async () => {
       // 1) Saved conversation? Restore it verbatim (messages + calibration).
