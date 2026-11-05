@@ -149,6 +149,9 @@ regression test written first and seen to fail before the fix.
 | 6 | CI workflow, README badge and "Testing" section | `ci: run lint, type check and tests on every push` |
 | optional | `billing.ts` with module mocks | — |
 
-Open before CI: `npm run lint` currently crashes. `eslint.config.mjs` loads
-`eslint-config-next` 16 through `FlatCompat`, which fails with "Converting circular
-structure to JSON". CI can only run lint once that config is fixed.
+Before CI, lint was repaired: `eslint.config.mjs` loaded `eslint-config-next` 16 through
+`FlatCompat`, which crashed with "Converting circular structure to JSON", so lint had not
+been running. Once it ran, it reported 30 problems: mechanical ones (types, escaping, dead
+directives), and 14 React Compiler rule violations in UI components, which were fixed
+component by component (state set during render or read through `useSyncExternalStore`
+instead of set from effects). `npm run lint` now passes with no errors.
