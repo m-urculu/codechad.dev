@@ -21,7 +21,7 @@ export const stripe = key
       // Pinned. An account-level API version change is a thing Stripe can do TO you;
       // pinning means the shape of a webhook payload changes when this line changes and
       // not before.
-      apiVersion: "2026-06-24.dahlia",
+      apiVersion: "2026-08-26.dahlia",
       appInfo: { name: "CodeChad", url: "https://www.codechad.dev" },
     })
   : null;
