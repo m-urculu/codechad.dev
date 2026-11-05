@@ -94,9 +94,12 @@ export function mergeCourses(
     if (!old) return f;
     // Any difference at all — a rename, a new goal, more lessons done — takes the
     // server's row wholesale. The comparison exists to detect "nothing changed",
-    // not to merge field by field.
-    const same = (Object.keys(f) as (keyof RoadmapSummary)[]).every((k) => old[k] === f[k]);
-    return same ? old : { ...old, ...f };
+    // not to merge field by field. Keys from BOTH rows are compared: a field the
+    // server stopped sending (a cleared goal is omitted, not sent as null) is a
+    // change too, and must not survive from the cache.
+    const keys = new Set([...Object.keys(old), ...Object.keys(f)]) as Set<keyof RoadmapSummary>;
+    const same = [...keys].every((k) => old[k] === f[k]);
+    return same ? old : f;
   });
 }
 

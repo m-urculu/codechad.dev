@@ -38,6 +38,15 @@ describe("mergeCourses", () => {
     expect(merged[0]).toMatchObject({ doneCount: 3, name: "Py" });
   });
 
+  it("drops a field the server no longer sends, instead of keeping the cached value", () => {
+    // Regression: a cleared goal is OMITTED by the server (undefined isn't sent as
+    // JSON), and the merge kept the old one — both when nothing else changed and when
+    // something did. The server's row must be taken wholesale.
+    const cached = course("a", { goal: "Data science" });
+    expect(mergeCourses([cached], [course("a")])[0]).not.toHaveProperty("goal");
+    expect(mergeCourses([cached], [course("a", { doneCount: 2 })])[0]).not.toHaveProperty("goal");
+  });
+
   it("follows the server on which courses exist, and in what order", () => {
     // A course deleted elsewhere disappears; a new one appears; order is the server's.
     const merged = mergeCourses([course("a"), course("gone")], [course("new"), course("a")]);
