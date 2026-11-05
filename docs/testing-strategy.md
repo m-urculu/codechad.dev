@@ -84,10 +84,10 @@ See [skills-ledger.md](skills-ledger.md) for the design these tests protect.
 
 See [learning-paths.md](learning-paths.md) for how paths are meant to work.
 
-**Open bug:** `tierOf` reads a negation as its opposite. "Not experienced" and "not
-very experienced" both map to **advanced** (the keyword "experienc" matches and "not" is
-ignored), so a learner who says they are new is given condensed foundation courses.
-"Inexperienced" maps to intermediate. Reported, not yet fixed.
+**Bug found and fixed:** `tierOf` read a negation as its opposite. "Not experienced"
+and "not very experienced" both mapped to **advanced** (the keyword "experienc" matched and
+"not" was ignored), so a learner who said they were new was given condensed foundation
+courses. Negated advanced keywords are now checked first and map to beginner.
 
 ## Promise 4: messy AI output doesn't break the app
 

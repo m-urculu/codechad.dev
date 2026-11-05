@@ -38,6 +38,26 @@ describe("tierOf — free text ('Type my own…')", () => {
     expect(tierOf(level)).toBe(tier);
   });
 
+  it.each([
+    "Not experienced",
+    "not very experienced",
+    "Inexperienced",
+    "I don't have much experience",
+    "Not an expert",
+    "can't say I'm experienced",
+  ])("reads a negated advanced keyword as a beginner: %j", (level) => {
+    // Regression: "Not experienced" used to map to ADVANCED, because the keyword
+    // "experienc" matched and the "not" was ignored. A learner who says they are new
+    // was given condensed foundation courses.
+    expect(tierOf(level)).toBe("beginner");
+  });
+
+  it("does not treat an unrelated 'not' as negating the level", () => {
+    // The negation has to be about the experience itself.
+    expect(tierOf("Experienced, but not in Go")).toBe("advanced");
+    expect(tierOf("Some experience, not much")).toBe("intermediate");
+  });
+
   it("puts a beginner keyword ahead of an advanced one", () => {
     // "Advanced beginner" is still a beginner: when unsure, teach the gentler course.
     expect(tierOf("Advanced beginner")).toBe("beginner");
