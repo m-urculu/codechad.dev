@@ -85,28 +85,57 @@ export async function groundedText(prompt: string): Promise<{ text: string; sour
   return { text: "", sources: [] };
 }
 
+// Index of the bracket that closes the one at `start`, or -1. Brackets inside JSON
+// strings don't count.
+function matchingClose(s: string, start: number): number {
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < s.length; i++) {
+    const ch = s[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') {
+      inString = true;
+    } else if (ch === "{" || ch === "[") {
+      depth++;
+    } else if (ch === "}" || ch === "]") {
+      if (--depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
 // Robustly pull a JSON value out of a (possibly fenced / chatty) grounded reply.
+//
+// When the reply is not pure JSON, every "{" or "[" is tried as the start of a value,
+// cut at ITS matching bracket, and the LARGEST piece that parses wins — the answer is
+// the biggest JSON in a reply, not whatever bracket happens to come first. Taking
+// first-bracket-to-last-bracket used to fail on prose like "use {curly} braces" or a
+// stray "[1]", which cost a retry and, twice in a row, a failed generation.
 export function extractJSON(text: string): any | null {
   let t = text.trim();
   t = t.replace(/^```(?:json)?/i, "").replace(/```$/i, "").trim();
   try {
     return JSON.parse(t);
   } catch {
-    /* try to slice */
+    /* search inside it */
   }
-  const candidates = ["{", "["].map((c) => t.indexOf(c)).filter((i) => i >= 0);
-  if (candidates.length === 0) return null;
-  const start = Math.min(...candidates);
-  const close = t[start] === "{" ? "}" : "]";
-  const end = t.lastIndexOf(close);
-  if (end > start) {
+  let best: any = null;
+  let bestLength = 0;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] !== "{" && t[i] !== "[") continue;
+    const end = matchingClose(t, i);
+    if (end < 0 || end - i + 1 <= bestLength) continue;
     try {
-      return JSON.parse(t.slice(start, end + 1));
+      best = JSON.parse(t.slice(i, end + 1));
+      bestLength = end - i + 1;
+      i = end; // anything that starts inside this value is smaller than it
     } catch {
-      /* give up */
+      /* not JSON from here; try the next bracket */
     }
   }
-  return null;
+  return bestLength ? best : null;
 }
 
 // One grounded call + JSON extraction with a single retry. The grounded endpoint

@@ -31,6 +31,18 @@ describe("extractJSON — pulling data out of an AI reply", () => {
   });
 
   it.each([
+    ["braces in the prose before it", 'Use {curly} braces. {"title":"Go"}', { title: "Go" }],
+    ["a small array mentioned before it", 'Note [1] then {"title":"Go"}', { title: "Go" }],
+    ["a smaller object after it", '{"title":"Go","topics":[]}\n{"note":1}', { title: "Go", topics: [] }],
+    ["brackets inside its strings", 'Reply: {"title":"Arrays [and] {maps}"} done', { title: "Arrays [and] {maps}" }],
+  ])("finds the real JSON despite %s", (_label, reply, expected) => {
+    // Regression: everything from the FIRST bracket to the LAST was parsed as one block,
+    // so a stray bracket made it fail or return the wrong piece — costing a retry, and
+    // after two misses the learner saw "could not generate".
+    expect(extractJSON(reply)).toEqual(expected);
+  });
+
+  it.each([
     ["a refusal", "I cannot help with that."],
     ["an empty reply", ""],
     ["a reply cut off mid-JSON", '{"a": [1, 2'],
