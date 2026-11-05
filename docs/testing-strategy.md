@@ -87,7 +87,9 @@ See [learning-paths.md](learning-paths.md) for how paths are meant to work.
 **Bug found and fixed:** `tierOf` read a negation as its opposite. "Not experienced"
 and "not very experienced" both mapped to **advanced** (the keyword "experienc" matched and
 "not" was ignored), so a learner who said they were new was given condensed foundation
-courses. Negated advanced keywords are now checked first and map to beginner.
+courses. The mirror case failed too: "Years of experience, not a beginner" mapped to
+beginner. Negated phrases of both kinds are now set aside first and the rest is judged by
+keyword; when nothing positive remains, the negations decide.
 
 ## Promise 4: messy AI output doesn't break the app
 
