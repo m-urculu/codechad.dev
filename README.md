@@ -42,6 +42,33 @@
 
 Next.js (App Router, Turbopack) · React · Tailwind · Monaco editor · Supabase (auth + persistence) · Gemini (generation & tutoring) · WASM runtimes per module
 
+## Getting started
+
+You need Node.js 24 (the version CI uses), a [Supabase](https://supabase.com) project and a [Gemini API key](https://aistudio.google.com/apikey).
+
+```bash
+git clone https://github.com/m-urculu/codechad.dev.git
+cd codechad.dev
+npm ci
+cp .env.example .env.local   # then fill in the four required values
+npm run dev                  # http://localhost:3000
+```
+
+**Database.** Run the files in [`supabase/migrations/`](supabase/migrations) in numeric order in the Supabase SQL editor. They create the tables, Row Level Security policies and foreign keys the app expects.
+
+**Sign-in.** Google sign-in needs your origin registered once in Google Cloud and in Supabase. The steps are at the top of [`src/lib/googleAuth.ts`](src/lib/googleAuth.ts).
+
+**Billing** is optional and stays hidden until Stripe is configured. See [docs/payments.md](docs/payments.md).
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` / `npm start` | Production build, and serving it |
+| `npm run lint` | ESLint |
+| `npm test` | Unit tests |
+| `npm run check:docs` | Checks that every documentation link the app ships is still live |
+| `npm run check:erasure` | Proves account deletion erases user data. **Writes to the real database**; run it knowingly |
+
 ## Testing
 
 ```bash
