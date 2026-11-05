@@ -1196,7 +1196,6 @@ export default function ChatPanel({
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonRequest, loading]);
 
   // Persist the learner's edited code into the active lesson's cache (debounced upstream

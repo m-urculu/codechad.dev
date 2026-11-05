@@ -571,13 +571,13 @@ function chaptersFor(course: PathCourse, tier: Tier): PathChapter[] {
   // Python. Such a chapter stays on its own instead.
   const out: PathChapter[] = [];
   for (let i = 0; i < course.chapters.length; ) {
-    const module = chapterModule(course.chapters[i], course.module);
+    const runtime = chapterModule(course.chapters[i], course.module);
     const next = course.chapters[i + 1];
-    const size = next !== undefined && chapterModule(next, course.module) === module ? 2 : 1;
+    const size = next !== undefined && chapterModule(next, course.module) === runtime ? 2 : 1;
     const group = titles.slice(i, i + size);
     out.push({
       title: group.join(" & "),
-      module,
+      module: runtime,
       summary:
         size === 2
           ? `Covers ${group[0]} and ${group[1]} together, for a learner who can already program.`

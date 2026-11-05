@@ -46,7 +46,7 @@ export default function RootLayout({
             the URL and the purpose in a form that needs no scraping. */}
         <script
           type="application/ld+json"
-          // eslint-disable-next-line react/no-danger -- static, no user input
+          // static JSON-LD, no user input
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               "@context": "https://schema.org",

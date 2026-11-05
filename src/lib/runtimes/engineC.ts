@@ -23,7 +23,6 @@
 //
 // The compiled program then runs under our own small WASI host (see wasi.ts).
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { extImport, type OnLine } from "./exec";
 import { createWasi } from "./wasi";
 
@@ -204,8 +203,8 @@ async function compileAndRun(
   );
 
   try {
-    const module = await WebAssembly.compile(program as unknown as BufferSource);
-    const instance = await WebAssembly.instantiate(module, wasi.imports);
+    const wasmModule = await WebAssembly.compile(program as unknown as BufferSource);
+    const instance = await WebAssembly.instantiate(wasmModule, wasi.imports);
     const { exitCode } = wasi.start(instance);
     stdout.end();
     stderr.end();

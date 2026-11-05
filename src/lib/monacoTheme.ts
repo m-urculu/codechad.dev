@@ -33,7 +33,6 @@ const BUILTIN = "2ac3de";   // print, len, SUM, attr_reader
 const NUMBER = "ff9e64";    // numbers and language constants
 const SPECIAL = "f7768e";   // self / cls / this / $vars
 const OPERATOR = "89ddff";  // + - = < > and friends
-const INFO = "7dd3fc";
 const WARN = "fbbf24";
 const DANGER = "ef4444";
 

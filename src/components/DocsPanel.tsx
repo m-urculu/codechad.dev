@@ -103,8 +103,8 @@ export default function DocsPanel({
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
           <BookOpen className="h-8 w-8 text-ink-faint" />
           <p className="max-w-sm text-sm leading-relaxed text-ink-dim">
-            The official <span className="text-ink-muted">{title}</span> documentation can't be
-            embedded here, but it's one click away.
+            The official <span className="text-ink-muted">{title}</span> documentation can&apos;t be
+            embedded here, but it&apos;s one click away.
           </p>
           <a
             href={src.url}
