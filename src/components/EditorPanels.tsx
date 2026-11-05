@@ -272,15 +272,18 @@ export default function EditorPanels({
   // tree the moment the workspace opens, so the learner sees the real length of what
   // they just started instead of a spinner, and every lesson under it is still
   // generated on demand exactly as in any other course.
-  useEffect(() => {
-    if (!path || boot !== "fresh" || roadmap) return;
+  //
+  // The tree is plain data, so it is set during render rather than in an effect; the
+  // naming call it triggers is a side effect, and runs in the effect after
+  // nameCourseFromContent below.
+  // Deliberately NOT switching to the roadmap tab here, unlike a generated course:
+  // the chat is mid-question, and answering it is what opens the tab below.
+  const [seededPath, setSeededPath] = useState<Roadmap | null>(null);
+  if (path && boot === "fresh" && !roadmap) {
     const seeded = pathRoadmap(path);
     setRoadmap(seeded);
-    void nameCourseFromContent(seeded);
-    // Deliberately NOT switching to the roadmap tab here, unlike a generated course:
-    // the chat is mid-question, and answering it is what opens the tab below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, boot, roadmap]);
+    setSeededPath(seeded);
+  }
 
   // The one thing a path still asks for. Stored on the tree (and so persisted with
   // it) because the level is what every lesson on the path is pitched at.
@@ -344,7 +347,9 @@ export default function EditorPanels({
       }
     })();
     return ensureInFlight.current;
-  }, [userId, skill, moduleId]);
+    // The two setters never change identity; they are listed so the dependency list
+    // matches what the callback uses (react-hooks/preserve-manual-memoization).
+  }, [userId, skill, moduleId, setCourseId, setCourseLimitMessage]);
 
   // Debounced save when the tree or progress changes (logged-in only).
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -475,6 +480,14 @@ export default function EditorPanels({
       }),
     }).catch(() => {});
   }
+
+  // Name a career-path course after its curriculum once its tree is seeded (above).
+  useEffect(() => {
+    if (seededPath) void nameCourseFromContent(seededPath);
+    // Keyed on the seeded tree alone: nameCourseFromContent is redefined every render,
+    // and listing it would re-send the request on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seededPath]);
 
   // Generation failed → persist a course shell (level/goal, no tree) so the course
   // still shows up in "My courses", can be resumed for a retry, and can be deleted.
