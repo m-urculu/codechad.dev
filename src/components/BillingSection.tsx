@@ -19,7 +19,7 @@
 // offer, no survey gate. Cancelling must not be harder than subscribing (§9.6), and the
 // Digital Fairness Act is aimed precisely at flows that make it so.
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { FiCheck, FiExternalLink } from "react-icons/fi";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -45,6 +45,17 @@ function formatDate(iso: string | null): string {
     : d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
 }
 
+// The billing status, or null when it cannot be read — the section then simply doesn't
+// render; the rest of the page is unaffected.
+async function fetchStatus(): Promise<Status | null> {
+  try {
+    const res = await apiFetch("/api/billing/status");
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function BillingSection() {
   const [s, setS] = useState<Status | null>(null);
   const [busy, setBusy] = useState<null | "portal" | "withdraw">(null);
@@ -54,18 +65,15 @@ export default function BillingSection() {
     null
   );
 
-  const load = useCallback(async () => {
-    try {
-      const res = await apiFetch("/api/billing/status");
-      if (res.ok) setS(await res.json());
-    } catch {
-      /* the section simply doesn't render; the rest of the page is unaffected */
-    }
-  }, []);
-
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    fetchStatus().then((status) => {
+      if (!cancelled && status) setS(status);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function openPortal() {
     setBusy("portal");
@@ -101,7 +109,8 @@ export default function BillingSection() {
       }
       setDone({ reference: json.reference, refunded: json.refunded, currency: json.currency });
       setArmed(false);
-      await load();
+      const status = await fetchStatus();
+      if (status) setS(status);
     } catch {
       setError("Could not reach the server.");
     } finally {

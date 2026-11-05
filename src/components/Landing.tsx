@@ -646,17 +646,18 @@ export default function Landing({
   // server was always going to refuse: undefined until loaded, null means no
   // cap (pro). A status fetch that fails leaves it undefined, which never
   // blocks — the same fail-open rule /api/roadmap/state itself follows.
-  const [courseLimit, setCourseLimit] = useState<number | null | undefined>(undefined);
+  //
+  // Stored with the user it was read for, so a limit is never shown to anyone else:
+  // signed out, or a different account, reads as undefined until its own arrives.
+  const [limitFor, setLimitFor] = useState<{ userId: string; limit: number | null } | null>(null);
+  const courseLimit = limitFor && limitFor.userId === userId ? limitFor.limit : undefined;
   useEffect(() => {
-    if (!userId) {
-      setCourseLimit(undefined);
-      return;
-    }
+    if (!userId) return;
     let cancelled = false;
     apiFetch("/api/billing/status")
       .then((res) => res.json())
       .then((data) => {
-        if (!cancelled) setCourseLimit(typeof data.courseLimit === "number" ? data.courseLimit : null);
+        if (!cancelled) setLimitFor({ userId, limit: typeof data.courseLimit === "number" ? data.courseLimit : null });
       })
       .catch(() => {});
     return () => {
