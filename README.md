@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/m-urculu/codechad.dev/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/m-urculu/codechad.dev/actions/workflows/ci.yml/badge.svg" /></a>
   <img alt="version" src="https://img.shields.io/badge/version-0.2.0-34d399" />
   <img alt="status" src="https://img.shields.io/badge/status-beta-38bdf8" />
   <img alt="license" src="https://img.shields.io/badge/license-MIT-white" />
@@ -40,6 +41,25 @@
 ## Stack
 
 Next.js (App Router, Turbopack) · React · Tailwind · Monaco editor · Supabase (auth + persistence) · Gemini (generation & tutoring) · WASM runtimes per module
+
+## Testing
+
+```bash
+npm test                              # 168 unit tests (Vitest)
+npx vitest                            # watch mode
+npx vitest run --reporter=verbose     # every test by name — reads as a spec
+```
+
+Unit tests cover the deterministic core — the code that decides outcomes for a learner:
+
+- **Grading** — pass/fail per objective, and a contract test that what the console prints is graded the same way whatever layout the check was written in.
+- **Progress and the skills ledger** — progress maths, and what counts as already learned.
+- **Curriculum** — level detection, career paths and fixed curricula.
+- **AI output** — pulling JSON out of messy model replies, and cleaning generated titles.
+
+Gemini, Supabase, Stripe and the in-browser runtimes are deliberately not unit-tested. Writing the tests found and fixed eight bugs. The full strategy, the reasoning behind it and the bug list are in [docs/testing-strategy.md](docs/testing-strategy.md).
+
+CI runs lint, the type check and the tests on every push and pull request ([workflow](.github/workflows/ci.yml)).
 
 ---
 
