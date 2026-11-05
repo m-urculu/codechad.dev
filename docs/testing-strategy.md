@@ -45,21 +45,32 @@ and the tutor goes hunting for a mistake that isn't there.
 
 | Module | What the tests guarantee | Tests | Status |
 |---|---|---|---|
-| `src/lib/agents/grade.ts` | Pass/fail per objective: tolerant of the learner's debug output, strict about line order, collections compared by content not layout, code that never compiled always fails | 25 + 3 todo | done |
-| `src/lib/runtimes/consoleFormat.ts` | How a printed value becomes text: small collections inline, large ones indented, circular objects print `[Circular]`, functions and BigInts don't crash | ~7 | planned |
-| Contract: `consoleFormat` → `grade` | Whatever the console prints for an array **passes** a check written as `[ 99, 2, 3 ]` | ~3 | planned |
+| `src/lib/agents/grade.ts` | Pass/fail per objective: tolerant of the learner's debug output, strict about line order, collections compared by content not layout (including bare JavaScript object keys), but only at the top level of the output, and code that never compiled always fails | 31 | done |
+| `src/lib/runtimes/consoleFormat.ts` | How a printed value becomes text: small collections inline, large ones indented, a real cycle prints `[Circular]` but a repeated object prints in full, functions and BigInts don't crash | 11 | done |
+| Contract: `consoleFormat` → `grade` (`tests/unit/contracts/`) | Whatever the console prints for a value **passes** a check for the same value in any layout, and still fails for wrong or merely nested values | 10 | done |
 
 The contract test joins two modules the way the running app does. It pins down a real
 past bug, described at the top of `consoleFormat.ts`: three formatters disagreed, so a
 lesson could be validated as solvable and then be impossible to pass in the learner's
 console.
 
+### Bugs these tests found
+
+Writing the Promise 1 tests turned up three bugs. Each was fixed in its own `fix:`
+commit with a regression test written first and seen to fail:
+
+| Bug | Effect on a learner |
+|---|---|
+| `console.log([p, p])` printed `[{"a":1},"[Circular]"]` | Confusing output for correct code; a check repaired from that output would expect the wrong value |
+| A check for `[1,2,3]` passed when the whole matrix `[[1,2,3],[4,5,6]]` was printed | A wrong answer passed because the right one was nested inside it |
+| A check written as `{ name: 'Ada' }` failed against the printed `{"name":"Ada"}` | A correct answer failed over key quoting |
+
 ## Promise 2: progress is honest
 
 | Module | What the tests guarantee | Tests | Status |
 |---|---|---|---|
-| `src/lib/courseProgress.ts` | Each level weights its direct children equally; unexplored branches count as 0; the 0.999 floating-point threshold; a ratio never exceeds 1 | ~15 | planned |
-| `src/lib/skills.ts` | "Don't re-teach what was finished": `skillKey` treats "Introduction to Functions" and "Functions" as the same and ignores word order; `deriveSkills` records a finished topic as **one** entry, not one per lesson, and ignores unfinished work; `knownSkillsBlock` labels other-language skills as a weaker signal | ~12 | planned |
+| `src/lib/courseProgress.ts` | Each level weights its direct children equally; unexplored branches count as 0; the 0.999 floating-point threshold; a ratio never exceeds 1 | 17 | done |
+| `src/lib/skills.ts` | "Don't re-teach what was finished": `skillKey` treats "Introduction to Functions" and "Functions" as the same and ignores word order; `deriveSkills` records a finished topic as **one** entry, not one per lesson, and ignores unfinished work; `knownSkillsBlock` labels other-language skills as a weaker signal and caps each list | 15 | done |
 
 See [skills-ledger.md](skills-ledger.md) for the design these tests protect.
 
@@ -126,8 +137,8 @@ About 110 tests across 10 files.
 | Phase | Content | Commit |
 |---|---|---|
 | 2 | Vitest setup and `grade.ts` | `test: add Vitest and cover gradeSubmission output matching` (done) |
-| 2b | The three `it.todo` cases in `grade.test.ts` | written by hand |
-| 3 | Promise 1 (consoleFormat + contract test) and Promise 2 | `test: cover console formatting and progress maths` |
+| 2b | The three `it.todo` cases in `grade.test.ts` | `test: cover line order, empty output and invalid-regex fallback in gradeSubmission` (done) |
+| 3 | Promise 1 (consoleFormat + contract test) and Promise 2, plus three grading and formatting fixes | one `test:` commit per file and one `fix:` commit per bug (done) |
 | 4 | Promise 3 | `test: cover level tiers and fixed curricula` |
 | 5 | Promise 4 and `mergeCourses` | `test: cover AI reply parsing and course cache merging` |
 | 6 | CI workflow, README badge and "Testing" section | `ci: run lint, type check and tests on every push` |
