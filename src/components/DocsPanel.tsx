@@ -5,7 +5,7 @@
 // external-link card instead. The iframe is sandboxed WITHOUT allow-top-navigation, so
 // any JS frame-busting on the embedded page can't hijack the app.
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ExternalLink, BookOpen, RotateCcw } from "lucide-react";
 import { getDocSource, devdocsUrl } from "@/lib/docs";
 import { getModuleMeta } from "@/lib/modules";
@@ -30,22 +30,25 @@ export default function DocsPanel({
     () => (src?.kind === "devdocs" ? devdocsUrl(src.slug) : null),
     [src]
   );
-  // The URL the iframe currently shows: the doc root by default, or a deep-link target.
-  const [embedUrl, setEmbedUrl] = useState<string | null>(rootUrl);
+  // The URL the iframe currently shows: the doc root by default, or a deep-link target
+  // (a chat doc-link click). Changing src reloads the iframe, landing it on the exact
+  // section; reloadKey guarantees a reload on a same-URL link.
+  const deepLink = docTarget?.url && rootUrl ? docTarget.url : null;
+  const [embedUrl, setEmbedUrl] = useState<string | null>(deepLink ?? rootUrl);
 
-  // Reset to the doc root whenever the module changes.
-  useEffect(() => {
-    setEmbedUrl(rootUrl);
-  }, [rootUrl]);
-
-  // Navigate to a requested deep-link (chat doc-link click). Changing src reloads the
-  // iframe, landing it on the exact section; reloadKey guarantees a reload on same-URL.
-  useEffect(() => {
-    if (docTarget?.url && rootUrl) {
-      setEmbedUrl(docTarget.url);
+  // When the module or the requested link changes, update the URL during render rather
+  // than in an effect (no extra render pass). A pending deep link wins; otherwise a new
+  // module resets to its doc root.
+  const [seen, setSeen] = useState({ rootUrl, docTarget });
+  if (seen.rootUrl !== rootUrl || seen.docTarget !== docTarget) {
+    setSeen({ rootUrl, docTarget });
+    if (deepLink) {
+      setEmbedUrl(deepLink);
       setReloadKey((k) => k + 1);
+    } else if (seen.rootUrl !== rootUrl) {
+      setEmbedUrl(rootUrl);
     }
-  }, [docTarget, rootUrl]);
+  }
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col border border-line-strong backdrop-blur-md font-sans">
