@@ -67,6 +67,14 @@ describe("gradeSubmission — stdout_equals", () => {
     expect(gradeOne({ type: "stdout_equals", value: want }, got).passed).toBe(true);
   });
 
+  it("treats unquoted object keys (JavaScript style) as equal to quoted JSON keys", () => {
+    // Regression: a check written the way Node prints an object, { name: 'Ada' }, failed
+    // against the console's {"name":"Ada"} — same object, different quoting.
+    const check = { type: "stdout_equals", value: "{ name: 'Ada', tags: { $id: 1 } }" } as const;
+    expect(gradeOne(check, '{"name":"Ada","tags":{"$id":1}}').passed).toBe(true);
+    expect(gradeOne(check, '{"name":"Bob","tags":{"$id":1}}').passed).toBe(false);
+  });
+
   it("rejects a collection that only appears NESTED inside a bigger printed value", () => {
     // Regression: printing the whole matrix used to pass a check for its first row,
     // because the expected text appeared somewhere inside the output.

@@ -62,7 +62,15 @@ function containsLineBlock(got: string, want: string): boolean {
 // Restricted to bracketed values on purpose: collapsing whitespace out of ordinary
 // prose would start matching text the learner never printed.
 function collapse(s: string): string {
-  return s.replace(/\s+/g, "").replace(/'/g, '"');
+  return (
+    s
+      .replace(/\s+/g, "")
+      .replace(/'/g, '"')
+      // Quote bare object keys, so Node's { name: 'Ada' } and the console's
+      // {"name":"Ada"} collapse to the same text. A key is an identifier directly
+      // after "{" or "," and followed by ":".
+      .replace(/([{,])([A-Za-z_$][\w$]*):/g, '$1"$2":')
+  );
 }
 function isCollection(want: string): boolean {
   return /[[{]/.test(want);

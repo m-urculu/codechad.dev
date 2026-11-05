@@ -45,6 +45,16 @@ describe("console output → grader", () => {
     expect(printAndGrade("[ 'a', 'b' ]", ["a", "b"])).toBe(true);
   });
 
+  it("accepts an object check written the way Node prints it, with bare keys", () => {
+    // The generator may write { name: 'Ada' }; the console prints {"name":"Ada"}.
+    expect(printAndGrade("{ name: 'Ada', age: 36 }", { name: "Ada", age: 36 })).toBe(true);
+  });
+
+  it("rejects the right value when it was only printed inside a bigger one", () => {
+    // Printing the whole matrix is not printing its first row.
+    expect(printAndGrade("[ 1, 2, 3 ]", [[1, 2, 3], [4, 5, 6]])).toBe(false);
+  });
+
   it("accepts a label printed before the collection", () => {
     // console.log("result:", [1, 2]) — the common way learners print an answer.
     expect(printAndGrade("result: [ 1, 2 ]", "result:", [1, 2])).toBe(true);
