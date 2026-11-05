@@ -1,12 +1,13 @@
-# Runs on every push and pull request: install exactly what the lockfile pins, then
-# lint, type-check and run the unit tests. No secrets are used or needed.
+# Runs on every push and pull request. No secrets are used or needed.
 #
-# Not run here, on purpose (see docs/testing-strategy.md):
-#   npm run check:erasure  needs the Supabase service-role key and writes to the real
-#                          database, so it is run by hand.
-#   npm run check:docs     needs no secrets, but depends on third-party doc sites being
-#                          up; a slow site would turn CI red for reasons unrelated to
-#                          the code.
+#   check  install exactly what the lockfile pins, then lint, type-check and run the
+#          unit tests. This is the job the README badge reports.
+#   docs   npm run check:docs: every documentation link the app ships is still live.
+#          It needs no secrets, but it depends on third-party doc sites being up, so
+#          it runs as its own job and a failure is reported without turning CI red.
+#
+# Not run here: npm run check:erasure. It needs the Supabase service-role key and
+# writes to the real database, so it is run by hand (see docs/testing-strategy.md).
 name: CI
 
 on:
@@ -27,9 +28,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -45,3 +46,20 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+  docs:
+    name: Documentation links
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Informational: a slow or briefly-down doc site must not fail the build.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      # check-doc-sources.mjs uses only Node built-ins, so no npm install is needed.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Check documentation sources
+        run: npm run check:docs

@@ -59,7 +59,7 @@ Unit tests cover the deterministic core — the code that decides outcomes for a
 
 Gemini, Supabase, Stripe and the in-browser runtimes are deliberately not unit-tested. Writing the tests found and fixed eight bugs. The full strategy, the reasoning behind it and the bug list are in [docs/testing-strategy.md](docs/testing-strategy.md).
 
-CI runs lint, the type check and the tests on every push and pull request ([workflow](.github/workflows/ci.yml)).
+CI runs lint, the type check and the tests on every push and pull request, and checks that every documentation link the app ships is still live — reported, but never failing the build, since it depends on third-party sites ([workflow](.github/workflows/ci.yml)).
 
 ---
 
