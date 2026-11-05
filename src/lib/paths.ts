@@ -565,15 +565,25 @@ function chaptersFor(course: PathCourse, tier: Tier): PathChapter[] {
     ];
   }
   // Intermediate: keep the structure, halve the chapters by pairing neighbours —
-  // they are authored in thematic order, so adjacent ones belong together.
+  // they are authored in thematic order, so adjacent ones belong together. Only
+  // chapters practised in the SAME runtime are paired: a merged chapter runs in one
+  // runtime, so pairing a linux chapter with a python one would teach the shell in
+  // Python. Such a chapter stays on its own instead.
   const out: PathChapter[] = [];
-  for (let i = 0; i < course.chapters.length; i += 2) {
-    const pair = titles.slice(i, i + 2);
+  for (let i = 0; i < course.chapters.length; ) {
+    const module = chapterModule(course.chapters[i], course.module);
+    const next = course.chapters[i + 1];
+    const size = next !== undefined && chapterModule(next, course.module) === module ? 2 : 1;
+    const group = titles.slice(i, i + size);
     out.push({
-      title: pair.join(" & "),
-      module: chapterModule(course.chapters[i], course.module),
-      summary: `Covers ${pair.join(" and ")} together, for a learner who can already program.`,
+      title: group.join(" & "),
+      module,
+      summary:
+        size === 2
+          ? `Covers ${group[0]} and ${group[1]} together, for a learner who can already program.`
+          : `Covers ${group[0]}, for a learner who can already program.`,
     });
+    i += size;
   }
   return out;
 }

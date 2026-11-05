@@ -149,20 +149,40 @@ describe("pathRoadmap — advanced ('Experienced')", () => {
 });
 
 describe("pathRoadmap — intermediate ('Some experience')", () => {
-  const chapters = pathRoadmap(PATH, "Some experience").topics[0].children!;
+  // Build a one-course path from a chapter list and return its chapters at this level.
+  const intermediate = (chapters: PathCourse["chapters"]) =>
+    pathRoadmap({ ...PATH, courses: [{ ...BASICS, chapters }] }, "Some experience").topics[0].children!;
 
   it("pairs neighbouring chapters, leaving the last one alone when the count is odd", () => {
-    // 5 chapters → 3: the structure stays, the pace doubles.
-    expect(chapters.map((c) => c.title)).toEqual(["Variables & Loops", "Shell & Functions", "Errors"]);
+    // 3 chapters → 2: the structure stays, the pace doubles.
+    expect(intermediate(["A", "B", "C"]).map((c) => c.title)).toEqual(["A & B", "C"]);
   });
 
   it("tells the generator what each pair covers", () => {
     // The summary is how the generator knows to teach both halves.
-    expect(chapters[0].summary).toBe("Covers Variables and Loops together, for a learner who can already program.");
+    expect(intermediate(["A", "B"])[0].summary).toBe(
+      "Covers A and B together, for a learner who can already program."
+    );
   });
 
-  it("practises a pair in its first chapter's runtime", () => {
-    // "Shell" (linux) leads its pair, so the pair runs in linux, not the course's python.
-    expect(chapters.map((c) => c.module)).toEqual(["python", "linux", "python"]);
+  it("gives a chapter left on its own a summary about just that chapter", () => {
+    // Regression: a lone chapter got "Covers C together, …".
+    expect(intermediate(["A", "B", "C"])[1].summary).toBe("Covers C, for a learner who can already program.");
+  });
+
+  it("never pairs chapters practised in different runtimes", () => {
+    // Regression: a pair ran in its FIRST chapter's runtime, so a linux chapter paired
+    // after a python one would have been practised in python. In the fixture, Shell
+    // (linux) sits between python chapters, so it stays alone and keeps linux.
+    const chapters = pathRoadmap(PATH, "Some experience").topics[0].children!;
+    expect(chapters.map((c) => [c.title, c.module])).toEqual([
+      ["Variables & Loops", "python"],
+      ["Shell", "linux"],
+      ["Functions & Errors", "python"],
+    ]);
+    expect(intermediate(["A", { title: "B", module: "sql" }]).map((c) => [c.title, c.module])).toEqual([
+      ["A", "python"],
+      ["B", "sql"],
+    ]);
   });
 });
