@@ -1,0 +1,47 @@
+# Runs on every push and pull request: install exactly what the lockfile pins, then
+# lint, type-check and run the unit tests. No secrets are used or needed.
+#
+# Not run here, on purpose (see docs/testing-strategy.md):
+#   npm run check:erasure  needs the Supabase service-role key and writes to the real
+#                          database, so it is run by hand.
+#   npm run check:docs     needs no secrets, but depends on third-party doc sites being
+#                          up; a slow site would turn CI red for reasons unrelated to
+#                          the code.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch makes an in-progress run pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, type check, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        run: npm test
