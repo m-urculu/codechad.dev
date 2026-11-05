@@ -67,8 +67,34 @@ function collapse(s: string): string {
 function isCollection(want: string): boolean {
   return /[[{]/.test(want);
 }
+// The expected collection must appear at the TOP LEVEL of the output — as a value the
+// learner printed, not nested inside a bigger one. Otherwise printing a whole matrix
+// would pass a check for its first row, because "[1,2,3]" is literally inside
+// "[[1,2,3],[4,5,6]]". Text before it at the top level (a label like "result:") is fine.
 function sameCollection(got: string, want: string): boolean {
-  return isCollection(want) && collapse(got).includes(collapse(want));
+  if (!isCollection(want)) return false;
+  const g = collapse(got);
+  const w = collapse(want);
+  let depth = 0;
+  let inString = false;
+  for (let i = 0; i < g.length; i++) {
+    if (depth === 0 && g.startsWith(w, i)) return true;
+    const ch = g[i];
+    if (inString) {
+      if (ch === "\\") i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"' && depth > 0) {
+      // Strings are only tracked INSIDE a collection: at the top level a quote is
+      // prose (Python's print("Here's the list:", ...)), and brackets inside a string
+      // value must not count towards depth.
+      inString = true;
+    } else if (ch === "[" || ch === "{") {
+      depth++;
+    } else if ((ch === "]" || ch === "}") && depth > 0) {
+      depth--;
+    }
+  }
+  return false;
 }
 
 // The exact strings the runtime engines emit when the learner's program never got a

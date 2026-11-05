@@ -67,6 +67,21 @@ describe("gradeSubmission — stdout_equals", () => {
     expect(gradeOne({ type: "stdout_equals", value: want }, got).passed).toBe(true);
   });
 
+  it("rejects a collection that only appears NESTED inside a bigger printed value", () => {
+    // Regression: printing the whole matrix used to pass a check for its first row,
+    // because the expected text appeared somewhere inside the output.
+    const check = { type: "stdout_equals", value: "[1, 2, 3]" } as const;
+    expect(gradeOne(check, "[[1,2,3],[4,5,6]]").passed).toBe(false);
+    expect(gradeOne(check, '{"row":[1,2,3]}').passed).toBe(false);
+  });
+
+  it("still accepts a top-level collection after a label, even one with an apostrophe", () => {
+    // The nesting rule must not reject ordinary prints: "result: [1, 2]" or Python's
+    // print("Here's the list:", [1, 2]). The apostrophe must not be read as a string.
+    expect(gradeOne({ type: "stdout_equals", value: "result: [ 1, 2 ]" }, "result: [1,2]").passed).toBe(true);
+    expect(gradeOne({ type: "stdout_equals", value: "[1, 2]" }, "Here's the list: [1,2]").passed).toBe(true);
+  });
+
   it("does NOT collapse whitespace for plain prose (no brackets)", () => {
     // The layout-insensitive fallback is restricted to collections on purpose.
     const r = gradeOne({ type: "stdout_equals", value: "hello world" }, "helloworld");
