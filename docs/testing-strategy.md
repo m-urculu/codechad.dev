@@ -54,17 +54,6 @@ past bug, described at the top of `consoleFormat.ts`: three formatters disagreed
 lesson could be validated as solvable and then be impossible to pass in the learner's
 console.
 
-### Bugs these tests found
-
-Writing the Promise 1 tests turned up three bugs. Each was fixed in its own `fix:`
-commit with a regression test written first and seen to fail:
-
-| Bug | Effect on a learner |
-|---|---|
-| `console.log([p, p])` printed `[{"a":1},"[Circular]"]` | Confusing output for correct code; a check repaired from that output would expect the wrong value |
-| A check for `[1,2,3]` passed when the whole matrix `[[1,2,3],[4,5,6]]` was printed | A wrong answer passed because the right one was nested inside it |
-| A check written as `{ name: 'Ada' }` failed against the printed `{"name":"Ada"}` | A correct answer failed over key quoting |
-
 ## Promise 2: progress is honest
 
 | Module | What the tests guarantee | Tests | Status |
@@ -78,18 +67,11 @@ See [skills-ledger.md](skills-ledger.md) for the design these tests protect.
 
 | Module | What the tests guarantee | Tests | Status |
 |---|---|---|---|
-| `src/lib/agents/level.ts` (`tierOf`) | Free-text level → tier: "Experienced" → advanced, "some experience" → **intermediate** (the check order exists for exactly this case), empty → beginner, unrecognised → intermediate | 19 | done |
-| `src/lib/paths.ts` | Career paths: ids follow the `t0` / `t0-s1` scheme; foundation courses condensed for experienced learners and paired for intermediate ones; everything else untouched | 16 | done |
+| `src/lib/agents/level.ts` (`tierOf`) | Free-text level → tier: "Experienced" → advanced, "some experience" → **intermediate** (the check order exists for exactly this case), empty → beginner, unrecognised → intermediate; negations ("not experienced", "not a beginner") read correctly | 32 | done |
+| `src/lib/paths.ts` | Career paths: ids follow the `t0` / `t0-s1` scheme; foundation courses condensed for experienced learners and paired for intermediate ones (only within one runtime); everything else untouched | 17 | done |
 | `src/lib/curricula.ts` | Fixed language curricula: lessons are leaves with `children: []` so nothing is generated; the tree is the same at every level; lesson counts are correct | 9 | done |
 
 See [learning-paths.md](learning-paths.md) for how paths are meant to work.
-
-**Bug found and fixed:** `tierOf` read a negation as its opposite. "Not experienced"
-and "not very experienced" both mapped to **advanced** (the keyword "experienc" matched and
-"not" was ignored), so a learner who said they were new was given condensed foundation
-courses. The mirror case failed too: "Years of experience, not a beginner" mapped to
-beginner. Negated phrases of both kinds are now set aside first and the rest is judged by
-keyword; when nothing positive remains, the negations decide.
 
 ## Promise 4: messy AI output doesn't break the app
 
@@ -97,18 +79,34 @@ Gemini itself cannot be unit-tested, but the code that cleans up its replies can
 
 | Module | What the tests guarantee | Tests | Status |
 |---|---|---|---|
-| `src/lib/agents/snowflake.ts` (`extractJSON`) | Pulls JSON out of fenced replies and chatty text ("Sure! Here's your roadmap: {…}"), handles arrays, returns `null` on garbage instead of throwing | ~7 | planned |
-| `src/lib/agents/snowflake.ts` (`courseTitle`) | Strips quotes and trailing punctuation from AI titles, caps them at 80 characters, falls back when empty | ~5 | planned |
+| `src/lib/agents/snowflake.ts` (`extractJSON`) | Pulls JSON out of fenced replies and chatty text ("Sure! Here's your roadmap: {…}"), handles arrays, finds the largest valid JSON despite stray brackets, returns `null` on garbage instead of throwing | 12 | done |
+| `src/lib/agents/snowflake.ts` (`courseTitle`) | Strips quotes and trailing punctuation from AI titles, keeps meaningful punctuation, caps them at 80 characters, falls back when empty | 9 | done |
 
 ## Promise 5: billing and the UI stay consistent
 
 | Module | What the tests guarantee | Tests | Status |
 |---|---|---|---|
-| `src/lib/courseCache.ts` (`mergeCourses`) | The server's list always wins, but unchanged courses keep the **same object**, so React does not re-render them | ~5 | planned |
+| `src/lib/courseCache.ts` (`mergeCourses`) | The server's list always wins, but unchanged courses keep the **same object**, so React does not re-render them; a field the server stops sending does not survive from the cache | 5 | done |
 | `src/lib/billing.ts` (`withdrawalDeadline`) | The EU withdrawal window is exactly 14 days after purchase | ~2 | optional |
 
 `billing.ts` imports `server-only` and the Supabase admin client, so testing it needs a
 module mock. It is the one place in this plan that does, which is why it is optional.
+
+## Bugs the tests found
+
+Writing these tests turned up eight bugs. Each was fixed in its own `fix:` commit, with a
+regression test written first and seen to fail before the fix.
+
+| Where | Bug | Effect |
+|---|---|---|
+| `consoleFormat.ts` | `console.log([p, p])` printed `[{"a":1},"[Circular]"]`: a repeated object was taken for a cycle | Confusing output for correct code; a check repaired from that output would expect the wrong value |
+| `grade.ts` | A check for `[1,2,3]` passed when the whole matrix `[[1,2,3],[4,5,6]]` was printed | A wrong answer passed because the right one was nested inside it |
+| `grade.ts` | A check written as `{ name: 'Ada' }` failed against the printed `{"name":"Ada"}` | A correct answer failed over key quoting |
+| `level.ts` | "Not experienced" mapped to **advanced**: the keyword matched and the "not" was ignored | A learner who said they were new got condensed foundation courses |
+| `level.ts` | "Years of experience, not a beginner" mapped to beginner | The mirror case: an experienced learner got the slowest course |
+| `snowflake.ts` | `extractJSON` parsed from the first bracket to the last, so a stray `{` or `[1]` in the reply broke it | A wasted AI call per miss; two in a row and the learner saw "could not generate" |
+| `courseCache.ts` | `mergeCourses` kept a cached field the server had stopped sending | A cleared goal or level would have stayed on the course card (latent: nothing clears them yet) |
+| `paths.ts` | Intermediate pairing merged chapters from different runtimes, and called a lone chapter "Covers X together" | A chapter could have been practised in the wrong runtime (latent); odd-length courses got a garbled summary |
 
 ## Deliberately not unit-tested
 
@@ -139,7 +137,7 @@ module mock. It is the one place in this plan that does, which is why it is opti
 
 ## Roadmap
 
-About 110 tests across 10 files.
+168 tests across 10 files.
 
 | Phase | Content | Commit |
 |---|---|---|
@@ -147,7 +145,7 @@ About 110 tests across 10 files.
 | 2b | The three `it.todo` cases in `grade.test.ts` | `test: cover line order, empty output and invalid-regex fallback in gradeSubmission` (done) |
 | 3 | Promise 1 (consoleFormat + contract test) and Promise 2, plus three grading and formatting fixes | one `test:` commit per file and one `fix:` commit per bug (done) |
 | 4 | Promise 3 | one `test:` commit per file (done) |
-| 5 | Promise 4 and `mergeCourses` | `test: cover AI reply parsing and course cache merging` |
+| 5 | Promise 4 and `mergeCourses`, plus fixes to all three | one `test:` commit per file and one `fix:` commit per bug (done) |
 | 6 | CI workflow, README badge and "Testing" section | `ci: run lint, type check and tests on every push` |
 | optional | `billing.ts` with module mocks | — |
 
