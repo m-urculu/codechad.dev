@@ -32,11 +32,17 @@ export const CONSOLE_INLINE_LIMIT = 72;
  */
 export const CONSOLE_FMT_SRC = `
 function __fmtObject(v){
-  var seen = new WeakSet();
+  // The objects on the path from the root down to the value being printed. A value is
+  // circular only if it is one of its OWN ancestors — the same object appearing twice
+  // side by side ([p, p]) is not a cycle and prints in full both times.
+  var ancestors = [];
   function replacer(k, val){
     if (typeof val === 'object' && val !== null){
-      if (seen.has(val)) return '[Circular]';
-      seen.add(val);
+      // JSON.stringify calls this with \`this\` = the object holding val. Anything
+      // above it on the stack was a sibling branch that has finished printing.
+      while (ancestors.length && ancestors[ancestors.length - 1] !== this) ancestors.pop();
+      if (ancestors.indexOf(val) !== -1) return '[Circular]';
+      ancestors.push(val);
     }
     if (typeof val === 'bigint') return val.toString() + 'n';
     if (typeof val === 'function') return '[Function ' + (val.name || 'anonymous') + ']';
@@ -46,7 +52,7 @@ function __fmtObject(v){
     var inline = JSON.stringify(v, replacer);
     if (inline === undefined) return String(v);
     if (inline.length <= ${CONSOLE_INLINE_LIMIT}) return inline;
-    seen = new WeakSet();
+    ancestors = [];
     return JSON.stringify(v, replacer, 2);
   } catch(e){ return String(v); }
 }

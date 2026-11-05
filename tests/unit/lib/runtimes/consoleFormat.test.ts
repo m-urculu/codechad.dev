@@ -50,6 +50,16 @@ describe("formatConsoleArgs — collections", () => {
     expect(fmt(node)).toBe('{"name":"c","self":"[Circular]"}');
   });
 
+  it("prints the same object twice in full — repeating is not circular", () => {
+    // Regression: [p, p] used to print [{"a":1},"[Circular]"]. Only an object nested
+    // inside ITSELF is circular; new Array(3).fill(p) is ordinary beginner code.
+    const p = { a: 1 };
+    expect(fmt([p, p])).toBe('[{"a":1},{"a":1}]');
+    expect(fmt({ left: p, right: { inner: p } })).toBe(
+      '{"left":{"a":1},"right":{"inner":{"a":1}}}'
+    );
+  });
+
   it("shows functions and BigInts nested inside a collection", () => {
     // JSON would silently drop a function and throw on a BigInt.
     expect(fmt({ go: function go() {}, n: BigInt(10) })).toBe('{"go":"[Function go]","n":"10n"}');
