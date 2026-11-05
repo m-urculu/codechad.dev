@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -146,7 +146,9 @@ function DitheredWaves({
   const mouseRef = useRef(new THREE.Vector2());
   const { viewport, size, gl } = useThree();
 
-  const uniformsRef = useRef({
+  // Created once and handed to the material, which copies it; per-frame updates go to the
+  // material's own uniforms in useFrame below.
+  const [uniforms] = useState(() => ({
     time: new THREE.Uniform(0),
     resolution: new THREE.Uniform(new THREE.Vector2(0, 0)),
     waveSpeed: new THREE.Uniform(waveSpeed),
@@ -158,15 +160,15 @@ function DitheredWaves({
     mouseRadius: new THREE.Uniform(mouseRadius),
     colorNum: new THREE.Uniform(colorNum),
     pixelSize: new THREE.Uniform(pixelSize)
-  });
+  }));
 
   useEffect(() => {
     const dpr = gl.getPixelRatio();
     const w = Math.floor(size.width * dpr);
     const h = Math.floor(size.height * dpr);
-    uniformsRef.current.resolution.value.set(w, h);
+    uniforms.resolution.value.set(w, h);
     if (matRef.current) matRef.current.uniforms.resolution.value.set(w, h);
-  }, [size, gl]);
+  }, [size, gl, uniforms]);
 
   const prevColor = useRef([...waveColor]);
   const startRef = useRef(null);
@@ -219,7 +221,7 @@ function DitheredWaves({
         glslVersion={THREE.GLSL3}
         vertexShader={waveVertexShader}
         fragmentShader={waveFragmentShader}
-        uniforms={uniformsRef.current}
+        uniforms={uniforms}
       />
     </mesh>
   );

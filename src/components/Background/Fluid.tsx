@@ -771,13 +771,16 @@ export default function Fluid(props: Partial<FluidConfig>) {
 
   // Reduced motion keeps the smoke — it is texture, not information — but stops
   // it from drifting and from reacting to the pointer.
+  //
+  // Keyed on the props' JSON so a new-but-equal props object doesn't rebuild the config
+  // (every FluidConfig field is a number, boolean or number array, so JSON is lossless).
+  const propsKey = JSON.stringify(props);
   const effective: FluidConfig = useMemo(() => {
-    const config = { ...DEFAULT_FLUID_CONFIG, ...props };
+    const config: FluidConfig = { ...DEFAULT_FLUID_CONFIG, ...JSON.parse(propsKey) };
     return reduced
       ? { ...config, animate: false, ambientForce: 0, splatForce: 0, curlStrength: 0 }
       : config;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reduced, JSON.stringify(props)]);
+  }, [reduced, propsKey]);
 
   return (
     <Canvas
