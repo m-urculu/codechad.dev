@@ -19,6 +19,9 @@ exercised in a real browser session.
 | **Python** | Pyodide v0.26 | real CPython (WASM), main thread | full language + stdlib, classes, comprehensions; print() captured; errors surfaced | ~10 MB first load; main-thread (no hard-kill); no network/subprocess | ✅ Node-verified |
 | **C** | @yowasp/clang 22 | real Clang + LLD (WASM) compile `main.c`, the program then runs under our own WASI host (`wasi.ts`) | honest `sizeof`, pointer arithmetic and undefined behaviour; compiler diagnostics shown verbatim | ~23 MB first load (prefetched with a progress line); no network/files/shell/threads/stdin; wasm memory is flat from address 0, so null derefs and small overruns do NOT trap | ✅ Node-verified |
 | **C++** | @yowasp/clang 22 (`clang++`) | the SAME toolchain download as C, driven as `clang++ -std=c++20 -fno-exceptions` | STL (string/vector/map/set/algorithm/optional), RAII, virtual dispatch, operator overloading, templates, lambdas, smart pointers, C++20 ranges, `std::format` | **no exceptions** — the sysroot's libc++ has no unwinder, so `try`/`throw`/`catch` are compile errors and a would-be throw (`v.at(10)`) prints and aborts; `std::thread` compiles but aborts; otherwise as C | ✅ Node-verified |
+| **Go** | Yaegi (WASM) in a Web Worker | the Yaegi interpreter compiled to WASM; Go's own `wasm_exec` shim; one program per Run | structs, methods, interfaces, slices, maps, errors, goroutines with channels/WaitGroup, generics | ~8 MB first load; an interpreter, not `go build`: one file, standard library only, no network/files/os/exec; killed after 10 s; `%T` prints the structural type, not `main.Rect` | ✅ in-browser |
+| **Linux** | shell over an in-memory FS (`shell.ts`, `coreutils.ts`) | a real shell (pipes, redirection, `&&`/`||`, `$?`, `$VAR`, quoting) with GNU-like coreutils; FS wiped every Run | navigation, files, text processing (`grep`/`sort`/`uniq`/`cut`/`wc`), permissions and what `rwx` means | ~250 KB (shared with Git); NOT a kernel: no processes, users, package manager, editors or sudo; permissions enforced by the commands, so no security boundary | ✅ in-browser |
+| **Git** | isomorphic-git on the shared shell | a real `.git` directory in git's on-disk format; `git` is one more command in the Linux shell, so it pipes into coreutils | init, config, status, add, rm, commit, log, branch, checkout/switch, merge, show, tag | ~250 KB; no clone/fetch/push/pull (need a network), no diff/rebase/stash; SHAs differ every Run, so checks match messages and names | ✅ in-browser |
 | **SQLite** | sql.js 1.13 | fresh in-memory DB each Run; multi-statement; SELECTs render as text tables | schema design, CRUD, joins, indexes | ~1 MB load; exercises must create their own schema | ✅ Node-verified |
 | **PostgreSQL** | PGlite 0.3 | fresh in-memory Postgres each Run; same table rendering | real PG semantics: serial, RETURNING, CTEs, window fns | ~12 MB load; single-connection; no extensions | ✅ Node-verified |
 | **DuckDB** | duckdb-wasm 1.29 | session AsyncDuckDB (worker), per-statement queries, schema reset after Run | analytics SQL: aggregates, window fns, generate_series | ~35 MB load; no file/URL reads | ⚠️ browser-verify pending (Node worker-shim test inconclusive; browser path is the documented official pattern, CDN 200) |
@@ -35,16 +38,24 @@ exercised in a real browser session.
 
 ## Removed until runnable (decision 2026-06-12: no runtime → not on the menu)
 
-C# / .NET, Node.js and Linux/Bash were REMOVED from the Landing grid and registry —
-if the learner can't execute the code, the module doesn't ship. The `runnable:false`
-machinery (disabled Run, code-reading objectives, Submit-only tutor flow) remains in
-the codebase as the fallback for any future module mid-rollout.
+C# / .NET and Node.js were REMOVED from the Landing grid and registry —
+if the learner can't execute the code, the module doesn't ship.
+
+Linux, removed under this rule, came back on 2026-07-26 by a different route than the one
+first planned (v86 booting an Alpine image): a shell and coreutils on an in-memory
+filesystem, the **Linux** row above. `src/lib/runtimes/engineLinux.ts` explains the trade.
+
+**Review-only modules.** The rule governs the Landing grid. Career paths
+([learning-paths.md](learning-paths.md)) also need what a tab cannot run, so eight modules
+use the `runnable:false` machinery (engine `none`: disabled Run, code-reading objectives,
+Submit-only tutor flow): Docker, Kubernetes, AWS, CI/CD, RabbitMQ, Power BI, Pygame and
+Career. They appear only inside paths. The learner writes the real artifact, the tutor
+reviews it, and each module's `runNotes` says plainly that nothing executes.
 
 | Module | Why not runnable client-side | Path to restoring it |
 |---|---|---|
 | **C# / .NET** | needs the .NET runtime + Roslyn in WASM (Blazor) — very heavy footprint | Blazor WASM or a server runner |
 | **Node.js** | fs/http/process are exactly what the sandbox forbids; WebContainers needs COOP/COEP headers (breaks OAuth popups) + licensing | WebContainers behind a header-isolated route, or server runner |
-| **Linux / Bash** | needs a real shell → v86 boots actual Linux but ships a tens-of-MB disk image | v86 with a hosted Alpine image |
 
 ## How the pieces fit
 
@@ -54,7 +65,7 @@ the codebase as the fallback for any future module mid-rollout.
 - **Self-containment per language** (`lesson.ts`): forbidden-API lists + comment/string
   scrubbers for js/python/sql/ruby/lua/php/c/cpp/go; SQL lessons must create their own schema
   (fresh DB per Run); generate→scan→regenerate→sanitize pipeline unchanged.
-- **Cancellation honesty**: only the JS/TS worker is hard-killable. Main-thread WASM
+- **Cancellation honesty**: only the JS/TS and Go workers are hard-killable. Main-thread WASM
   engines (Python, SQL, Ruby, PHP) can't be interrupted mid-run — Stop resets the UI.
 - **Cold starts**: each heavy engine posts a system line with its size on first Run
   (`loadNote`), then stays cached for the session.
