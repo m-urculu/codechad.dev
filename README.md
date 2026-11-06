@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/m-urculu/codechad.dev/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/m-urculu/codechad.dev/actions/workflows/ci.yml/badge.svg" /></a>
-  <img alt="version" src="https://img.shields.io/badge/version-0.2.0-34d399" />
+  <img alt="version" src="https://img.shields.io/badge/version-0.3.0-34d399" />
   <img alt="status" src="https://img.shields.io/badge/status-beta-38bdf8" />
   <img alt="license" src="https://img.shields.io/badge/license-MIT-white" />
 </p>
