@@ -6,16 +6,17 @@ import RoadmapPanel from "@/components/RoadmapPanel";
 import DocsPanel from "@/components/DocsPanel";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare, Map, Code2, BookOpen } from "lucide-react";
-import { supabase } from "@/lib/supabaseBrowser";
+import { cachedUserId, supabase } from "@/lib/supabaseBrowser";
 import { getModuleMeta } from "@/lib/modules";
 import { getPath, getPathByTitle, pathRoadmap } from "@/lib/paths";
 import { getCurriculum } from "@/lib/curricula";
 import { getDocSource } from "@/lib/docs";
-import { resolveDocUrl } from "@/lib/docs-index";
+import { resolveDocPath } from "@/lib/docs-index";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
 import { apiFetch } from "@/lib/apiFetch";
 import { patchCourse } from "@/lib/courseCache";
+import { readCourseState, writeCourseState } from "@/lib/courseStateCache";
 import { flattenPoints, lessonRatio, overallRatio, topicCounts } from "@/lib/courseProgress";
 import { openLogin } from "@/lib/authModal";
 import { isTrialUsed, markTrialUsed } from "@/lib/trial";
@@ -126,7 +127,14 @@ export default function EditorPanels({
 }) {
 
   const [leftView, setLeftView] = useState<"chat" | "roadmap" | "docs">("chat");
-  const [codeOpen, setCodeOpen] = useState(false);
+  // Opening a saved course (it always arrives with an id) shows the editor beside
+  // the chat from the first frame on desktop, instead of after the course loads.
+  // A new course starts chat-only while it calibrates and generates; mobile keeps
+  // its one pane. This component only mounts client-side, after the learner picks
+  // a course, so reading the viewport here cannot cause a hydration mismatch.
+  const [codeOpen, setCodeOpen] = useState(
+    () => !!initialCourseId && typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
+  );
   const isDesktop = useIsDesktop();
 
   // Bringing a left pane forward has to actually land. On mobile the editor
@@ -157,7 +165,7 @@ export default function EditorPanels({
 
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress>({});
-  const [lessonRequest, setLessonRequest] = useState<{ node: RoadmapNode; outline?: string; nonce: number } | null>(null);
+  const [lessonRequest, setLessonRequest] = useState<{ node: RoadmapNode; outline?: string; nonce: number; restore?: boolean } | null>(null);
   // The runtime the EDITOR is showing. Normally the course's own module; a path
   // whose nodes name their own runtime moves this as the learner walks it, so the
   // editor is Go for the Go lesson and a shell for the Linux one.
@@ -165,7 +173,7 @@ export default function EditorPanels({
   const [submitRequest, setSubmitRequest] = useState<{ code: string; output: string; nonce: number } | null>(null);
   const [codeChange, setCodeChange] = useState<{ code: string; nonce: number } | null>(null);
   const [loadCode, setLoadCode] = useState<{ code: string; html?: string; nonce: number } | null>(null);
-  const [docTarget, setDocTarget] = useState<{ url: string; nonce: number } | null>(null);
+  const [docTarget, setDocTarget] = useState<{ path: string; nonce: number; label?: string } | null>(null);
 
   // Persistence boot state + loaded values handed to the chat.
   const [userId, setUserId] = useState<string | null>(null);
@@ -199,18 +207,100 @@ export default function EditorPanels({
   const pointRatio: Record<string, number> = {};
   for (const [id, e] of Object.entries(progress)) pointRatio[id] = lessonRatio(e);
 
+  // True while the workspace shows a course from the local cache only. The cached
+  // copy keeps built content for the current lesson alone, so it must never be
+  // saved back over the server's — the save effect waits until the server answers.
+  const cacheOnly = useRef(false);
+
   // Load saved state on mount / module change.
   useEffect(() => {
     let cancelled = false;
+
+    // Show a saved course: roadmap, progress, and the lesson the learner was on.
+    // Returns the lesson it restored, so a second call with fresher data does not
+    // restore (and reload the editor with) the same lesson again.
+    const resume = (
+      state: { tree: Roadmap; progress?: Progress; level?: string; goal?: string },
+      restored: string | null,
+      fromServer: boolean
+    ): string | null => {
+      const prog = state.progress ?? {};
+      setRoadmap(state.tree);
+      setProgress(prog);
+      setInitialProgress(
+        Object.fromEntries(Object.entries(prog).map(([k, v]) => [k, { built: v.built, passed: v.passed ?? [], code: v.code }]))
+      );
+      setSavedLevel(state.level);
+      setSavedGoal(state.goal);
+      // Resuming lands in the CHAT, at the bottom — the last thing that
+      // happened in this course, which is where the learner left off. The
+      // roadmap is an index; opening on it makes someone who was mid-lesson
+      // navigate back to their own place before they can continue.
+      setLeftView("chat");
+      // Also covers switching course without a remount (see codeOpen above).
+      if (window.matchMedia("(min-width: 768px)").matches) setCodeOpen(true);
+      // Put the learner back in the lesson they were on: its tasks above the chat
+      // and their code in the editor. Only a lesson that was already built — a
+      // restore never generates, and never posts to the chat.
+      // When that lesson has not been built yet (the learner finished the one before
+      // and never pressed Next), the last built lesson before it: it shows the tasks
+      // banner, and its Next lesson button is how they start the new one. Restoring
+      // nothing left no banner and no way on but the roadmap.
+      const at = firstUncompletedPoint(state.tree, prog);
+      const points = flattenPoints(state.tree);
+      const atIndex = at ? points.findIndex((p) => p.id === at.id) : points.length;
+      const ready =
+        at && prog[at.id]?.built
+          ? at
+          : points.slice(0, atIndex < 0 ? points.length : atIndex).reverse().find((p) => prog[p.id]?.built) ?? null;
+      // Which lesson, and which BUILD of it: the local copy may hold an older build of
+      // the same lesson (it was rebuilt since), and then the server's must replace it.
+      const key = ready ? `${ready.id}|${JSON.stringify(prog[ready.id]?.built?.objectives ?? [])}` : null;
+      if (ready && key !== restored) {
+        setActiveNodeId(ready.id);
+        setActiveModule(ready.module ?? moduleId ?? null);
+        setLessonRequest({ node: ready, outline: treeOutline(state.tree, ready.id, prog), nonce: Date.now(), restore: true });
+      }
+      // `boot` stays "loading" for the cached paint. The chat boots on it, and it
+      // must not boot before the server has answered and the user is confirmed:
+      // booting early took a signed-in course for a signed-out one and replaced its
+      // conversation with a fresh greeting.
+      if (fromServer) setBoot("resumed");
+      return key ?? restored;
+    };
+
     (async () => {
       setBoot("loading");
+      cacheOnly.current = false;
+      // 1) The local copy, on this frame (src/lib/courseStateCache.ts). The landing
+      //    page warms it for every course once the learner is signed in.
+      const localUid = initialCourseId && skill ? cachedUserId() : null;
+      const hit = readCourseState(localUid, initialCourseId ?? null);
+      let restored: string | null = null;
+      if (hit) {
+        restored = resume(hit as { tree: Roadmap; progress?: Progress; level?: string; goal?: string }, null, false);
+        cacheOnly.current = true;
+      }
+
+      // 2) The server copy, which always wins.
       const { data } = await supabase.auth.getUser();
       const uid = data.user?.id ?? null;
       if (cancelled) return;
       setUserId(uid);
-      if (!uid || !skill) {
-        setBoot("fresh");
-        return;
+      // A cached copy can only be painted for the account that owns it.
+      const dropCache = () => {
+        cacheOnly.current = false;
+        if (!hit) return;
+        setRoadmap(null);
+        setProgress({});
+        setLessonRequest(null);
+      };
+      if (!uid || !skill || (hit && uid !== localUid)) {
+        dropCache();
+        if (!uid || !skill) {
+          setBoot("fresh");
+          return;
+        }
       }
       // No course id means the technology was opened from the landing grid, which
       // always STARTS a new course. Resuming is what the "My courses" cards are for,
@@ -232,29 +322,22 @@ export default function EditorPanels({
           courseIdRef.current = state.courseId;
         }
         if (state?.tree?.topics?.length) {
-          const prog = state.progress ?? {};
-          setRoadmap(state.tree);
-          setProgress(prog);
-          setInitialProgress(
-            Object.fromEntries(Object.entries(prog).map(([k, v]) => [k, { built: v.built, passed: v.passed ?? [], code: v.code }]))
-          );
-          setSavedLevel(state.level);
-          setSavedGoal(state.goal);
-          // Resuming lands in the CHAT, at the bottom — the last thing that
-          // happened in this course, which is where the learner left off. The
-          // roadmap is an index; opening on it makes someone who was mid-lesson
-          // navigate back to their own place before they can continue.
-          setLeftView("chat");
-          setBoot("resumed");
+          resume({ ...state, tree: state.tree }, restored, true);
+          cacheOnly.current = false;
+          writeCourseState(uid, initialCourseId, state);
         } else {
           // A course row with no tree (generation failed, or freshly recalibrated)
           // still carries the calibration — hand it to the chat so it can retry.
+          // It is about to generate, so it is chat-only like any new course.
+          dropCache();
+          setCodeOpen(false);
           setSavedLevel(state?.level);
           setSavedGoal(state?.goal);
           setBoot("fresh");
         }
       } catch {
-        if (!cancelled) setBoot("fresh");
+        // Offline with a cached copy: keep showing it, as a resumed course.
+        if (!cancelled) setBoot(hit ? "resumed" : "fresh");
       }
     })();
     return () => {
@@ -355,32 +438,37 @@ export default function EditorPanels({
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Holds the save this render's timer is waiting to fire, so a flush (below) can
   // run the *current* save instead of losing it when the timer is only cleared.
-  const pendingSaveRef = useRef<null | (() => Promise<void>)>(null);
+  const pendingSaveRef = useRef<null | ((leaving?: boolean) => Promise<void>)>(null);
   useEffect(() => {
-    if (!userId || !skill || !roadmap) {
+    if (!userId || !skill || !roadmap || cacheOnly.current) {
       pendingSaveRef.current = null;
       return;
     }
     if (saveTimer.current) clearTimeout(saveTimer.current);
 
-    const doSave = async () => {
+    const doSave = async (leaving = false) => {
       const cid = await ensureCourseId();
       if (!cid) return;
+      const body = JSON.stringify({
+        course_id: cid,
+        skill,
+        module: moduleId,
+        level: roadmap.level,
+        goal: roadmap.goal,
+        tree: roadmap,
+        progress,
+      });
       // keepalive lets this request survive a tab close/navigation that happens
       // right after it's sent — the scenario the flush effect below exists for.
+      // Only then, and only when it fits: browsers refuse a keepalive request once
+      // the bodies of all in-flight ones pass 64 KB, and report it as "Failed to
+      // fetch". A large course (the C++ curriculum's tree alone is ~40 KB) hit that
+      // on ordinary saves, and those saves were lost.
       const res = await apiFetch("/api/roadmap/state", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          course_id: cid,
-          skill,
-          module: moduleId,
-          level: roadmap.level,
-          goal: roadmap.goal,
-          tree: roadmap,
-          progress,
-        }),
-        keepalive: true,
+        body,
+        keepalive: leaving && body.length < 60_000,
       }).catch((e) => {
         console.error("[roadmap/state] save request failed:", e);
         return null;
@@ -402,6 +490,8 @@ export default function EditorPanels({
       // Recomputed here rather than closed over: the render-scope `pointRatio` is
       // a fresh object every render, so listing it as a dependency would restart
       // this timer on every keystroke and the save would never fire.
+      // And the local copy of this course, so reopening it starts where this left off.
+      writeCourseState(userId, cid, { level: roadmap.level, goal: roadmap.goal, tree: roadmap, progress });
       const pointOf = (id: string) => lessonRatio(progress[id]);
       const topics = topicCounts(roadmap, pointOf);
       patchCourse(userId, cid, {
@@ -439,7 +529,7 @@ export default function EditorPanels({
       saveTimer.current = null;
       const save = pendingSaveRef.current;
       pendingSaveRef.current = null;
-      void save();
+      void save(true);
     };
     const onVisibility = () => {
       if (document.visibilityState === "hidden") flush();
@@ -603,15 +693,12 @@ export default function EditorPanels({
     });
   }
 
+  // Every objective of a lesson passed: record it as done. Nothing moves — the learner
+  // reads the explanation of their answer and presses Next lesson when ready
+  // (handleNextLesson). Advancing here used to replace the lesson they had just solved.
   function handleLessonComplete(pointId: string) {
-    // Mark done, then advance to the learner's live frontier (the first still-uncompleted
-    // lesson), NOT simply the point that sequentially follows the one just finished — so
-    // re-completing an old lesson returns you to your newest uncompleted lesson. Falls
-    // back to the sequential next point when nothing earlier is left (end of loaded tree).
     const nextProgress: Progress = { ...progress, [pointId]: { ...(progress[pointId] ?? { passed: [], done: false }), done: true } };
     setProgress(nextProgress);
-    const next =
-      firstUncompletedPoint(roadmap, nextProgress, pointId) ?? nextPointAfter(roadmap, pointId);
 
     // End of the free trial. This is the first moment the visitor has finished
     // something, and all of it — roadmap, code, conversation — lives in this tab
@@ -627,7 +714,6 @@ export default function EditorPanels({
       // a greeting that has stopped being true.
       const first = !isTrialUsed();
       markTrialUsed();
-      pendingNext.current = next ?? null;
       promptTimer.current = setTimeout(() => {
         openLogin(
           first
@@ -635,10 +721,27 @@ export default function EditorPanels({
             : "Another one done. None of this is saved yet — sign in and it's kept, including everything so far."
         );
       }, COMPLETION_PROMPT_DELAY_MS);
-      return;
     }
+  }
 
-    if (next) handleActivateLesson(next);
+  // The learner pressed Next lesson. Go to the live frontier (the first lesson still
+  // not completed), NOT simply the point after this one — so re-completing an old
+  // lesson returns you to your newest uncompleted lesson. Falls back to the
+  // sequential next point when nothing earlier is left (end of loaded tree).
+  // Returns whether the next lesson is now starting (false: nothing to go to, or the
+  // visitor was asked to sign in first), so the button knows whether to give way.
+  function handleNextLesson(pointId: string): boolean {
+    const next = firstUncompletedPoint(roadmap, progress, pointId) ?? nextPointAfter(roadmap, pointId);
+    if (!next) return false;
+    // A signed-out visitor is asked to sign in first, and is taken there once they
+    // have (the pendingNext effect below), so nothing done in the trial is lost.
+    if (!userId) {
+      pendingNext.current = next;
+      openLogin("Sign in to save your progress and keep going. It's free.");
+      return false;
+    }
+    handleActivateLesson(next);
+    return true;
   }
 
   // Signing in from that prompt picks up exactly where it stopped, so the ask
@@ -684,10 +787,11 @@ export default function EditorPanels({
   }
 
   // A doc link was clicked in the chat. Switch to the Docs tab IMMEDIATELY (so it never
-  // feels unresponsive while the index loads), then resolve the term to an exact DevDocs
-  // section URL (search fallback) and navigate there. Suppressed for external-doc modules,
-  // whose lessons carry no doc links anyway.
-  async function handleOpenDoc(term: string) {
+  // feels unresponsive while the index loads), then resolve the term to a page and section
+  // of our copy of the docs and show it, highlighting the link's text. A term that cannot
+  // be placed leaves the pane where it is. Suppressed for external-doc modules, whose
+  // lessons carry no doc links anyway.
+  async function handleOpenDoc(term: string, label?: string) {
     // The LESSON's runtime, not the course's. On a path they differ, and resolving a Go
     // term against Python's index is how a link ends up pointing at nothing — or, worse,
     // at a same-named Python entry. This is the module the Docs pane is already showing.
@@ -696,8 +800,8 @@ export default function EditorPanels({
     // official site. Returning silently made the click look broken.
     showLeft("docs");
     if (!src || src.kind !== "devdocs") return;
-    const url = await resolveDocUrl(activeModule, term);
-    if (url) setDocTarget({ url, nonce: Date.now() });
+    const path = await resolveDocPath(activeModule, term);
+    if (path) setDocTarget({ path, nonce: Date.now(), label });
   }
 
   const railBtn = (active: boolean) =>
@@ -797,10 +901,12 @@ export default function EditorPanels({
             nextLessonTitle={
               (firstUncompletedPoint(roadmap, progress, activeNodeId) ?? nextPointAfter(roadmap, activeNodeId))?.title ?? null
             }
+            isLessonDone={(id) => !!progress[id]?.done}
             submitRequest={submitRequest}
             codeChange={codeChange}
             onLoadCode={handleLoadCode}
             onLessonComplete={handleLessonComplete}
+            onNextLesson={handleNextLesson}
             onProgressChange={handleProgressChange}
             onOpenDoc={handleOpenDoc}
           />
@@ -820,7 +926,19 @@ export default function EditorPanels({
           <DocsPanel moduleId={activeModule} docTarget={docTarget} />
         </div>
         <div data-pane="code" className={paneClass("code")}>
-          <CodeHere moduleId={activeModule} onSubmit={handleSubmitCode} onCodeChange={handleCodeChange} loadCode={loadCode} />
+          <CodeHere
+            moduleId={activeModule}
+            onSubmit={handleSubmitCode}
+            onCodeChange={handleCodeChange}
+            loadCode={loadCode}
+            // Same rule the chat applies to a submission: every objective currently
+            // passed (Re-take lesson clears them, making Submit an attempt again).
+            lessonDone={(() => {
+              const e = activeNodeId ? progress[activeNodeId] : undefined;
+              const objs = e?.built?.objectives ?? [];
+              return objs.length > 0 && objs.every((o) => (e?.passed ?? []).includes(o.id));
+            })()}
+          />
         </div>
       </div>
 

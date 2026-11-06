@@ -21,6 +21,7 @@ import { supabase } from "@/lib/supabaseBrowser";
 import { apiFetch } from "@/lib/apiFetch";
 import { clearCourses } from "@/lib/courseCache";
 import { clearAllChats } from "@/lib/chatCache";
+import { clearAllCourseStates } from "@/lib/courseStateCache";
 import type { RoadmapSummary } from "@/components/Landing";
 import BillingSection from "@/components/BillingSection";
 
@@ -286,6 +287,7 @@ export default function AccountSettings({ onBack }: { onBack: () => void }) {
     // browser of whoever asked for it to be gone.
     clearCourses(user?.id ?? null);
     clearAllChats(user?.id ?? null);
+    clearAllCourseStates(user?.id ?? null);
     // The row is gone; the token in this tab now points at nobody. Clear it and
     // land on a signed-out home rather than a page quietly failing every request.
     await supabase.auth.signOut().catch(() => {});

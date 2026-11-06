@@ -69,6 +69,7 @@ npm run dev                  # http://localhost:3000
 | `npm test` | Unit tests |
 | `npm run check:docs` | Checks that every documentation link the app ships is still live |
 | `npm run check:erasure` | Proves account deletion erases user data. **Writes to the real database**; run it knowingly |
+| `npm run sync:docs` | Downloads the documentation into the Supabase Storage `docs` bucket (the Docs tab reads only that copy). Needs `CRON_SECRET` and the app running; runs daily on Vercel by itself |
 
 ## Documentation
 

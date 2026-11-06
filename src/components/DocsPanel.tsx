@@ -1,19 +1,28 @@
 "use client";
 
-// Documentation tab: embeds official docs for the active course via DevDocs (which,
-// unlike the upstream sites, permits framing). Modules DevDocs doesn't cover show an
-// external-link card instead. The iframe is sandboxed WITHOUT allow-top-navigation, so
-// any JS frame-busting on the embedded page can't hijack the app.
+// Documentation tab, served from our own copy of the docs (src/lib/docsStore.ts),
+// kept current by the daily docs sync. Two views:
+//   - entries: every entry of the module's docs, searchable — the way in;
+//   - page:    one page, scrolled to and highlighting what a link pointed at.
+// Nothing here loads another site. Modules our copy does not cover (no DevDocs set)
+// show a card linking to their official docs instead.
+//
+// Every page carries the doc set's credit and licence notice: the content is the
+// upstream projects' (MDN, cppreference, Python…), redistributed under their licences.
 
-import { useMemo, useState } from "react";
-import { ExternalLink, BookOpen, RotateCcw } from "lucide-react";
-import { getDocSource, devdocsUrl } from "@/lib/docs";
+import { useEffect, useMemo, useState } from "react";
+import { ExternalLink, BookOpen, List } from "lucide-react";
+import DocPage from "@/components/DocPage";
+import { getDocSource } from "@/lib/docs";
 import { getModuleMeta } from "@/lib/modules";
+import { loadEntries, loadManifest, type DocEntry } from "@/lib/docsStore";
 
-// docTarget carries a deep-link (an exact DevDocs section URL, or a search URL) requested
-// from elsewhere — e.g. clicking a doc link in the chat. The nonce makes repeat clicks on
-// the same URL re-navigate.
-type DocTarget = { url: string; nonce: number } | null;
+// A page requested from elsewhere — a chat doc link — and the link's text, which the
+// page view highlights. The nonce makes repeat clicks on the same page re-navigate.
+type DocTarget = { path: string; nonce: number; label?: string } | null;
+type View = { kind: "entries" } | { kind: "page"; path: string; label?: string };
+
+const SHOWN = 200;
 
 export default function DocsPanel({
   moduleId,
@@ -23,32 +32,35 @@ export default function DocsPanel({
   docTarget?: DocTarget;
 }) {
   const src = getDocSource(moduleId);
+  const slug = src?.kind === "devdocs" ? src.slug : null;
   const title = getModuleMeta(moduleId)?.title ?? "Documentation";
-  // Bumping the key forces the iframe to reload (used by the refresh button).
-  const [reloadKey, setReloadKey] = useState(0);
-  const rootUrl = useMemo(
-    () => (src?.kind === "devdocs" ? devdocsUrl(src.slug) : null),
-    [src]
-  );
-  // The URL the iframe currently shows: the doc root by default, or a deep-link target
-  // (a chat doc-link click). Changing src reloads the iframe, landing it on the exact
-  // section; reloadKey guarantees a reload on a same-URL link.
-  const deepLink = docTarget?.url && rootUrl ? docTarget.url : null;
-  const [embedUrl, setEmbedUrl] = useState<string | null>(deepLink ?? rootUrl);
 
-  // When the module or the requested link changes, update the URL during render rather
-  // than in an effect (no extra render pass). A pending deep link wins; otherwise a new
-  // module resets to its doc root.
-  const [seen, setSeen] = useState({ rootUrl, docTarget });
-  if (seen.rootUrl !== rootUrl || seen.docTarget !== docTarget) {
-    setSeen({ rootUrl, docTarget });
-    if (deepLink) {
-      setEmbedUrl(deepLink);
-      setReloadKey((k) => k + 1);
-    } else if (seen.rootUrl !== rootUrl) {
-      setEmbedUrl(rootUrl);
+  const [view, setView] = useState<View>(() =>
+    docTarget ? { kind: "page", path: docTarget.path, label: docTarget.label } : { kind: "entries" }
+  );
+  // Follow a new link, or reset when the module changes — during render, not in an
+  // effect, so there is no extra render pass.
+  const [seen, setSeen] = useState({ slug, docTarget });
+  if (seen.slug !== slug || seen.docTarget !== docTarget) {
+    setSeen({ slug, docTarget });
+    if (docTarget && docTarget !== seen.docTarget) {
+      setView({ kind: "page", path: docTarget.path, label: docTarget.label });
+    } else if (seen.slug !== slug) {
+      setView({ kind: "entries" });
     }
   }
+
+  // The doc set's credit, from the sync's manifest.
+  const [credit, setCredit] = useState<{ slug: string; html: string } | null>(null);
+  useEffect(() => {
+    if (!slug) return;
+    let live = true;
+    loadManifest().then((m) => live && setCredit({ slug, html: m?.docs[slug]?.attribution ?? "" }));
+    return () => {
+      live = false;
+    };
+  }, [slug]);
+  const attribution = credit?.slug === slug ? credit.html : "";
 
   return (
     <div className="flex h-full w-full min-w-0 flex-col border border-line-strong backdrop-blur-md font-sans">
@@ -62,63 +74,122 @@ export default function DocsPanel({
             </span>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
-          {embedUrl && (
-            <button
-              type="button"
-              onClick={() => setReloadKey((k) => k + 1)}
-              title="Reload docs"
-              aria-label="Reload docs"
-              className="flex h-7 w-7 items-center justify-center border border-line-strong bg-surface-0 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {src && (
-            <a
-              href={src.kind === "devdocs" ? embedUrl ?? devdocsUrl(src.slug) : src.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Open in a new tab"
-              className="flex items-center gap-1.5 border border-line-strong bg-surface-0 px-2.5 py-1 text-meta text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-            >
-              Open <ExternalLink className="h-3 w-3" />
-            </a>
-          )}
-        </div>
+        {slug && view.kind === "page" && (
+          <button
+            type="button"
+            onClick={() => setView({ kind: "entries" })}
+            title="All entries"
+            className="flex shrink-0 items-center gap-1.5 border border-line-strong bg-surface-0 px-2.5 py-1 text-meta text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            <List className="h-3 w-3" /> All entries
+          </button>
+        )}
       </div>
 
       {!src ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-ink-faint">
           Pick a course to see its documentation here.
         </div>
-      ) : src.kind === "devdocs" ? (
-        <iframe
-          key={reloadKey}
-          src={embedUrl!}
-          title={`${title} documentation`}
-          className="flex-1 w-full border-0 bg-white"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          referrerPolicy="no-referrer"
+      ) : slug && view.kind === "page" ? (
+        <DocPage
+          slug={slug}
+          path={view.path}
+          label={view.label}
+          attribution={attribution}
+          onNavigate={(path) => setView({ kind: "page", path })}
         />
+      ) : slug ? (
+        <Entries slug={slug} onOpen={(e) => setView({ kind: "page", path: e.path, label: e.name })} />
       ) : (
-        // DevDocs doesn't carry this one; its official site blocks embedding.
+        // Our copy has no set for this one.
         <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
           <BookOpen className="h-8 w-8 text-ink-faint" />
           <p className="max-w-sm text-sm leading-relaxed text-ink-dim">
-            The official <span className="text-ink-muted">{title}</span> documentation can&apos;t be
-            embedded here, but it&apos;s one click away.
+            The official <span className="text-ink-muted">{title}</span> documentation isn&apos;t in the
+            app yet, but it&apos;s one click away.
           </p>
-          <a
-            href={src.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 border border-line-strong bg-surface-2 px-4 py-2 text-sm text-ink transition-colors hover:bg-surface-3"
-          >
-            {src.label} <ExternalLink className="h-4 w-4" />
-          </a>
+          {src.kind === "external" && (
+            <a
+              href={src.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 border border-line-strong bg-surface-2 px-4 py-2 text-sm text-ink transition-colors hover:bg-surface-3"
+            >
+              {src.label} <ExternalLink className="h-4 w-4" />
+            </a>
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Every entry of a doc set, filtered as you type. */
+function Entries({ slug, onOpen }: { slug: string; onOpen: (e: DocEntry) => void }) {
+  const [state, setState] = useState<{ slug: string; entries: DocEntry[] | null; error: boolean }>({
+    slug: "",
+    entries: null,
+    error: false,
+  });
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    let live = true;
+    loadEntries(slug)
+      .then((entries) => live && setState({ slug, entries, error: false }))
+      .catch(() => live && setState({ slug, entries: null, error: true }));
+    return () => {
+      live = false;
+    };
+  }, [slug]);
+
+  const entries = state.slug === slug ? state.entries : null;
+  const shown = useMemo(() => {
+    if (!entries) return [];
+    const q = query.trim().toLowerCase();
+    const hits = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries;
+    // Names that start with the query first: typing "int" should not lead with "print".
+    return (q ? [...hits].sort((a, b) => Number(!a.name.toLowerCase().startsWith(q)) - Number(!b.name.toLowerCase().startsWith(q))) : hits).slice(0, SHOWN);
+  }, [entries, query]);
+
+  if (state.slug === slug && state.error) {
+    return (
+      <div className="flex flex-1 items-center justify-center p-6 text-center text-sm text-ink-faint">
+        These docs haven&apos;t been downloaded yet. They appear after the next docs sync.
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="border-b border-line px-4 py-2">
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search entries…"
+          aria-label="Search documentation entries"
+          className="w-full border border-line-strong bg-surface-0 px-2.5 py-1.5 text-sm text-ink placeholder:text-ink-faint focus:border-line-active focus:outline-none"
+        />
+      </div>
+      <ul className="flex-1 overflow-y-auto py-1">
+        {entries === null ? (
+          <li className="px-4 py-2 text-sm text-ink-faint">Loading…</li>
+        ) : shown.length === 0 ? (
+          <li className="px-4 py-2 text-sm text-ink-faint">No entries match.</li>
+        ) : (
+          shown.map((e) => (
+            <li key={`${e.path}|${e.name}`}>
+              <button
+                type="button"
+                onClick={() => onOpen(e)}
+                className="flex w-full items-baseline justify-between gap-3 px-4 py-1 text-left text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+              >
+                <span className="truncate font-mono text-[0.8125rem]">{e.name}</span>
+                {e.type && <span className="shrink-0 text-meta text-ink-faint">{e.type}</span>}
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
     </div>
   );
 }

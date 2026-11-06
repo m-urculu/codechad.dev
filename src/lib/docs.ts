@@ -38,7 +38,7 @@ export function getDocSource(moduleId?: string | null): DocSource | null {
   return moduleId ? DOCS[moduleId] ?? null : null;
 }
 
-// Full URL for a DevDocs source (root of the scoped doc).
-export function devdocsUrl(slug: string): string {
-  return `https://devdocs.io/${slug}/`;
+/** Every DevDocs doc set the app uses: what the docs sync keeps a copy of. */
+export function devdocsSlugs(): string[] {
+  return [...new Set(Object.values(DOCS).flatMap((d) => (d.kind === "devdocs" ? [d.slug] : [])))];
 }
