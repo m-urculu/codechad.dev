@@ -3,6 +3,7 @@
 
 import fetch from 'node-fetch';
 import { GEMINI_MODEL } from '@/lib/agents/models';
+import { replyText } from "@/lib/agents/llm";
 
 async function getGeminiResponse(prompt: string): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -35,7 +36,8 @@ async function getGeminiResponse(prompt: string): Promise<string | null> {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = await response.json();
-    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    // Every part, not just the first: a reply can be split across several.
+    const rawText = replyText(data);
 
     // Remove Markdown code fences if present
     const jsonStart = rawText.indexOf('{');

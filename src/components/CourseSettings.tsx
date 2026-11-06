@@ -19,6 +19,7 @@ import type { RoadmapSummary } from "@/components/Landing";
 import { apiFetch } from "@/lib/apiFetch";
 import { clearCourses, patchCourse } from "@/lib/courseCache";
 import { clearChat } from "@/lib/chatCache";
+import { clearCourseState } from "@/lib/courseStateCache";
 import { getPathByTitle, pathModules } from "@/lib/paths";
 
 type Progress = Record<string, { done?: boolean; passed?: unknown; built?: { objectives?: unknown[] } }>;
@@ -208,6 +209,8 @@ export default function CourseSettings({
         // Resetting wipes the conversation server-side; a cached copy would put it
         // straight back on screen the next time the course is opened.
         clearChat(userId, course.courseId);
+        // Same for the cached roadmap and lesson this call has just changed.
+        clearCourseState(userId, course.courseId);
       }
       return json;
     } catch {
@@ -281,6 +284,8 @@ export default function CourseSettings({
           progress: {},
         }),
       });
+      // The cached copy holds the tree that was just replaced.
+      clearCourseState(userId, course.courseId);
       // Re-offer the generated title: the curriculum just changed, so a course
       // still carrying its placeholder name should follow. A name the learner
       // typed is left alone — the server decides, not this call site.
@@ -614,6 +619,7 @@ export default function CourseSettings({
             confirmLabel="Delete permanently"
             onConfirm={async () => {
               if (!userId) return;
+              clearCourseState(userId, course.courseId);
               await apiFetch(`/api/roadmap/state?course_id=${encodeURIComponent(course.courseId)}`,
                 { method: "DELETE" }
               ).catch(() => {});

@@ -15,6 +15,7 @@ import {
   type RoadmapSummary,
 } from "@/lib/courseCache";
 import { clearChat, prefetchChats } from "@/lib/chatCache";
+import { clearCourseState, prefetchCourseStates } from "@/lib/courseStateCache";
 import {
   FiSettings,
   FiChevronDown,
@@ -243,6 +244,15 @@ function useStoredRoadmaps(): {
           const { state } = await r.json();
           return state ?? null;
         }, { signal: prefetchAbort });
+        // Alongside it, each course's roadmap and current lesson, so opening any of
+        // them shows its tasks and code on the first frame (src/lib/courseStateCache.ts).
+        // Not queued behind the chats: a course clicked a second after the page
+        // loads would otherwise still be waiting its turn.
+        void prefetchCourseStates(uid, merged, async (courseId) => {
+          const r = await apiFetch(`/api/roadmap/state?course_id=${encodeURIComponent(courseId)}`);
+          const { state } = await r.json();
+          return state ?? null;
+        }, { signal: prefetchAbort });
       } catch {
         // Offline or a paused project: keep showing the cached list rather than
         // blanking a page full of work. An empty cache still renders as empty.
@@ -268,6 +278,7 @@ function useStoredRoadmaps(): {
     setRoadmaps(next);
     writeCourses(userId, next); // or the card returns on the next visit
     clearChat(userId, r.courseId); // its conversation goes with it
+    clearCourseState(userId, r.courseId); // and its roadmap and lesson
     if (!userId) return;
     const qs = `course_id=${encodeURIComponent(r.courseId)}`;
     apiFetch(`/api/roadmap/state?${qs}`, { method: "DELETE" }).catch(() => {});

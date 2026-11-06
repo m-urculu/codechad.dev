@@ -8,7 +8,10 @@
 import { NextResponse } from "next/server";
 import { geminiText } from "@/lib/agents/llm";
 import { getDocSource } from "@/lib/docs";
+import { canonicalDocTerm, validateDocLinks } from "@/lib/docs-index";
+import { findDocPages, linkInlineCode } from "@/lib/docSearch";
 import { userOrTrial } from "@/lib/apiAuth";
+import { answerLines, withoutAnswer } from "@/lib/agents/leak";
 
 type Item = { id: string; description: string; passed: boolean; detail?: string };
 
@@ -17,7 +20,7 @@ export async function POST(request: Request) {
   if ("error" in who) return who.error;
 
   try {
-    const { pointTitle, language, code, output, results, moduleId } = await request.json();
+    const { pointTitle, language, code, output, results, moduleId, solution, starterCode } = await request.json();
     const items: Item[] = Array.isArray(results) ? results : [];
     if (items.length === 0) return NextResponse.json({ message: "" });
 
@@ -41,12 +44,20 @@ export async function POST(request: Request) {
       `Never tell the learner to remove a console statement, to print less, or that their output has something "extra" — that is not why anything failed, and following it costs them an objective they had already passed. ` +
       `Objectives are graded independently and stay passed once passed; the only useful advice is what to ADD or CHANGE for a FAILED one.\n\n` +
       `Write 1–3 sentences of guidance: pinpoint the specific gap behind the FIRST failed objective and nudge them toward fixing it, using the failure details. ` +
-      `Then ALWAYS include a short fenced example showing the syntax pattern they need — on DIFFERENT, unrelated data: different table/variable/function names and values than this exercise uses. ` +
+      `Then name the syntax they need inline. Add a short fenced example ONLY if the pattern has enough structure that different data makes it a different program — different table/variable/function names and values than this exercise uses. ` +
+      `If the exercise is small enough that any example would be its answer with other words in it (e.g. "print two lines"), give NO code block: describe the syntax and link it instead. ` +
       `NEVER include the exact code/expression/statement that satisfies an objective, and never the exercise's own identifiers combined into the answer. ` +
       `The test is mechanical: if substituting their identifiers into your snippet would produce the answer, change the example's shape until it wouldn't. No pleasantries, no restating what passed.` +
       docLinks;
 
-    const message = (await geminiText(prompt)).trim();
+    // Prompts alone do not hold: a code block that is the answer is caught here.
+    const answer = answerLines(solution ? String(solution) : undefined, starterCode ? String(starterCode) : undefined);
+    const checked = await validateDocLinks(
+      (await withoutAnswer((fix) => geminiText(prompt + fix), answer)).trim(),
+      moduleId,
+      { context: String(pointTitle ?? ""), findPages: (refs) => findDocPages(moduleId, refs) }
+    );
+    const message = await linkInlineCode(checked, moduleId, (t) => canonicalDocTerm(moduleId, t));
     return NextResponse.json({ message });
   } catch (e) {
     console.error("[lesson/guide] error:", e);

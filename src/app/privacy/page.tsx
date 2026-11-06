@@ -228,8 +228,8 @@ const sections: Section[] = [
             the page. Your browser fetches them, when you first run something in that module, from{" "}
             <A href="https://www.jsdelivr.com/">jsDelivr</A>,{" "}
             <A href="https://unpkg.com/">unpkg</A> and{" "}
-            <A href="https://huggingface.co/">Hugging Face</A>. Opening the documentation pane
-            similarly loads a page from <A href="https://devdocs.io/">DevDocs</A>.
+            <A href="https://huggingface.co/">Hugging Face</A>. The documentation pane does not:
+            the docs are a copy kept in our own storage, so reading them contacts no one else.
           </>
         ),
       },
