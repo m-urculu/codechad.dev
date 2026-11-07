@@ -12,10 +12,18 @@ import { groundedText, extractJSON } from "./snowflake";
 import { geminiJSON } from "./llm";
 import { difficultyGuidance } from "./level";
 import { knownSkillsBlock, type KnownSkill } from "@/lib/skills";
-import { gradeSubmission } from "./grade";
+import { gradeSubmission, repeatsNeeded, rulesFailing, withoutRules } from "./grade";
 import { getRuntime, type RuntimeSpec, type ForbidLang } from "@/lib/runtimes/registry";
+import { scrubCode } from "@/lib/runtimes/comments";
 import { formatConsoleArgs } from "@/lib/runtimes/consoleFormat";
 import { getDocSource } from "@/lib/docs";
+import { canonicalDocTerm, validateDocLinks } from "@/lib/docs-index";
+import { findDocPages, linkInlineCode } from "@/lib/docSearch";
+import { answerLines, stripLeakingBlocks } from "./leak";
+import { stateRequiredNames, stateRequiredOutput, syncTodos, unstatedOutput } from "./objectives";
+import { cleanRules, grammarFor, type Rule as StructRule } from "@/lib/structure";
+import { applyScaffold, planScaffold, scaffoldPrompt, type ScaffoldHistory, type ScaffoldPlan } from "@/lib/scaffold";
+import { classifySyntax, ensureSyntaxLinks, knownSyntaxBlock, parseSyntax, SYNTAX_FAMILIAR, type SyntaxItem, type SyntaxSeen } from "@/lib/syntax";
 
 // A deterministic, programmatic check for one objective. Grading runs these — the LLM
 // is only used afterward for guidance, never to decide pass/fail.
@@ -27,10 +35,18 @@ import { getDocSource } from "@/lib/docs";
 //                     a synthetic event, or a specific printed line)
 //   code_matches    : value (a regexp source) matches the learner's code (for "how"
 //                     objectives — use a construct, add a listener, etc.)
+//   code (optional, on the two stdout checks): a regexp the code must ALSO match. For
+//                     a printed value the program computes: without it, printing the
+//                     number itself (`std::cout << 50;` for a `total` that is 50)
+//                     passes an objective about printing `total`.
+//   rules (optional, on any check): structural rules read from the code's syntax tree
+//                     (src/lib/structure.ts) — on a stdout check they must ALSO hold,
+//                     on code_matches they decide it. Where the code cannot be parsed,
+//                     the regexp ("value" / "code") is used instead.
 export type ObjectiveCheck =
-  | { type: "stdout_equals"; value: string }
-  | { type: "stdout_includes"; value: string }
-  | { type: "code_matches"; value: string };
+  | { type: "stdout_equals"; value: string; code?: string; rules?: StructRule[] }
+  | { type: "stdout_includes"; value: string; code?: string; rules?: StructRule[] }
+  | { type: "code_matches"; value: string; rules?: StructRule[] };
 export type Objective = { id: string; description: string; check?: ObjectiveCheck };
 export type Lesson = {
   intro: string;
@@ -38,6 +54,10 @@ export type Lesson = {
   html: string; // HTML scaffold for DOM/Preview lessons (empty otherwise)
   objectives: Objective[];
   solution?: string;   // complete correct code; validated so the exercise is solvable
+  /** Syntax the solution uses, checked against it. See src/lib/syntax.ts. */
+  syntax?: SyntaxItem[];
+  /** Skeleton pieces left for the learner to write. See src/lib/scaffold.ts. */
+  scaffold?: ScaffoldPlan["mode"];
   sources?: string[];
 };
 export type EvalResult = { id: string; passed: boolean; feedback: string };
@@ -114,74 +134,25 @@ const FORBIDDEN_BY_LANG: Record<ForbidLang, Rule[]> = {
   none: [],
 };
 
-// Comment/string syntax per language so we only scan EXECUTABLE code — an educational
-// comment like "in Node you'd use process.argv" must not count as a violation.
-type Syntax = { line: string[]; block: [string, string][]; strings: string[] };
-const SYNTAX_BY_LANG: Record<ForbidLang, Syntax> = {
-  js: { line: ["//"], block: [["/*", "*/"]], strings: ["'", '"', "`"] },
-  python: { line: ["#"], block: [['"""', '"""'], ["'''", "'''"]], strings: ["'", '"'] },
-  sql: { line: ["--"], block: [["/*", "*/"]], strings: ["'"] },
-  ruby: { line: ["#"], block: [["=begin", "=end"]], strings: ["'", '"'] }, // backticks kept (shell exec)
-  lua: { line: ["--"], block: [["--[[", "]]"]], strings: ["'", '"'] },
-  php: { line: ["//", "#"], block: [["/*", "*/"]], strings: ["'", '"'] },
-  c: { line: ["//"], block: [["/*", "*/"]], strings: ["'", '"'] },
-  cpp: { line: ["//"], block: [["/*", "*/"]], strings: ["'", '"'] },
-  go: { line: ["//"], block: [["/*", "*/"]], strings: ["'", '"', "`"] },
-  none: { line: [], block: [], strings: [] },
-};
-
-function scrub(code: string, lang: ForbidLang): string {
-  const syn = SYNTAX_BY_LANG[lang];
-  let out = "";
-  let i = 0;
-  outer: while (i < code.length) {
-    // block comments (checked before line comments: lua's --[[ starts with --)
-    for (const [open, close] of syn.block) {
-      if (code.startsWith(open, i)) {
-        const end = code.indexOf(close, i + open.length);
-        i = end === -1 ? code.length : end + close.length;
-        continue outer;
-      }
-    }
-    for (const mark of syn.line) {
-      if (code.startsWith(mark, i)) {
-        const nl = code.indexOf("\n", i);
-        i = nl === -1 ? code.length : nl; // keep the newline
-        continue outer;
-      }
-    }
-    const c = code[i];
-    if (syn.strings.includes(c)) {
-      i++;
-      while (i < code.length && code[i] !== c) {
-        if (code[i] === "\\") i++;
-        i++;
-      }
-      i++;
-      continue;
-    }
-    out += c;
-    i++;
-  }
-  return out;
-}
-
 function selfContainmentViolations(code: string, lang: ForbidLang): string[] {
-  const scrubbed = scrub(code, lang);
+  const scrubbed = scrubCode(code, lang);
   return FORBIDDEN_BY_LANG[lang].filter((f) => f.re.test(scrubbed)).map((f) => f.name);
 }
 
 // ---------- lesson generation ----------
 
-type RawCheck = { type?: string; value?: string };
-type RawLesson = { intro?: string; starterCode?: string; html?: string; solution?: string; objectives?: { id?: string; description?: string; check?: RawCheck }[] };
+type RawCheck = { type?: string; value?: string; code?: string; rules?: unknown };
+type RawLesson = { intro?: string; starterCode?: string; html?: string; solution?: string; syntax?: unknown; objectives?: { id?: string; description?: string; check?: RawCheck }[] };
 
 function parseCheck(raw: RawCheck | undefined): ObjectiveCheck | undefined {
   if (!raw || typeof raw.value !== "string") return undefined;
   const t = raw.type;
-  if (t === "stdout_equals" || t === "stdout_includes" || t === "code_matches") {
-    return { type: t, value: raw.value };
+  const rules = cleanRules(raw.rules);
+  const withRules = <T extends ObjectiveCheck>(c: T): T => (rules.length ? { ...c, rules } : c);
+  if (t === "stdout_equals" || t === "stdout_includes") {
+    return withRules(typeof raw.code === "string" && raw.code.trim() ? { type: t, value: raw.value, code: raw.code } : { type: t, value: raw.value });
   }
+  if (t === "code_matches") return withRules({ type: t, value: raw.value });
   return undefined;
 }
 
@@ -191,6 +162,7 @@ function mkLesson(data: RawLesson, sources: string[], spec: RuntimeSpec): Lesson
     starterCode: String(data.starterCode ?? "").trim() || spec.defaultCode,
     html: spec.allowDom ? String(data.html ?? "").trim() : "",
     solution: data.solution ? String(data.solution).trim() : undefined,
+    syntax: parseSyntax(data.syntax, data.solution ? String(data.solution) : undefined),
     sources,
     objectives: (Array.isArray(data.objectives) ? data.objectives : []).slice(0, 5).map((o, i) => ({
       id: String(o?.id || `o${i + 1}`),
@@ -211,9 +183,12 @@ function buildPrompt(
     moduleId?: string;
     treeOutline?: string;
     known?: KnownSkill[];
+    syntaxSeen?: SyntaxSeen;
+    priorExercises?: string[];
+    scaffold?: ScaffoldPlan;
   }
 ): string {
-  const { skill, level, goal, pointTitle, pointSummary, moduleId, treeOutline, known } = input;
+  const { skill, level, goal, pointTitle, pointSummary, moduleId, treeOutline, known, syntaxSeen, priorExercises, scaffold } = input;
 
   // Only modules whose docs are embeddable (DevDocs) get inline doc links; the external-
   // doc modules stay plain prose. The label steers the model toward canonical entry names.
@@ -221,6 +196,15 @@ function buildPrompt(
   const docLinks =
     docSrc?.kind === "devdocs"
       ? `DOC LINKS: In "intro", wherever you mention a specific API / method / function / built-in / concept the learner MUST use to complete THIS exercise, hyperlink it inline using markdown [visible text](<doc:CANONICAL_NAME>) — ALWAYS wrap the target in angle brackets <...> (required so names with spaces work). CANONICAL_NAME is its official ${docSrc.label} documentation name (e.g. the exact method or symbol name — "Array.prototype.map", "print", "SELECT", "Arrow function expressions"). Link ONLY the few references genuinely needed to solve the task, inline in the sentence where they appear — never a separate list, never decorative links. Example: "use the [\`map()\`](<doc:Array.prototype.map>) method to transform each item".\n`
+      : "";
+
+  // Syntax ledger: only where doc links resolve, since every new piece of syntax is
+  // introduced AS a doc link. See src/lib/syntax.ts.
+  const syntax =
+    docSrc?.kind === "devdocs"
+      ? `SYNTAX: "syntax" lists every piece of syntax the learner must WRITE to turn starterCode into solution — keywords, operators, functions, statements, and small things like escape sequences (\\n) or format specifiers that are easy to miss. Each item: {"token": exactly as it appears in solution, "doc": its official ${docSrc.label} documentation name, "meaning": at most 10 words}. Every token MUST appear verbatim in "solution".\n` +
+        knownSyntaxBlock(syntaxSeen ?? {}) +
+        `In "intro": every syntax item NOT listed above is NEW — show it, explain in one sentence what it does, and link it inline as [\`token\`](<doc:NAME>). An item listed fewer than ${SYNTAX_FAMILIAR} times: link it once, do not explain it again. An item listed ×${SYNTAX_FAMILIAR} or more: do not mention it. Never leave out a NEW item the solution needs — the learner cannot write what they were never shown.\n`
       : "";
 
   const head =
@@ -240,17 +224,41 @@ function buildPrompt(
         `Teach ONLY the current point. Assume ✓done and earlier material is known — build on it, never re-teach it. ` +
         `Do NOT teach content that belongs to other points; at most note it comes later.\n`
       : "") +
+    // What this learner has already been asked to do in this course. Without it every
+    // lesson is generated as if it were the first, and a beginner course asked for
+    // "Hello, C++!" in six of its first nine lessons.
+    (priorExercises?.length
+      ? `EXERCISES THIS LEARNER HAS ALREADY DONE IN THIS COURSE (one per lesson):\n` +
+        priorExercises.map((e) => `  • ${e}`).join("\n") +
+        `\nThis lesson's exercise must be NEW: a different task with different data and different printed text — never ` +
+        `reprint a message one of them printed (no "Hello, …!" again if it is above). It must REQUIRE at least one ` +
+        `construct or technique none of them did — if this lesson's topic is something they already USED (e.g. std::cout: ` +
+        `they printed fixed text), the exercise is about what they did not do with it (chaining several values in one ` +
+        `statement, printing variables and expressions, formatting) — never another "print this fixed message".\n`
+      : "") +
     `LANGUAGE: the learner writes ${spec.langName} in an in-app editor. Output mechanism: ${spec.printHow}.\n` +
     `RUNTIME: ${spec.runNotes}\n\n` +
-    `Return ONLY JSON: {"intro": string, "starterCode": string, "html": string, "solution": string, "objectives": [{"id": string, "description": string, "check": {"type": string, "value": string}}]}.\n` +
+    `Return ONLY JSON: {"intro": string, "starterCode": string, "html": string, "solution": string, "objectives": [{"id": string, "description": string, "check": {"type": string, "value": string, "code"?: string, "rules"?: [{"rule": string, "expr"?: string, "name"?: string, "init"?: string}]}}]${syntax ? `, "syntax": [{"token": string, "doc": string, "meaning": string}]` : ""}}.\n` +
     `"solution": the COMPLETE correct ${spec.langName} — the starterCode with every objective fully implemented — that runs to completion WITHOUT errors and produces output proving all objectives. Same self-containment rules as starterCode${spec.allowDom ? "; it targets the same html (selectors must match)" : ""}. This is the reference answer; it is validated by running it.\n` +
     `Every objective MUST carry a "check" — a DETERMINISTIC, machine-verifiable test (grading runs it; no AI judges pass/fail). Pick the type that fits:\n` +
     `  • {"type":"stdout_equals","value":"<the exact line(s) the objective requires>"} — when the objective is fully defined by what the program prints. Grading looks for these lines inside the run output, so the learner may leave their own debugging prints in place; give ONLY the lines the objective is about, not incidental output.\n` +
     (spec.outputFormat ? `    OUTPUT FORMAT — the console renders values as ${spec.outputFormat} Write stdout values EXACTLY as this runtime prints them, never as another language's REPL or console would.\n` : "") +
     `  • {"type":"stdout_includes","value":"<substring the output must contain>"} — when only part of the output matters.\n` +
+    (grammarFor(spec.monacoLang)
+      ? `  • STRUCTURAL RULES — the code is parsed, so a check can say what the code must DO, read from its syntax tree (spacing, comments and operand order never matter). Any check may carry "rules": a list, every one of which must hold:\n` +
+        `      {"rule":"prints","expr":"<expression>"} a print statement outputs that expression · {"rule":"uses","expr":"<expression>"} the expression appears · ` +
+        `{"rule":"declares","name":"<variable>","init":"<optional initialiser expression>"} · {"rule":"calls","name":"<function>"} · {"rule":"defines","name":"<function>"} · {"rule":"returns","name":"<function>","expr":"<the expression it returns>"}\n` +
+        `    An objective to write a function that RETURNS something carries "defines" AND "returns" — a function that prints instead of returning must not pass it.\n` +
+        `    Expressions are written in ${spec.langName} exactly as your solution writes them (e.g. "total", "17 + 25", "baseUnits * multiplier").\n` +
+        `    A stdout check of a COMPUTED value — any printed text not written literally in your solution (a variable's value, an expression's result) — MUST carry "rules" saying how it is produced, so printing the number itself does not pass: ` +
+        `e.g. {"type":"stdout_equals","value":"50","rules":[{"rule":"prints","expr":"total"}]}; for "print the sum of 17 and 25": {"type":"stdout_equals","value":"42","rules":[{"rule":"prints","expr":"17 + 25"}]}.\n` +
+        `    A code_matches objective ("declare X", "call Y", "use Z") also carries "rules" for what it asks; its "value" regexp stays as a fallback.\n`
+      : `  • A stdout check of a COMPUTED value — any printed text that is not written literally in your solution (a variable's value, an expression's result) — ALSO carries "code": a JS regexp source matching how the solution produces it, so printing the number itself does not pass. E.g. {"type":"stdout_equals","value":"50","code":"std::cout\\\\s*<<\\\\s*total\\\\b"}. Match the variable or expression, allowing any spacing.\n`) +
     `  • {"type":"code_matches","value":"<JS regexp source>"} — for "use X" / structural objectives, or interaction that doesn't print on a plain run (e.g. a click handler): match the required construct in the learner's code, e.g. "addEventListener\\\\(\\\\s*['\\"]click['\\"]".\n` +
     `CRITICAL: your own "solution" MUST pass every check (stdout checks match the solution's real output; code_matches matches the solution's code). Checks are validated by running the solution — if they don't pass it, they are wrong.\n` +
     docLinks +
+    syntax +
+    (scaffold ? scaffoldPrompt(spec.forbid, scaffold) : "") +
     `\n`;
 
   if (!spec.runnable) {
@@ -313,9 +321,13 @@ function buildPrompt(
     (spec.allowDom
       ? `1. "html": the page scaffold the code runs against (a live Preview is shown). It MUST contain the ACTUAL elements the objectives and starterCode reference, with the EXACT ids/classes used. If this point doesn't need markup, set "html" to "".\n`
       : `1. "html": always "" for this module.\n`) +
-    `2. "starterCode" is the EXACT ${spec.langName} in the learner's editor. It MUST already DECLARE, with sensible initial values, every identifier any objective refers to${spec.allowDom ? " (selectors must match elements in html)" : ""}. CRITICAL GAP RULE: the starter must LEAVE THE OBJECTIVES UNDONE — it must NOT already contain the statements/expressions that satisfy any objective's check. Where the learner must write code, put a TODO comment describing the task, NOT the answer. If the starter were run as-is, it MUST FAIL the objective checks; only the "solution" satisfies them. (E.g. never pre-write \`print(10 + 2 * 5)\` if an objective is to print that result — leave a \`# TODO\` instead.)\n` +
-    `3. "intro": markdown teaching text, instructional voice, no pleasantries. Structure it in two parts: (a) a PRACTICAL, TECHNICAL explanation of the topic — what it is, how it actually works, the relevant syntax/semantics/API behavior, and when/why it's used, so the learner understands the task on a technical level BEFORE writing code; (b) then describe the ACTUAL starterCode${spec.allowDom ? "/html" : ""} the learner sees and what the task requires them to change — never an unrelated example. Be concise but genuinely explanatory; use a short code snippet or bullet list where it aids understanding. PLAIN MARKDOWN ONLY — never LaTeX or math delimiters: write O(1), not $O(1)$, which renders literally here.\n` +
-    `4. "objectives": 2 to 4 CONCRETE, CHECKABLE tasks completed by EDITING the starterCode. Each objective's DESCRIPTION must state exactly the observable thing its "check" verifies (e.g. "print X", "define function Y that returns Z") — describe the gradeable ACTION, never an ungradeable mental step like "predict", "notice", "understand", or "observe". Each references only identifiers that already exist and is verifiable from the run output or code. No vague or stylistic objectives.`
+    `2. "starterCode" is the EXACT ${spec.langName} in the learner's editor. It MUST already DECLARE, with sensible initial values, every identifier any objective refers to${spec.allowDom ? " (selectors must match elements in html)" : ""}. CRITICAL GAP RULE: the starter must LEAVE THE OBJECTIVES UNDONE — it must NOT already contain the statements/expressions that satisfy any objective's check. Where the learner must write code, put a TODO comment describing the task, NOT the answer — exactly ONE single-line TODO comment per objective, in the same order as "objectives", each where that objective's code goes. If the starter were run as-is, it MUST FAIL the objective checks; only the "solution" satisfies them. (E.g. never pre-write \`print(10 + 2 * 5)\` if an objective is to print that result — leave a \`# TODO\` instead.)\n` +
+    `   STEP BY STEP: the starter MUST compile and run as-is, and keep compiling as the learner completes each objective in turn. If an objective is to DECLARE something (a variable, a function), the starter must not already USE it — the line that uses it belongs to that objective's TODO, or a later one — otherwise the program fails to compile until every TODO is done, and the learner gets no feedback on each step.\n` +
+    `3. "intro": markdown teaching text, instructional voice, no pleasantries. Structure it in two parts: (a) a PRACTICAL, TECHNICAL explanation of the topic — what it is, how it actually works, the relevant syntax/semantics/API behavior, and when/why it's used, so the learner understands the task on a technical level BEFORE writing code; (b) then describe the ACTUAL starterCode${spec.allowDom ? "/html" : ""} the learner sees and what the task requires them to change — never an unrelated example. Be concise but genuinely explanatory; use a short code snippet or bullet list where it aids understanding — but a snippet must NEVER contain a line the learner has to write to meet an objective, not even with different text or values; name that syntax inline instead. PLAIN MARKDOWN ONLY — never LaTeX or math delimiters: write O(1), not $O(1)$, which renders literally here.\n` +
+    `4. "objectives": 2 to 4 CONCRETE, CHECKABLE tasks completed by EDITING the starterCode. Each objective's DESCRIPTION must state exactly the observable thing its "check" verifies (e.g. "print X", "define function Y that returns Z") — describe the gradeable ACTION, never an ungradeable mental step like "predict", "notice", "understand", or "observe". Each references only identifiers that already exist and is verifiable from the run output or code. No vague or stylistic objectives.\n` +
+    `   NEVER an objective to print an explanation, definition or description of a concept in the learner's own words ("print a message explaining what the linker does"): grading compares exact text, so no learner can guess the sentence, and the tutor may not reveal it. ` +
+    `A conceptual point is still taught by CODE that exercises it — for compiling and linking, e.g. declare a function and define it separately, then call it; for a type, store and print a value of it. ` +
+    `When a check is printed text, the description must QUOTE that exact text ("print \`Total: 42\`"), so the learner knows what to produce.`
   );
 }
 
@@ -329,15 +341,23 @@ export async function buildLesson(input: {
   treeOutline?: string;
   /** Completed in other courses — see src/lib/skills.ts. */
   known?: KnownSkill[];
+  /** Syntax already shown to this learner in this technology — see src/lib/syntax.ts. */
+  syntaxSeen?: SyntaxSeen;
+  /** One line per exercise already done in this course, so this one is not a repeat. */
+  priorExercises?: string[];
+  /** What this learner has written of the program skeleton — see src/lib/scaffold.ts. */
+  scaffoldHistory?: ScaffoldHistory;
 }): Promise<Lesson | null> {
   const spec = getRuntime(input.moduleId);
-  const prompt = buildPrompt(spec, input);
+  const scaffold = spec.runnable ? planScaffold(spec.forbid, input.scaffoldHistory) : undefined;
+  let prompt = buildPrompt(spec, { ...input, scaffold });
   const lang = spec.forbid;
 
   // Generate, then enforce self-containment: regenerate with the violation called out
   // (deterministic guard, not just prompt).
   let last: Lesson | null = null;
   let viols: string[] = [];
+  let retriedChecks = false;
   for (let attempt = 0; attempt < 3; attempt++) {
     const extra = viols.length
       ? `\n\nCRITICAL FIX: your previous attempt used FORBIDDEN APIs (${viols.join(", ")}) that do NOT work in this sandbox. ` +
@@ -349,7 +369,68 @@ export async function buildLesson(input: {
     if (!data || !Array.isArray(data.objectives) || data.objectives.length === 0) continue;
     last = mkLesson(data, sources, spec);
     viols = selfContainmentViolations(last.starterCode + "\n" + last.html, lang);
+    // The prompt asks for 2 to 4 objectives; a single one is usually a lesson with
+    // nothing left to do (the rest pre-written). Retry, keeping this as the fallback.
+    if (viols.length === 0 && last.objectives.length < 2 && attempt < 2) {
+      prompt += `\n\nCRITICAL FIX: give 2 to 4 objectives, each a separate step the learner writes — your previous attempt had ${last.objectives.length}.`;
+      continue;
+    }
+    // An objective graded on printed text it never states is unpassable for a
+    // learner who words things their own way (see objectives.ts): regenerate once.
+    const unstated = last.objectives.filter((o) => unstatedOutput(o));
+    // And a code check can be tested right here, in any language: it must accept the
+    // lesson's own solution. A C++ lesson's check wanted `int f(int, int);` while its
+    // solution wrote `int f(int a, int b);` — unpassable for anyone who names them.
+    const rejecting = last.objectives.filter((o) => codeCheckRejects(o, last!.solution));
+    // A computed value graded only on output passes when the learner prints the number.
+    const hardcodable = last.objectives.filter((o) => printsComputedWithoutCode(o, last!.solution));
+    // Structural rules, tested against the solution's own syntax tree.
+    const ruleFails = await rulesRejectingSolution(last.objectives, last.solution, spec);
+    const rulesRejecting = last.objectives.filter((o) => ruleFails.has(o.id));
+    // Two output checks expecting the same text can't tell their objectives apart.
+    const twins = last.objectives.filter((o) => repeatsNeeded(last!.objectives).has(o.id));
+    if (viols.length === 0 && (unstated.length || rejecting.length || twins.length || hardcodable.length || rulesRejecting.length) && !retriedChecks) {
+      retriedChecks = true;
+      if (unstated.length) {
+        prompt +=
+          `\n\nCRITICAL FIX: objectives ${unstated.map((o) => `"${o.description}"`).join(", ")} are graded on exact printed text ` +
+          `the description never states. Do not ask the learner to print an explanation in their own words; ` +
+          `exercise the concept in code instead, and quote any exact text an objective requires.`;
+      }
+      if (hardcodable.length) {
+        prompt +=
+          `\n\nCRITICAL FIX: objectives ${hardcodable.map((o) => `"${o.description}"`).join(", ")} print a value the program computes, ` +
+          `so printing that value as a literal would pass them. Give each of their stdout checks ${grammarFor(spec.monacoLang) ? `"rules" ([{"rule":"prints","expr":"<the variable or expression>"}])` : `a "code" regexp`} saying how your ` +
+          `solution produces it (the variable or expression in the print statement).`;
+      }
+      if (rulesRejecting.length) {
+        prompt +=
+          `\n\nCRITICAL FIX: the "rules" of ${rulesRejecting.map((o) => `"${o.description}"`).join(", ")} do not hold in your own solution. ` +
+          `Write each rule's expression and names exactly as your solution writes them.`;
+      }
+      if (twins.length) {
+        prompt +=
+          `\n\nCRITICAL FIX: objectives ${twins.map((o) => `"${o.description}"`).join(", ")} expect the same printed text as an earlier objective, ` +
+          `so printing it once meets both. Give each objective a result no other objective produces (different values, or a label in the printed text).`;
+      }
+      if (rejecting.length) {
+        prompt +=
+          `\n\nCRITICAL FIX: the code_matches checks of ${rejecting.map((o) => `"${o.description}"`).join(", ")} do not match your own solution. ` +
+          `Write each regexp to accept every correct way of writing it (named or unnamed parameters, any spacing), and test it against your solution.`;
+      }
+      continue;
+    }
     if (viols.length === 0) break;
+  }
+  // Whatever the model did, every printed-text objective states its text.
+  // And every name a structural rule requires.
+  if (last) last = { ...last, objectives: stateRequiredOutput(stateRequiredNames(last.objectives, last.starterCode)) };
+  // And no rule the solution itself fails survives: the check falls back to its regexp.
+  if (last) {
+    const fails = await rulesRejectingSolution(last.objectives, last.solution, spec);
+    if (fails.size) last = { ...last, objectives: withoutRules(last.objectives, fails) };
+    // The TODOs say exactly what the objectives check (objectives.ts).
+    last = { ...last, starterCode: syncTodos(last.starterCode, last.objectives) };
   }
 
   // Final guarantee: targeted rewrite of just the code.
@@ -377,7 +458,78 @@ export async function buildLesson(input: {
   // in the background (their engines only exist in the browser).
   if (last) last = await validateJsLesson(last, spec);
 
+  // Skeleton practice: take the planned pieces out of the (validated, complete)
+  // starter, and grade each one. First, so they read as the first steps.
+  if (last && scaffold?.omit.length) {
+    const s = applyScaffold(spec.forbid, scaffold, last.starterCode, last.solution);
+    if (s.objectives.length) {
+      last = { ...last, starterCode: s.starter, objectives: [...s.objectives, ...last.objectives], scaffold: scaffold.mode };
+    }
+  }
+
+  // The syntax list describes the solution AS VALIDATED (it may have been rewritten
+  // above), and every piece the learner has never seen must reach the intro as a link.
+  if (last) {
+    // Each item's doc, checked against the real docs: a near miss ("cout") becomes
+    // the entry ("std::cout"); a name with no entry is looked for in the pages'
+    // content, in this lesson's context (docSearch.ts); and an item neither finds
+    // stays unlinked rather than linking to the wrong page.
+    const lessonContext = `${input.skill}: ${input.pointTitle}`;
+    const parsed = parseSyntax(last.syntax, last.solution);
+    const named = await Promise.all(parsed.map((it) => canonicalDocTerm(input.moduleId, it.doc, [it.token])));
+    const misses = parsed.filter((_, i) => !named[i]);
+    const pages = await findDocPages(
+      input.moduleId,
+      misses.map((it) => ({ term: it.token, label: it.doc, context: `${lessonContext}. ${it.token}: ${it.meaning}` }))
+    ).catch(() => misses.map(() => null));
+    const items = parsed.map((it, i) => ({
+      ...it,
+      doc: named[i] ?? pages[misses.indexOf(it)] ?? "",
+    }));
+    const { fresh } = classifySyntax(items, input.syntaxSeen ?? {});
+    // An intro snippet that is the answer gives the exercise away before it starts.
+    const intro = await validateDocLinks(
+      stripLeakingBlocks(last.intro, answerLines(last.solution, last.starterCode)),
+      input.moduleId,
+      { context: lessonContext, findPages: (refs) => findDocPages(input.moduleId, refs) }
+    );
+    // Then the syntax it shows as inline code, linked to where the docs define it.
+    const linked = await linkInlineCode(ensureSyntaxLinks(intro, fresh), input.moduleId, (t) =>
+      canonicalDocTerm(input.moduleId, t)
+    );
+    last = { ...last, syntax: items, intro: linked };
+  }
+
   return last;
+}
+
+/** A code check — code_matches, or a stdout check's "code" — that fails against the lesson's own solution, graded as grade.ts does. */
+function codeCheckRejects(o: Objective, solution: string | undefined): boolean {
+  const c = o.check;
+  const pattern = c?.type === "code_matches" ? c.value : c?.code;
+  if (pattern === undefined || !solution) return false;
+  try {
+    return !new RegExp(pattern, "m").test(solution);
+  } catch {
+    return !solution.includes(pattern); // grade.ts treats an invalid regexp as plain text
+  }
+}
+
+/** Objectives whose structural rules fail on the lesson's own solution (unparseable code: none). */
+function rulesRejectingSolution(objectives: Objective[], solution: string | undefined, spec: RuntimeSpec): Promise<Set<string>> {
+  return rulesFailing(objectives, solution, spec.monacoLang);
+}
+
+/** A stdout check of text the solution does not write literally (so it computes it), with no "code" to require how. */
+function printsComputedWithoutCode(o: Objective, solution: string | undefined): boolean {
+  const c = o.check;
+  if (!c || c.type === "code_matches" || c.code || c.rules?.length || !solution) return false;
+  const src = solution.replace(/\s+/g, " ");
+  return c.value
+    .split("\n")
+    .map((l) => l.trim().replace(/\s+/g, " "))
+    .filter(Boolean)
+    .some((l) => !src.includes(l));
 }
 
 // Run a self-contained JS snippet in a Node sandbox, capturing console + errors.
@@ -469,7 +621,10 @@ export async function fixChecks(input: {
       c.value.length > 0
     ) {
       changed = true;
-      return { ...o, check: { type: c.type, value: c.value } as ObjectiveCheck };
+      // The value was wrong, not how it is produced: a stdout check keeps its "code".
+      const code = c.type !== "code_matches" && o.check && o.check.type !== "code_matches" ? o.check.code : undefined;
+      const rules = o.check?.rules;
+      return { ...o, check: { type: c.type, value: c.value, ...(code ? { code } : {}), ...(rules ? { rules } : {}) } as ObjectiveCheck };
     }
     return o;
   });
@@ -535,7 +690,7 @@ async function validateJsLesson(lesson: Lesson, spec: RuntimeSpec): Promise<Less
   for (let attempt = 0; attempt < 2; attempt++) {
     const run = runJsInSandbox(current.solution!);
     if (run.error) break; // (1a) already did what it could
-    const g = gradeSubmission(current.objectives, current.solution!, run.output);
+    const g = gradeSubmission(current.objectives, current.solution!, run.output, spec.forbid);
     if (!g.gradable || g.allPassed) break;
     const repaired = await fixChecks({
       objectives: current.objectives,
@@ -551,7 +706,7 @@ async function validateJsLesson(lesson: Lesson, spec: RuntimeSpec): Promise<Less
   // (2) Starter must leave a gap — it must NOT already pass all checks.
   for (let attempt = 0; attempt < 2; attempt++) {
     const run = runJsInSandbox(current.starterCode);
-    const g = gradeSubmission(current.objectives, current.starterCode, run.output);
+    const g = gradeSubmission(current.objectives, current.starterCode, run.output, spec.forbid);
     if (!g.gradable || !g.allPassed) break; // gap exists (or nothing gradable) → good
     const fixed = await fixStarter({
       objectives: current.objectives,

@@ -1,16 +1,12 @@
 // Resolve a documentation TERM (an API/method/concept name the assistant references
-// inline, e.g. "Array.prototype.map") to a concrete DevDocs URL for the active module.
-//
-// DevDocs publishes a per-doc index at documents.devdocs.io/<slug>/index.json
-// ({entries:[{name, path, type}]}) with CORS `*`, so we fetch it once per slug, cache it
-// (memory + localStorage), and map the term to the entry's exact path — yielding a real
-// deep link to that section. Unresolved terms fall back to DevDocs' in-doc search.
+// inline, e.g. "Array.prototype.map") to a page of our own copy of the docs for the
+// active module (docsStore.ts): its entries are loaded once per doc set, cached
+// (memory + localStorage, keyed by version), and the term is mapped to the entry's
+// exact path, section included. Nothing here talks to DevDocs.
 
-import { getDocSource, devdocsUrl } from "./docs";
+import { getDocSource } from "./docs";
+import { hasPage, loadEntries, versionDir } from "./docsStore";
 
-type Entry = { name: string; path: string; type?: string };
-
-const LS_TTL_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 const memCache = new Map<string, Promise<DocIndex>>(); // slug -> parsed index
 
 // Normalize a name/term for matching: lowercase, drop call parens/punctuation, collapse ws.
@@ -46,28 +42,22 @@ function buildIndex(pairs: [string, string][]): DocIndex {
 }
 
 async function loadIndex(slug: string): Promise<DocIndex> {
-  // v2: the cached shape changed when segment matching was tightened. A stale v1 blob
-  // would resolve terms the old, loose way for up to a fortnight.
-  const lsKey = `devdocs-index-v2:${slug}`;
+  // Keyed by the synced version, so a new sync is picked up and nothing goes stale.
+  const dir = await versionDir(slug);
+  if (!dir) throw new Error(`docs ${slug} not synced`);
+  const lsKey = `docs-index-v3:${dir}`;
   if (typeof window !== "undefined") {
     try {
       const raw = window.localStorage.getItem(lsKey);
-      if (raw) {
-        const parsed = JSON.parse(raw) as { t: number; e: [string, string][] };
-        if (parsed && Date.now() - parsed.t < LS_TTL_MS) return buildIndex(parsed.e);
-      }
+      if (raw) return buildIndex(JSON.parse(raw) as [string, string][]);
     } catch {
       /* ignore corrupt cache */
     }
   }
 
-  const res = await fetch(`https://documents.devdocs.io/${slug}/index.json`);
-  if (!res.ok) throw new Error(`index ${slug} ${res.status}`);
-  const data = (await res.json()) as { entries?: Entry[] };
-
   const pairs: [string, string][] = [];
   const seen = new Set<string>();
-  for (const e of data.entries ?? []) {
+  for (const e of await loadEntries(slug)) {
     if (!e?.name || !e?.path) continue;
     const full = norm(e.name);
     if (!full || seen.has(full)) continue;
@@ -77,7 +67,14 @@ async function loadIndex(slug: string): Promise<DocIndex> {
 
   if (typeof window !== "undefined") {
     try {
-      window.localStorage.setItem(lsKey, JSON.stringify({ t: Date.now(), e: pairs }));
+      // One version per doc set: drop the ones this replaces.
+      for (let i = window.localStorage.length - 1; i >= 0; i--) {
+        const k = window.localStorage.key(i);
+        if (k?.startsWith(`docs-index-v3:${slug}/`) || k?.startsWith(`devdocs-index-v2:${slug}`)) {
+          window.localStorage.removeItem(k);
+        }
+      }
+      window.localStorage.setItem(lsKey, JSON.stringify(pairs));
     } catch {
       /* quota — fine to skip persistence */
     }
@@ -138,76 +135,184 @@ async function lookupPath(slug: string, term: string): Promise<string | null> {
   return agreeing ? byName.get(agreeing) ?? null : null;
 }
 
-// Does the PAGE behind an index path actually exist?
-//
-// The index is a snapshot and the site is not: a path can be in index.json and 404 on
-// devdocs.io, which is what a "link to nowhere" is — the pane loads and shows DevDocs'
-// own "Page not found" instead of the section. DevDocs serves each page as
-// documents.devdocs.io/<slug>/<page>.html with `access-control-allow-origin: *`
-// (200 for real pages, 403 for missing ones), so this is checkable from the browser.
-// Verified 2026-07: glossary -> 200, nonexistent-page -> 403.
-const pageOk = new Map<string, Promise<boolean>>();
+// Does the PAGE behind an index path exist in our copy? An index can name a page
+// the docs no longer have; the page map the sync writes is the authority.
 function verifyPage(slug: string, path: string): Promise<boolean> {
-  // The fragment is an in-page anchor; the document is everything before it.
-  const page = path.split("#")[0];
-  const key = `${slug}/${page}`;
-  let p = pageOk.get(key);
-  if (!p) {
-    p = fetch(`https://documents.devdocs.io/${key}.html`, { method: "GET" })
-      .then((r) => r.ok)
-      // A 403 has no CORS header, so it surfaces as a network error rather than a
-      // response — same conclusion either way: do not send the learner there.
-      .catch(() => false);
-    pageOk.set(key, p);
-  }
-  return p;
+  return hasPage(slug, path);
+}
+
+// The spellings a generated term arrives in that the index spells differently:
+// `<iostream>` for "iostream", `cout` for "std::cout", `print()` for "print".
+// Measured against the C++ index (2026-11): these three account for most misses.
+function spellings(term: string): string[] {
+  const t = term.trim();
+  const bare = t.replace(/^<(.+)>$/, "$1").replace(/\s*\(\s*\)$/, "");
+  const out = [t, bare];
+  if (/^std::/.test(bare)) out.push(bare.slice(5));
+  else if (/^[A-Za-z_]\w*$/.test(bare)) out.push(`std::${bare}`);
+  return [...new Set(out.filter(Boolean))];
 }
 
 /**
- * Is `term` a link we can honour for this module? Used at RENDER time, so a term the
- * docs do not carry is never shown as a clickable link in the first place.
+ * The index's own name for a term, if the docs really have it — the term itself,
+ * one of its usual misspellings, or one of `alternatives` (the link text, a syntax
+ * token). The page behind it is checked too. Null means: do not link this.
  *
- * Index-only: no per-link network requests. Once the index is cached this is
- * synchronous work behind a resolved promise.
+ * Used when a message is GENERATED, on the server, so a link that goes nowhere is
+ * fixed or removed before anyone sees it. The render-time check below stays as the
+ * second line, in the chat, for messages saved before this existed.
  */
-export async function canResolveDocTerm(
+export async function canonicalDocTerm(
   moduleId: string | null | undefined,
-  term: string
-): Promise<boolean> {
+  term: string,
+  alternatives: string[] = []
+): Promise<string | null> {
   const src = getDocSource(moduleId);
-  if (!src || src.kind !== "devdocs") return false;
-  const t = (term ?? "").trim();
-  if (!t) return false;
-  try {
-    return (await lookupPath(src.slug, t)) !== null;
-  } catch {
-    return false; // index unavailable — better a plain word than a dead link
+  if (!src || src.kind !== "devdocs") return null;
+  // "@path": a page chosen by content search (docSearch.ts). Only its existence is
+  // left to check.
+  if (term.startsWith("@")) {
+    return (await verifyPage(src.slug, term.slice(1))) ? term : null;
   }
+  const tried = new Set<string>();
+  for (const candidate of [term, ...alternatives].flatMap(spellings)) {
+    if (tried.has(candidate)) continue;
+    tried.add(candidate);
+    try {
+      const path = await lookupPath(src.slug, candidate);
+      if (path && (await verifyPage(src.slug, path))) return norm(candidate);
+    } catch {
+      return null; // index unreachable: link nothing rather than guess
+    }
+  }
+  return null;
 }
 
-// Resolve `term` to a DevDocs URL for `moduleId`, or null when the module has no
-// embeddable DevDocs source (the external-doc modules — links are suppressed there).
+// A doc link, and the look-alikes the model writes instead of `doc:` —
+// `<cppreference:io/cout>`, `<mdn:Array>` — which nothing else would resolve. Any
+// scheme but a real web or mail link is treated as a doc link and checked.
+const DOC_LINK = /\[([^\]]*)\]\(<?(?!https?:|mailto:)[a-z][\w+.-]*:([^)>]*)>?\)/gi;
+
+/**
+ * Rewrite a message's doc links with where they were placed: `placed` maps a link's
+ * target as written to its new target, or to null to make it plain text. Used to
+ * save placements INTO the message, so each link is placed once, not every time the
+ * message is shown.
+ */
+export function rewriteDocLinks(text: string, placed: Map<string, string | null>): string {
+  return text.replace(DOC_LINK, (whole, label: string, target: string) => {
+    if (!placed.has(target)) return whole;
+    const next = placed.get(target);
+    return next ? `[${label}](<doc:${next}>)` : label;
+  });
+}
+
+/**
+ * A link's target, when it can be trusted without a content search: a page already
+ * chosen by one ("@path"), or an entry name that the link's own TEXT also names —
+ * [`std::cout`](std::cout). When the text is syntax and the target a description,
+ * [`int`](Data types), a name match only finds the top of some page, so it is not
+ * trusted: the content search finds the section that defines the syntax.
+ */
+export async function confidentDocTarget(
+  moduleId: string | null | undefined,
+  term: string,
+  label: string
+): Promise<string | null> {
+  if (term.startsWith("@")) return canonicalDocTerm(moduleId, term);
+  const name = await canonicalDocTerm(moduleId, term);
+  if (!name) return null;
+  const text = label.replace(/`/g, "").trim();
+  return !text || (await canonicalDocTerm(moduleId, text)) === name ? name : null;
+}
+
+/** A reference the name lookup could not place, for a content search to try. */
+export type UnresolvedRef = { term: string; label: string; context: string };
+
+/**
+ * Check every doc link in a generated message against the module's real docs.
+ *
+ * A link whose target or text names a real entry is pointed at that entry. The
+ * rest go to `findPages` if one is given — the server's content search
+ * (docSearch.ts), which returns "@path" for the page that explains the term in
+ * context, or null. Anything still unplaced becomes plain text, so a link that
+ * would go to the wrong page, or to a search, is never shown.
+ */
+export async function validateDocLinks(
+  text: string,
+  moduleId: string | null | undefined,
+  opts: { context?: string; findPages?: (refs: UnresolvedRef[]) => Promise<(string | null)[]> } = {}
+): Promise<string> {
+  // Code blocks first: nothing renders inside one, so a doc link the model wrote there
+  // shows as raw `[x](<doc:…>)` text. It becomes its label, and the block is set
+  // aside so the checks below never touch code.
+  const blocks: string[] = [];
+  const outside = text.replace(FENCED_BLOCK, (block) =>
+    `\u0000${blocks.push(block.replace(DOC_LINK, (_w, label: string) => label)) - 1}\u0000`
+  );
+  const checked = await validateLinksOutsideCode(outside, moduleId, opts);
+  return checked.replace(/\u0000(\d+)\u0000/g, (_m, i: string) => blocks[Number(i)]);
+}
+
+const FENCED_BLOCK = /```[\s\S]*?(?:```|$)/g;
+
+async function validateLinksOutsideCode(
+  text: string,
+  moduleId: string | null | undefined,
+  opts: { context?: string; findPages?: (refs: UnresolvedRef[]) => Promise<(string | null)[]> }
+): Promise<string> {
+  const links = [...text.matchAll(DOC_LINK)];
+  if (!links.length) return text;
+  // Without a content search (findPages), a plain name match is the best there is.
+  const named = await Promise.all(
+    links.map(([, label, target]) =>
+      opts.findPages
+        ? confidentDocTarget(moduleId, target, label)
+        : canonicalDocTerm(moduleId, target, [label.replace(/`/g, "")])
+    )
+  );
+  const misses = links.map((_, i) => i).filter((i) => !named[i]);
+  const found: (string | null)[] = links.map(() => null);
+  if (misses.length && opts.findPages) {
+    const refs = misses.map((i) => {
+      const [whole, label, target] = links[i];
+      const at = links[i].index ?? 0;
+      // The sentence around the link is what says which sense of the term is meant.
+      const around = text.slice(Math.max(0, at - 200), at + whole.length + 200).replace(DOC_LINK, "$1");
+      return { term: target, label: label.replace(/`/g, ""), context: `${opts.context ?? ""} ${around}`.trim() };
+    });
+    const pages = await opts.findPages(refs).catch(() => refs.map(() => null));
+    misses.forEach((i, k) => (found[i] = pages[k] ?? null));
+  }
+  let out = text;
+  links.forEach(([whole, label], i) => {
+    const target = named[i] ?? found[i];
+    out = out.replace(whole, target ? `[${label}](<doc:${target}>)` : label);
+  });
+  return out;
+}
+
+// Resolve `term` to a page of `moduleId`'s docs — "language/types#Standard_integer_types"
+// — or null when it cannot be placed, or the module has no docs of ours.
 //
-// Every deep link this returns has been checked twice: the term is in the index, AND
-// the page it points at really exists. Anything else degrades to DevDocs' in-doc
-// search, which always lands somewhere useful, rather than to a 404.
-export async function resolveDocUrl(
+// Every path this returns names a page our copy has. Anything else returns null and
+// the pane stays where it is: there is no search fallback, which used to open
+// whatever ranked first ("Data types" opened "Data-parallel types").
+export async function resolveDocPath(
   moduleId: string | null | undefined,
   term: string
 ): Promise<string | null> {
   const src = getDocSource(moduleId);
   if (!src || src.kind !== "devdocs") return null;
-  const slug = src.slug;
-  const base = devdocsUrl(slug);
   const t = (term ?? "").trim();
-  if (!t) return base;
-
+  if (!t) return null;
+  // A page chosen by content search ("@path#section").
+  if (t.startsWith("@")) return (await verifyPage(src.slug, t.slice(1))) ? t.slice(1) : null;
   try {
-    const path = await lookupPath(slug, t);
-    if (path && (await verifyPage(slug, path))) return `${base}${path}`;
+    const path = await lookupPath(src.slug, t);
+    if (path && (await verifyPage(src.slug, path))) return path;
   } catch {
-    /* index unavailable — fall through to search */
+    /* docs not synced, or unreachable */
   }
-  // Fallback: DevDocs in-doc search pre-filled with the term.
-  return `${base}#q=${encodeURIComponent(t)}`;
+  return null;
 }

@@ -8,7 +8,10 @@
 import { NextResponse } from "next/server";
 import { geminiText } from "@/lib/agents/llm";
 import { getDocSource } from "@/lib/docs";
+import { canonicalDocTerm, validateDocLinks } from "@/lib/docs-index";
+import { findDocPages, linkInlineCode } from "@/lib/docSearch";
 import { userOrTrial } from "@/lib/apiAuth";
+import { answerLines, withoutAnswer } from "@/lib/agents/leak";
 
 type Item = { description: string; passed: boolean };
 
@@ -33,7 +36,7 @@ export async function POST(request: Request) {
   if ("error" in who) return who.error;
 
   try {
-    const { pointTitle, language, intro, objectives, hasCode, moduleId } = await request.json();
+    const { pointTitle, language, intro, objectives, hasCode, moduleId, solution, starterCode } = await request.json();
     const items: Item[] = Array.isArray(objectives) ? objectives : [];
 
     const done = items.filter((o) => o.passed);
@@ -51,13 +54,19 @@ export async function POST(request: Request) {
       `Write a short recap (2–4 sentences): briefly restate what this lesson teaches technically, acknowledge what they've already done, ` +
       `then focus them on the NEXT remaining objective and the concept it exercises. If everything is complete, say so and suggest they can re-take or move on. ` +
       `Start with the recap itself: NEVER open with a greeting — no "Welcome back", no "Hi", no "Let's continue" — and use no headings. ` +
-      `Then, where the next objective needs a specific pattern, add ONE short fenced example of that pattern on DIFFERENT, unrelated data — different variable/table/function names and values than this lesson uses — so it shows the shape without being the answer. ` +
+      `Then, where the next objective needs a specific pattern, you MAY add ONE short fenced example of that pattern on DIFFERENT, unrelated data — different variable/table/function names and values than this lesson uses — but only if it shows the shape without being the answer. If the objective is small enough that any example would be its answer with other words in it, give no code block: name the syntax inline instead. ` +
       `Never write the code that satisfies an objective, and never use this exercise's own identifiers in the example.` +
       (getDocSource(moduleId)?.kind === "devdocs"
         ? ` Where you name a specific API/method/concept needed for the next objective, hyperlink it inline as [text](<doc:CANONICAL_NAME>) — ALWAYS wrap the target in angle brackets <...> — using its official ${(getDocSource(moduleId) as { label: string }).label} name (e.g. [\`map()\`](<doc:Array.prototype.map>)); link only what's needed, inline in the sentence.`
         : "");
 
-    const message = stripGreeting((await geminiText(prompt)).trim());
+    const answer = answerLines(solution ? String(solution) : undefined, starterCode ? String(starterCode) : undefined);
+    const checked = await validateDocLinks(
+      stripGreeting((await withoutAnswer((fix) => geminiText(prompt + fix), answer)).trim()),
+      moduleId,
+      { context: String(pointTitle ?? ""), findPages: (refs) => findDocPages(moduleId, refs) }
+    );
+    const message = await linkInlineCode(checked, moduleId, (t) => canonicalDocTerm(moduleId, t));
     return NextResponse.json({ message });
   } catch (e) {
     console.error("[lesson/explain] error:", e);

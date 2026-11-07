@@ -35,8 +35,11 @@ export default function CodeHere({
   onSubmit,
   onCodeChange,
   loadCode,
+  lessonDone,
 }: {
   moduleId?: string | null;
+  /** The open lesson is complete: Submit becomes "Send to tutor", an ungraded message. */
+  lessonDone?: boolean;
   onSubmit?: (code: string, output: string) => void;
   onCodeChange?: (code: string) => void;
   loadCode?: LoadCode;
@@ -376,13 +379,17 @@ export default function CodeHere({
               <button
                 onClick={submit}
                 disabled={running}
-                title={`Send your code + output to the tutor (${MOD_LABEL.submit})`}
+                title={
+                  lessonDone
+                    ? `The lesson is complete — send this code + output to the tutor to talk about it, ungraded (${MOD_LABEL.submit})`
+                    : `Submit your code + output as a lesson attempt (${MOD_LABEL.submit})`
+                }
                 className="px-2 py-1 bg-accent text-surface-0 hover:bg-accent-bright text-xs font-semibold transition-colors duration-150 flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
                 </svg>
-                Submit
+                {lessonDone ? "Send to tutor" : "Submit"}
               </button>
               <button
                 onClick={() => setOutput([])}

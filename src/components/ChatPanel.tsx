@@ -26,14 +26,18 @@ import { cachedUserId, supabase } from "@/lib/supabaseBrowser";
 import { LEVELS, getModuleMeta } from "@/lib/modules";
 import { getCurriculum, curriculumRoadmap, curriculumLessonCount } from "@/lib/curricula";
 import { getRuntime } from "@/lib/runtimes/registry";
-import { gradeSubmission } from "@/lib/agents/grade";
+import { gradeWithStructure, literalText, outputShows, rulesFailing, withoutRules, type Grade } from "@/lib/agents/grade";
+import { applyGiven, describeChange, expectedAfterChange, sharedGiven, variantTargets } from "@/lib/agents/variants";
 import ReadAloudButton from "@/components/ReadAloudButton";
 import type { Roadmap, RoadmapNode } from "@/lib/agents/snowflake";
 import type { Objective } from "@/lib/agents/lesson";
-import { Check, Circle, RotateCcw, Sparkles } from "lucide-react";
+import { stateRequiredOutput, syncTodos } from "@/lib/agents/objectives";
+import { countSyntax, type SyntaxItem } from "@/lib/syntax";
+import { countWritten, skeletonWritten } from "@/lib/scaffold";
+import { ArrowRight, Check, Circle, RotateCcw, Sparkles } from "lucide-react";
 import { apiFetch } from "@/lib/apiFetch";
 import { readChat, writeChat, type CachedChatMsg } from "@/lib/chatCache";
-import { canResolveDocTerm } from "@/lib/docs-index";
+import { confidentDocTarget, rewriteDocLinks } from "@/lib/docs-index";
 
 marked.setOptions({ breaks: false });
 
@@ -112,13 +116,19 @@ type ChatPanelProps = {
   visible?: boolean; // is the chat tab currently shown? (re-align when it becomes visible)
   onRoadmap?: (roadmap: Roadmap) => void;
   onRoadmapFailed?: (level: string, goal: string) => void; // save a stub course so it's listed/deletable
-  lessonRequest?: { node: RoadmapNode; outline?: string; nonce: number } | null;
+  lessonRequest?: { node: RoadmapNode; outline?: string; nonce: number; restore?: boolean } | null;
   nextLessonTitle?: string | null;
+  /** Lessons already completed, so a re-take can still move on (the Next lesson button). */
+  isLessonDone?: (pointId: string) => boolean;
   submitRequest?: { code: string; output: string; nonce: number } | null;
   codeChange?: { code: string; nonce: number } | null;
   onLoadCode?: (code: string, html?: string) => void;
+  /** Every objective passed: record it. Moving on is the learner's call (onNextLesson). */
   onLessonComplete?: (pointId: string) => void;
-  onOpenDoc?: (term: string) => void;
+  /** The learner pressed Next lesson on a completed lesson. True when it is starting. */
+  onNextLesson?: (pointId: string) => boolean;
+  /** `label` is the link's visible text, which the Docs pane highlights on the page. */
+  onOpenDoc?: (term: string, label?: string) => void;
   boot?: "loading" | "fresh" | "resumed";
   hasRoadmap?: boolean;
   savedLevel?: string;
@@ -136,7 +146,18 @@ type Calib = { step: CalibStep; level?: string; goal?: string };
 // one, the course's otherwise. Grading, guidance and the build all read it from
 // here, so a submission is never judged against the wrong language.
 type ActiveLesson = { pointId: string; title: string; objectives: Objective[]; passed: string[]; module: string | null };
-type BuiltLesson = { intro: string; starterCode: string; html: string; objectives: Objective[]; solution?: string };
+type BuiltLesson = {
+  intro: string;
+  starterCode: string;
+  html: string;
+  objectives: Objective[];
+  solution?: string;
+  syntax?: SyntaxItem[];
+  /** The browser check below has run to the end for this lesson. Persisted with it. */
+  validated?: boolean;
+  /** Skeleton pieces the learner wrote to complete it (src/lib/scaffold.ts). */
+  wrote?: string[];
+};
 
 
 export default function ChatPanel({
@@ -153,10 +174,12 @@ export default function ChatPanel({
   onRoadmapFailed,
   lessonRequest,
   nextLessonTitle,
+  isLessonDone,
   submitRequest,
   codeChange,
   onLoadCode,
   onLessonComplete,
+  onNextLesson,
   onOpenDoc,
   boot = "fresh",
   hasRoadmap = false,
@@ -179,7 +202,15 @@ export default function ChatPanel({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
+  // Seeded from the saved session, synchronously. Starting at null and waiting for
+  // getUser() let the conversation boot as SIGNED OUT whenever the course loaded
+  // first: it replaced a real history with the "Welcome back" greeting, and the next
+  // message saved that over the stored thread. That happened twice. getUser() below
+  // still runs and corrects this if the session has expired. This component only
+  // mounts client-side, so reading storage here cannot cause a hydration mismatch.
+  const [userId, setUserId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : cachedUserId()
+  );
   const [calib, setCalib] = useState<Calib>({ step: "done" });
   const [lesson, setLesson] = useState<ActiveLesson | null>(null);
 
@@ -196,6 +227,10 @@ export default function ChatPanel({
     calib.step !== "done" &&
     !lesson &&
     (!hasRoadmap || (!!pathTitle && calib.step === "level"));
+  // The finished lesson whose Next lesson button was pressed. While the next one is
+  // being built this lesson's panel is still on screen, and the button must not
+  // still look pressable (pressing it again would start the build a second time).
+  const [advancingFrom, setAdvancingFrom] = useState<string | null>(null);
   const lessonRef = useRef<ActiveLesson | null>(null);
   useEffect(() => {
     lessonRef.current = lesson;
@@ -216,7 +251,21 @@ export default function ChatPanel({
     if (!initialProgress) return;
     const seeded: Record<string, { built: BuiltLesson; passed: string[]; code?: string; module?: string }> = {};
     for (const [id, v] of Object.entries(initialProgress)) {
-      if (v.built) seeded[id] = { built: v.built, passed: v.passed ?? [], code: v.code, module: v.module };
+      // Lessons saved before objectives had to state their printed text get it added
+      // here (objectives.ts), so a saved lesson is never graded on a sentence it hides.
+      if (v.built) {
+        seeded[id] = {
+          // Lessons saved before these repairs: printed text stated in the objectives,
+          // and TODOs that say what the objectives say (objectives.ts).
+          built: (() => {
+            const objectives = stateRequiredOutput(v.built.objectives ?? []);
+            return { ...v.built, objectives, starterCode: syncTodos(v.built.starterCode ?? "", objectives) };
+          })(),
+          passed: v.passed ?? [],
+          code: v.code,
+          module: v.module,
+        };
+      }
     }
     lessonCache.current = { ...lessonCache.current, ...seeded };
   }, [initialProgress]);
@@ -239,7 +288,6 @@ export default function ChatPanel({
   const loadingMoreRef = useRef(false);    // an older-batch reveal is in flight
   const prevScrollHeightRef = useRef(0);   // to preserve position when prepending
   const pendingBottomRef = useRef(true);   // force align-to-latest (init / user action)
-  const TOP_PAD = 8;                       // breathing room above the aligned message
 
   function getViewport(): HTMLElement | null {
     if (!viewportRef.current) {
@@ -249,30 +297,25 @@ export default function ChatPanel({
     return viewportRef.current;
   }
 
-  // The DOM node of the newest rendered message (message bubbles carry data-chat-msg).
-  function lastMsgEl(): HTMLElement | null {
-    const vp = getViewport();
-    if (!vp) return null;
-    const nodes = vp.querySelectorAll("[data-chat-msg]");
-    return (nodes[nodes.length - 1] as HTMLElement) ?? null;
-  }
-
-  // Scroll so the TOP of the newest message sits at the top of the chat area — the natural
-  // place to start reading it. A short last message clamps to the bottom automatically.
+  // Scroll all the way down, to the end of the newest message. It used to align the
+  // newest message's TOP with the top of the chat instead, which left a long reply
+  // read only half-way. Repeated on the next frame: a message can still grow after
+  // it renders (code highlighting, doc links being placed), and the first scroll
+  // would stop short of where it ends up.
   function alignLatestToTop() {
     const vp = getViewport();
-    const el = lastMsgEl();
-    if (vp && el) {
-      vp.scrollTop += el.getBoundingClientRect().top - vp.getBoundingClientRect().top - TOP_PAD;
-    } else if (vp) {
-      vp.scrollTop = vp.scrollHeight;
-    } else {
+    if (!vp) {
       messagesEndRef.current?.scrollIntoView();
+      return;
     }
+    vp.scrollTop = vp.scrollHeight;
+    requestAnimationFrame(() => {
+      vp.scrollTop = vp.scrollHeight;
+    });
   }
 
   // Reset the window to the latest batch and re-align — used whenever the whole conversation
-  // is (re)loaded, so we land on the newest message's start, not the top of the history.
+  // is (re)loaded, so we land on the newest message, not the top of the history.
   function resetToLatest() {
     pendingBottomRef.current = true;
     followingRef.current = true;
@@ -285,12 +328,9 @@ export default function ChatPanel({
     const vp = getViewport();
     if (!vp) return;
     const onScroll = () => {
-      const el = lastMsgEl();
-      // "Following" = the newest message's top is at/above the viewport top (we're reading it
-      // from its start or below) — i.e. the user hasn't scrolled up into older history.
-      followingRef.current = el
-        ? el.getBoundingClientRect().top <= vp.getBoundingClientRect().top + 40
-        : vp.scrollHeight - vp.scrollTop - vp.clientHeight < 80;
+      // "Following" = at (or within a line or two of) the bottom. Scrolled further up,
+      // the learner is reading history, and new messages must not drag them down.
+      followingRef.current = vp.scrollHeight - vp.scrollTop - vp.clientHeight < 80;
       if (vp.scrollTop < 60 && !loadingMoreRef.current && visibleCountRef.current < messagesRef.current.length) {
         loadingMoreRef.current = true;
         prevScrollHeightRef.current = vp.scrollHeight;
@@ -299,7 +339,6 @@ export default function ChatPanel({
     };
     vp.addEventListener("scroll", onScroll, { passive: true });
     return () => vp.removeEventListener("scroll", onScroll);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Set when a conversation is restored (from the cache or the server).
@@ -353,8 +392,8 @@ export default function ChatPanel({
     followingRef.current = true;
   }, [cachePainted]);
 
-  // After each render: preserve position when older messages were prepended, otherwise align
-  // the newest message's top to the top of the chat area (init / new message, if following).
+  // After each render: preserve position when older messages were prepended, otherwise
+  // scroll to the end of the newest message (init / new message, if following).
   useLayoutEffect(() => {
     const vp = getViewport();
     if (loadingMoreRef.current) {
@@ -664,6 +703,26 @@ export default function ChatPanel({
           moduleId: moduleId ?? undefined,
           hasRoadmap,
           activeLesson: lessonRef.current?.title,
+          // The docs that links resolve against: the LESSON's runtime, which on a
+          // career path differs from the course's (same rule as docLinkModule).
+          docModule: lessonRef.current?.module ?? moduleId ?? undefined,
+          // The lesson's syntax, so the tutor answers "how do I…" with the piece of
+          // syntax and its doc link instead of a whole program.
+          lessonSyntax: lessonRef.current
+            ? lessonCache.current[lessonRef.current.pointId]?.built.syntax
+            : undefined,
+          // What the exercise asks and its answer, so the tutor can tell when an
+          // example would give it away, and the server can check that it didn't.
+          lessonExercise: (() => {
+            const l = lessonRef.current;
+            // A completed lesson has no answer left to protect: the learner's own code
+            // IS the answer, and the guard would strip it from the tutor's reply.
+            if (l && l.objectives.length > 0 && l.objectives.every((o) => l.passed.includes(o.id))) return undefined;
+            const b = l ? lessonCache.current[l.pointId]?.built : undefined;
+            return b
+              ? { objectives: b.objectives.map((o) => o.description), solution: b.solution, starterCode: b.starterCode }
+              : undefined;
+          })(),
           history,
                   }),
       });
@@ -711,54 +770,167 @@ export default function ChatPanel({
   // look like a link.
   //
   // Runs after paint, per bubble, and marks what it has checked so each term is
-  // examined once. Index-only — the index is fetched once per module and cached in
-  // localStorage, so this costs no network per link.
+  // examined once. New messages arrive already validated by the server
+  // (validateDocLinks), so their targets pass the local check below with no request.
+  // Older ones (a target like "Data types" on `int`) are sent to /api/docs/resolve,
+  // which finds the page and section that define the syntax, in one call per batch.
+  //
+  // A check in flight is never cancelled: a re-render cancelling it is how a long
+  // restored chat ended up with no working links, every batch dropped before it
+  // finished. "pending" keeps a link from being sent twice, and results only land on
+  // links still on screen. A click never waits for this — see handleDocClick.
   const docLinkModule = lesson?.module ?? moduleId ?? null;
   useEffect(() => {
-    let cancelled = false;
     const nodes = Array.from(
       document.querySelectorAll<HTMLElement>("[data-doc-term]:not([data-doc-checked])")
     );
     if (nodes.length === 0) return;
-    (async () => {
-      for (const el of nodes) {
-        let term = el.getAttribute("data-doc-term") || "";
-        try {
-          if (term.includes("%")) term = decodeURIComponent(term);
-        } catch {
-          /* keep raw term */
-        }
-        const ok = await canResolveDocTerm(docLinkModule, term);
-        if (cancelled) return;
-        el.setAttribute("data-doc-checked", ok ? "ok" : "dead");
-        if (!ok) {
-          // Strip every affordance: the click delegation keys on data-doc-term, so
-          // removing it is what actually makes the text inert.
-          el.removeAttribute("data-doc-term");
-          el.removeAttribute("role");
-          el.removeAttribute("tabindex");
-          el.classList.remove("doc-link");
-        }
+    nodes.forEach((el) => el.setAttribute("data-doc-checked", "pending"));
+    const settle = (el: HTMLElement, target: string | null | undefined) => {
+      if (target === undefined) {
+        // Could not be decided (offline, server error): back to unchecked, so a
+        // later render or a click tries again.
+        el.removeAttribute("data-doc-checked");
+        return;
       }
-    })();
-    return () => {
-      cancelled = true;
+      el.setAttribute("data-doc-checked", target ? "ok" : "dead");
+      if (target) {
+        el.setAttribute("data-doc-term", target);
+        return;
+      }
+      // Strip every affordance: the click delegation keys on data-doc-term, so
+      // removing it is what actually makes the text inert.
+      el.removeAttribute("data-doc-term");
+      el.removeAttribute("role");
+      el.removeAttribute("tabindex");
+      el.classList.remove("doc-link");
     };
+    // The target each link was written with, before placement changes it — the key
+    // for saving the placement back into the message.
+    const written = nodes.map((el) => linkTerm(el));
+    void placeDocLinks(nodes).then((targets) => {
+      nodes.forEach((el, i) => el.isConnected && settle(el, targets[i]));
+      savePlacements(nodes, written, targets);
+    });
+    // placeDocLinks reads only refs and the values listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, docLinkModule, subject]);
+
+  // Link the inline code in tutor messages saved before that happened on the server
+  // (linkInlineCode): once per message, in batches, and saved back like any other
+  // change, so the chat never asks about that message again.
+  const autoLinked = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (!docLinkModule) return;
+    const todo = messages
+      .filter((m) => m.role === "bot" && m.text.includes("`") && !autoLinked.current.has(m.id))
+      .slice(0, 40);
+    if (!todo.length) return;
+    todo.forEach((m) => autoLinked.current.add(m.id));
+    void apiFetch("/api/docs/autolink", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ moduleId: docLinkModule, texts: todo.map((m) => m.text) }),
+    })
+      .then((r) => r.json())
+      .then(({ texts }: { texts?: string[] }) => {
+        if (!Array.isArray(texts)) return;
+        const next = new Map<number, { from: string; to: string }>();
+        todo.forEach((m, i) => {
+          if (typeof texts[i] === "string" && texts[i] !== m.text) next.set(m.id, { from: m.text, to: texts[i] });
+        });
+        if (!next.size) return;
+        // Only if the message is still the text that was sent.
+        setMessages((msgs) => msgs.map((m) => (next.get(m.id)?.from === m.text ? { ...m, text: next.get(m.id)!.to } : m)));
+      })
+      .catch(() => todo.forEach((m) => autoLinked.current.delete(m.id))); // retry on a later render
   }, [messages, docLinkModule]);
 
-  // Delegated click for inline doc-links inside a bot bubble: resolve the term to a doc
-  // section and open the Docs tab (handled upstream). preventDefault so nothing navigates.
-  function handleDocClick(e: React.MouseEvent<HTMLDivElement>) {
-    const el = (e.target as HTMLElement).closest?.("[data-doc-term]");
+  // A link's target as written in the message (the href is URL-encoded by marked).
+  function linkTerm(el: HTMLElement): string {
+    const raw = el.getAttribute("data-doc-term") || "";
+    try {
+      return raw.includes("%") ? decodeURIComponent(raw) : raw;
+    } catch {
+      return raw;
+    }
+  }
+
+  // Write placements into the messages themselves, which the chat then saves like any
+  // other change. A link is placed once — the next time this message is shown, its
+  // link already says where it goes (or is plain text), and nothing is asked again.
+  // Messages written from now on arrive placed (validateDocLinks); this is how older
+  // ones catch up.
+  function savePlacements(els: HTMLElement[], written: string[], targets: (string | null | undefined)[]) {
+    const byMsg = new Map<number, Map<string, string | null>>();
+    els.forEach((el, i) => {
+      const target = targets[i];
+      if (target === undefined || target === written[i]) return; // undecided, or unchanged
+      const id = Number(el.closest("[data-msg-id]")?.getAttribute("data-msg-id"));
+      if (!Number.isFinite(id)) return;
+      if (!byMsg.has(id)) byMsg.set(id, new Map());
+      byMsg.get(id)!.set(written[i], target);
+    });
+    if (!byMsg.size) return;
+    setMessages((msgs) =>
+      msgs.map((m) => (byMsg.has(m.id) ? { ...m, text: rewriteDocLinks(m.text, byMsg.get(m.id)!) } : m))
+    );
+  }
+
+  // Place doc links: each one's target, decided locally when it can be trusted
+  // (confidentDocTarget), the rest in one request to /api/docs/resolve. Per link:
+  // a target, null for "not a link", or undefined when it could not be decided.
+  async function placeDocLinks(els: HTMLElement[]): Promise<(string | null | undefined)[]> {
+    const read = (el: HTMLElement) => ({
+      term: linkTerm(el),
+      label: el.textContent ?? "",
+      context: (el.parentElement?.textContent ?? "").slice(0, 500),
+    });
+    const refs = els.map(read);
+    const out: (string | null | undefined)[] = await Promise.all(
+      refs.map((r) => confidentDocTarget(docLinkModule, r.term, r.label).catch(() => null))
+    );
+    const ask = refs.map((_, i) => i).filter((i) => !out[i]);
+    if (!ask.length) return out;
+    try {
+      const res = await apiFetch("/api/docs/resolve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          moduleId: docLinkModule,
+          context: lessonRef.current?.title ?? subject ?? "",
+          links: ask.map((i) => refs[i]),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data.targets)) throw new Error(String(res.status));
+      ask.forEach((i, k) => (out[i] = data.targets[k] ?? null));
+    } catch {
+      ask.forEach((i) => (out[i] = undefined));
+    }
+    return out;
+  }
+
+  // Delegated click for inline doc-links inside a bot bubble: open the placed target
+  // in the Docs tab (handled upstream). preventDefault so nothing navigates. A link the
+  // background check has not finished with is placed now, on the click, rather than
+  // ignored — a click must never just do nothing.
+  async function handleDocClick(e: React.MouseEvent<HTMLDivElement>) {
+    const el = (e.target as HTMLElement).closest?.("[data-doc-term]") as HTMLElement | null;
     if (!el) return;
     e.preventDefault();
-    let term = el.getAttribute("data-doc-term") || "";
-    try {
-      if (term.includes("%")) term = decodeURIComponent(term);
-    } catch {
-      /* keep raw term */
+    let target: string | null | undefined = linkTerm(el);
+    if (el.getAttribute("data-doc-checked") !== "ok") {
+      const written = target;
+      [target] = await placeDocLinks([el]);
+      if (target) {
+        el.setAttribute("data-doc-term", target);
+        el.setAttribute("data-doc-checked", "ok");
+      }
+      savePlacements([el], [written], [target]);
     }
-    if (term) onOpenDoc?.(term);
+    // The visible text goes too: the Docs pane highlights that line on the page.
+    if (target) onOpenDoc?.(target, (el.textContent ?? "").trim());
   }
 
   // Background solution validation: run the cached reference solution in its real
@@ -769,10 +941,25 @@ export default function ChatPanel({
     if (validatedPoints.current.has(pointId)) return;
     const cached = lessonCache.current[pointId];
     const built = cached?.built;
-    if (!built?.solution) return;
+    // Checked in an earlier session: running it again costs a compile on the main
+    // thread for C/C++ (Clang is not in a worker) and finds nothing new.
+    if (!built?.solution || built.validated) return;
     validatedPoints.current.add(pointId);
     const spec = getRuntime(lessonCache.current[pointId]?.module ?? moduleId);
     let solution = built.solution;
+    let validated = false;
+    // A structural rule the lesson's own solution fails is wrong (the server checks
+    // this too, when it can parse): drop it, and let the check use its regexp.
+    try {
+      const bad = await rulesFailing(built.objectives, solution, spec.monacoLang);
+      if (bad.size) {
+        built.objectives = withoutRules(built.objectives, bad);
+        onProgressChange?.(lessonCache.current);
+        if (lessonRef.current?.pointId === pointId) setLesson((l) => (l ? { ...l, objectives: built.objectives } : l));
+      }
+    } catch {
+      /* best-effort */
+    }
     for (let attempt = 0; attempt < 2; attempt++) {
       let err: string | null = null;
       try {
@@ -783,7 +970,7 @@ export default function ChatPanel({
         // deterministic check. If it doesn't, the check/solution are inconsistent; feed
         // that as the failure so regeneration fixes it.
         if (!err) {
-          const g = gradeSubmission(built.objectives, solution, probe.output);
+          const g = await gradeWithStructure(built.objectives, solution, probe.output, spec.forbid, spec.monacoLang);
           if (g.gradable && !g.allPassed) {
             err = "The reference solution does not satisfy the objective checks: " +
               g.results.filter((r) => !r.passed).map((r) => r.detail).join("; ");
@@ -792,7 +979,10 @@ export default function ChatPanel({
       } catch {
         return; // validator itself failed — leave the solution as-is
       }
-      if (!err) break; // runs clean AND passes its checks
+      if (!err) {
+        validated = true; // runs clean AND passes its checks
+        break;
+      }
       try {
         const res = await apiFetch("/api/lesson/fix-solution", {
           method: "POST",
@@ -819,16 +1009,35 @@ export default function ChatPanel({
       onProgressChange?.(lessonCache.current);
     }
 
+    // Syntax ledger: the validated solution's syntax is now something this learner
+    // has been shown, so later lessons stop re-explaining it (src/lib/syntax.ts). The
+    // server keeps only items that appear in the solution sent with them.
+    if (validated && userId && built.syntax?.length) {
+      void apiFetch("/api/syntax", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          module: lessonCache.current[pointId]?.module ?? moduleId ?? "",
+          point_id: pointId,
+          course_id: courseId ?? undefined,
+          items: built.syntax,
+          solution,
+        }),
+      }).catch(() => {});
+    }
+
     // Check-repair invariant: if the solution runs CLEAN but still fails a check, the
     // CHECK is wrong (an invented constant no correct answer can produce — an unpassable
     // objective). Reground the failing checks on the solution's actual output.
+    // Skipped when the loop above already proved it runs clean AND passes every check:
+    // re-running it would only repeat that answer.
     try {
-      const rec = lessonCache.current[pointId];
+      const rec = validated ? null : lessonCache.current[pointId];
       if (rec) {
         const { findRuntimeErrors } = await import("@/lib/runtimes/validate");
         const probe = await findRuntimeErrors(spec, solution, rec.built.html);
         if (!probe.error) {
-          const g = gradeSubmission(rec.built.objectives, solution, probe.output);
+          const g = await gradeWithStructure(rec.built.objectives, solution, probe.output, spec.forbid, spec.monacoLang);
           if (g.gradable && !g.allPassed) {
             const res = await apiFetch("/api/lesson/fix-checks", {
               method: "POST",
@@ -868,8 +1077,11 @@ export default function ChatPanel({
       const b = rec.built;
       const { findRuntimeErrors } = await import("@/lib/runtimes/validate");
       const probe = await findRuntimeErrors(spec, b.starterCode, b.html);
-      const g = gradeSubmission(b.objectives, b.starterCode, probe.output);
-      if (!g.gradable || !g.allPassed) return; // a real gap exists → nothing to fix
+      const g = await gradeWithStructure(b.objectives, b.starterCode, probe.output, spec.forbid, spec.monacoLang);
+      if (!g.gradable || !g.allPassed) {
+        markValidated(pointId);
+        return; // a real gap exists → nothing to fix
+      }
       const res = await apiFetch("/api/lesson/fix-starter", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -883,8 +1095,8 @@ export default function ChatPanel({
       });
       const data = await res.json();
       if (!data.starterCode) return;
-      rec.built.starterCode = data.starterCode as string;
-      onProgressChange?.(lessonCache.current);
+      rec.built.starterCode = syncTodos(data.starterCode as string, rec.built.objectives);
+      markValidated(pointId);
       // If this lesson is open and untouched, load the corrected starter so the learner sees
       // a real exercise instead of the pre-solved one.
       if (lessonRef.current?.pointId === pointId && !rec.code && rec.passed.length === 0) {
@@ -893,6 +1105,63 @@ export default function ChatPanel({
     } catch {
       /* gap check is best-effort */
     }
+  }
+
+  // The changed-data run (src/lib/agents/variants.ts). The solution's two runs are
+  // kept per lesson for the session: only the learner's changed run is new each time.
+  // Anything that goes wrong here leaves the grade as it was — never a failure the
+  // learner caused.
+  const solutionRuns = useRef<Map<string, { before: string; after: string } | null>>(new Map());
+  async function checkWithChangedData(pointId: string, grade: Grade, code: string) {
+    const rec = lessonCache.current[pointId];
+    const b = rec?.built;
+    if (!b?.solution) return;
+    const targets = variantTargets(b.objectives, grade.results.filter((r) => r.passed).map((r) => r.id));
+    if (!targets.length) return;
+    const given = sharedGiven(b.starterCode, b.solution, code);
+    const changedSolution = given.length ? applyGiven(b.solution, given) : null;
+    const changedCode = given.length ? applyGiven(code, given) : null;
+    if (!changedSolution || !changedCode) return;
+    try {
+      const spec = getRuntime(rec.module ?? moduleId);
+      const { findRuntimeErrors } = await import("@/lib/runtimes/validate");
+      const key = `${pointId}\u0000${b.solution}\u0000${given.map((g) => g.name).join(",")}`;
+      if (!solutionRuns.current.has(key)) {
+        const before = await findRuntimeErrors(spec, b.solution, b.html);
+        const after = before.error ? null : await findRuntimeErrors(spec, changedSolution, b.html);
+        // The solution must survive the change, or the value was not data.
+        solutionRuns.current.set(key, after && !after.error ? { before: before.output, after: after.output } : null);
+      }
+      const runs = solutionRuns.current.get(key);
+      if (!runs) return;
+      const mine = await findRuntimeErrors(spec, changedCode, b.html);
+      // The words stay the learner's own here too: only computed values are compared.
+      const free = literalText(b.solution, spec.forbid);
+      for (const o of targets) {
+        const c = o.check;
+        if (!c || c.type === "code_matches") continue;
+        const expected = expectedAfterChange(c, runs.before, runs.after);
+        if (expected === null || outputShows(c.type, mine.output, expected, free)) continue;
+        const r = grade.results.find((x) => x.id === o.id);
+        if (!r) continue;
+        r.passed = false;
+        r.detail =
+          `the output is right for the given values, but the program doesn't compute it: with ${describeChange(given)} ` +
+          `it should print ${JSON.stringify(expected)}, and printed ${JSON.stringify(mine.output.trim().slice(0, 200))}. ` +
+          `Compute the value from the variables instead of writing it out`;
+      }
+      grade.allPassed = grade.gradable && grade.ran && grade.results.every((r) => r.passed);
+    } catch {
+      /* best-effort: see above */
+    }
+  }
+
+  // Record that a lesson's background check finished, so later sessions skip it.
+  function markValidated(pointId: string) {
+    const rec = lessonCache.current[pointId];
+    if (!rec) return;
+    rec.built.validated = true;
+    onProgressChange?.(lessonCache.current);
   }
 
   // Re-take the current lesson: clear passed objectives and reload the starter code.
@@ -1092,11 +1361,21 @@ export default function ChatPanel({
     // landing page.
     const lessonModule = node.module ?? moduleId ?? null;
     // Starting/resuming a lesson is an explicit action → always bring its intro/recap into
-    // view (align it to the top), even if the user wasn't following the newest message.
+    // view (scroll to it), even if the user wasn't following the newest message.
     pendingBottomRef.current = true;
     (async () => {
       // Resume a previously-opened lesson: restore its objectives + progress, no rebuild.
       const cached = lessonCache.current[node.id];
+      // Reopening a course: restore the lesson the learner was on, silently. No
+      // recap and no rebuild — the chat history already shows where they left off.
+      if (lessonRequest.restore) {
+        if (!cached) return;
+        setLesson({ pointId: node.id, title: node.title, objectives: cached.built.objectives, passed: cached.passed, module: lessonModule });
+        onLoadCode?.(cached.code ?? cached.built.starterCode, cached.built.html);
+        // No background check here. It runs when a lesson is built or opened by
+        // hand; doing it on course open froze the page for a C++ compile.
+        return;
+      }
       if (cached) {
         // If this lesson's intro/recap was the assistant's last turn, re-selecting it must
         // NOT repeat the same rundown. Restore state silently (without clobbering in-progress
@@ -1150,6 +1429,9 @@ export default function ChatPanel({
                   description: o.description,
                   passed: passedSet.has(o.id),
                 })),
+                // For the answer-leak guard only (src/lib/agents/leak.ts); never shown.
+                solution: cached.built.solution,
+                starterCode: cached.built.starterCode,
               }),
             });
             const data = await res.json();
@@ -1165,6 +1447,10 @@ export default function ChatPanel({
       setLoading(true);
       try {
         // L4: grounded lesson — intro + starter code + FIXED objectives.
+        // This course's other lessons in the same technology: a path changes runtime.
+        const sameTech = Object.entries(lessonCache.current)
+          .filter(([id, rec]) => id !== node.id && rec.built && (rec.module ?? moduleId ?? null) === (lessonModule ?? null))
+          .map(([, rec]) => rec);
         const res = await apiFetch("/api/lesson/build", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1178,13 +1464,26 @@ export default function ChatPanel({
             treeOutline: lessonRequest.outline,
             // Lets the lesson skip what this learner finished in OTHER courses.
             course_id: courseId ?? undefined,
+            pointId: node.id,
+            // What earlier lessons of this course asked for, so this one does something
+            // new instead of the same "print Hello" again. From the lessons on hand: the
+            // course's saved progress, seeded into the cache.
+            priorExercises: Object.entries(lessonCache.current)
+              .filter(([id, rec]) => id !== node.id && rec.built?.objectives?.length)
+              .map(([, rec]) => rec.built.objectives.map((o) => o.description).join("; ")),
+            // The syntax this course's other lessons have already shown, so it is not
+            // announced as new again. Same technology only: a path changes runtime.
+            syntaxSeen: countSyntax(sameTech.map((rec) => rec.built?.syntax)),
+            // How much of the program skeleton the learner has written themselves, so
+            // the starter leaves the next piece for them (src/lib/scaffold.ts).
+            scaffold: { lessons: sameTech.length, written: countWritten(sameTech.map((rec) => rec.built?.wrote)) },
           }),
         });
         const data = await res.json();
         if (data.lesson) {
-          const l = data.lesson as { intro: string; starterCode: string; html?: string; objectives: Objective[]; solution?: string };
+          const l = data.lesson as { intro: string; starterCode: string; html?: string; objectives: Objective[]; solution?: string; syntax?: SyntaxItem[] };
           lessonCache.current[node.id] = {
-            built: { intro: l.intro, starterCode: l.starterCode, html: l.html || "", objectives: l.objectives, solution: l.solution },
+            built: { intro: l.intro, starterCode: l.starterCode, html: l.html || "", objectives: l.objectives, solution: l.solution, syntax: l.syntax },
             passed: [],
             module: lessonModule ?? undefined,
           };
@@ -1200,9 +1499,11 @@ export default function ChatPanel({
           void validateSolutionInBackground(node.id);
         } else {
           pushMessage("bot", data.error || "I couldn't build that lesson — try again.");
+          setAdvancingFrom(null); // bring the Next lesson button back to retry
         }
       } catch {
         pushMessage("bot", "I couldn't reach the lesson service. Please try again.");
+        setAdvancingFrom(null);
       } finally {
         setLoading(false);
       }
@@ -1238,9 +1539,35 @@ export default function ChatPanel({
       setLoading(true);
       try {
         const active = lessonRef.current;
+        // A lesson already complete is not attempted again. What the learner sends now
+        // is an experiment — often one the tutor suggested ("try writing it the other
+        // way") — and it goes to the tutor as conversation: no grading, and no second
+        // "Lesson complete", review and Next prompt for a lesson that was done.
+        // Re-take lesson clears the passes, which makes it an attempt again.
+        if (active && active.objectives.length > 0 && active.objectives.every((o) => active.passed.includes(o.id))) {
+          const lang = getRuntime(active.module).langName.toLowerCase().replace(/[^a-z+#]/g, "");
+          const shown = output.trim() ? output.trim().slice(0, 2000) : "(no output)";
+          const sent =
+            `Here's what I tried:\n\n\`\`\`${lang}\n${code.trim()}\n\`\`\`\n\nOutput:\n\`\`\`\n${shown}\n\`\`\``;
+          pushMessage("user", sent);
+          const { response } = await callAgent(
+            `${sent}\n\n(The lesson "${active.title}" is already complete. This is an experiment, not an attempt: ` +
+              `explain what this code does and what the output shows, and answer anything it raises. Do not grade it.)`
+          );
+          pushMessage("bot", response);
+          return;
+        }
         if (active) {
           // 1) DETERMINISTIC grading (authoritative). The LLM never decides pass/fail.
-          const grade = gradeSubmission(active.objectives, code, output);
+          const spec = getRuntime(active.module);
+          const built = lessonCache.current[active.pointId]?.built;
+          const grade = await gradeWithStructure(active.objectives, code, output, spec.forbid, spec.monacoLang, {
+            solution: built?.solution,
+            starter: built?.starterCode,
+          });
+          // Output that passes is checked once more with the data changed: a program
+          // that prints the number instead of computing it fails here (variants.ts).
+          if (grade.gradable && grade.ran) await checkWithChangedData(active.pointId, grade, code);
           let passed: string[];
           if (grade.gradable) {
             passed = Array.from(new Set([...active.passed, ...grade.results.filter((r) => r.passed).map((r) => r.id)]));
@@ -1271,16 +1598,48 @@ export default function ChatPanel({
           }
           onProgressChange?.(lessonCache.current);
 
-          const allDone = active.objectives.every((o) => passed.includes(o.id));
+          // Objectives tick off one at a time and stay ticked, but the LESSON is only
+          // complete on a submission whose program actually ran: a code check can pass
+          // on source that does not compile yet (grade.ts), and broken code must not
+          // finish a lesson.
+          const allDone = active.objectives.every((o) => passed.includes(o.id)) && (!grade.gradable || grade.ran);
           if (allDone) {
-            // All objectives met → hard-coded completion + auto-advance. No LLM call.
+            // All objectives met. The lesson is recorded as done, but the learner is NOT
+            // moved on: they get an explanation of why their answer is right, and go to
+            // the next lesson when they choose (the Next lesson button above the chat).
+            // Jumping straight on used to replace the lesson they had just solved before
+            // they had looked at what made it work.
             pushMessage("bot", `**Lesson complete** — all objectives met for "${active.title}".`);
-            if (nextLessonTitle) {
-              pushMessage("bot", `Nice work — moving you to the next lesson: **${nextLessonTitle}** →`);
-            } else {
-              pushMessage("bot", `That wraps up the loaded roadmap — great job! Open the next point from the roadmap whenever you're ready.`);
+            const done = lessonCache.current[active.pointId];
+            if (done) {
+              done.built.wrote = skeletonWritten(getRuntime(active.module).forbid, done.built.starterCode, code);
+              onProgressChange?.(lessonCache.current);
             }
             onLessonComplete?.(active.pointId);
+            try {
+              const rres = await apiFetch("/api/lesson/review", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  pointTitle: active.title,
+                  language: getRuntime(active.module).langName,
+                  moduleId: active.module ?? undefined,
+                  objectives: active.objectives.map((o) => o.description),
+                  code,
+                  output,
+                }),
+              });
+              const rdata = await rres.json();
+              if (rdata.message) pushMessage("bot", rdata.message);
+            } catch {
+              /* the explanation is best-effort; the lesson is complete either way */
+            }
+            pushMessage(
+              "bot",
+              nextLessonTitle
+                ? `Take your time with it. When you're ready, press **Next lesson** above to start **${nextLessonTitle}**.`
+                : `That wraps up the loaded roadmap. Open the next point from the Roadmap tab whenever you're ready.`
+            );
           } else if (grade.gradable) {
             // 2) GUIDANCE (the LLM's real job): only when something failed, fed the
             // deterministic results so it teaches the actual gap instead of re-judging.
@@ -1298,6 +1657,9 @@ export default function ChatPanel({
                     const r = grade.results.find((x) => x.id === o.id);
                     return { id: o.id, description: o.description, passed: !!r?.passed, detail: r?.detail };
                   }),
+                  // For the answer-leak guard only (src/lib/agents/leak.ts); never shown.
+                  solution: lessonCache.current[active.pointId]?.built.solution,
+                  starterCode: lessonCache.current[active.pointId]?.built.starterCode,
                 }),
               });
               const gdata = await gres.json();
@@ -1391,7 +1753,7 @@ export default function ChatPanel({
       }
     });
     return (
-      <div className={`flex my-4 justify-start`} data-chat-msg>
+      <div className={`flex my-4 justify-start`} data-chat-msg data-msg-id={msg.id}>
         <div
           className="group bg-scrim px-4 py-2 text-sm border border-line-strong max-w-[100%] sm:max-w-[90%] font-normal leading-relaxed text-ink-muted text-left"
           onClick={handleDocClick}
@@ -1459,17 +1821,41 @@ export default function ChatPanel({
                   );
                 })}
               </ul>
-              {lesson.objectives.length > 0 && lesson.objectives.every((o) => lesson.passed.includes(o.id)) && (
-                <button
-                  type="button"
-                  onClick={restartLesson}
-                  title="Reset progress and reload the starter code"
-                  className="mt-2.5 inline-flex items-center gap-1.5 border border-line-strong bg-scrim px-2.5 py-1 text-meta 
-                             text-ink-muted leading-none transition-colors hover:bg-surface-2 hover:text-ink"
-                >
-                  <RotateCcw className="h-3 w-3" />
-                  Re-take lesson
-                </button>
+              {/* A lesson completed before stays complete while it is re-taken: Re-take
+                  clears the ticks, and hiding Next until every one was ticked again
+                  left no way on from a lesson already finished. */}
+              {lesson.objectives.length > 0 &&
+                (lesson.objectives.every((o) => lesson.passed.includes(o.id)) || isLessonDone?.(lesson.pointId)) && (
+                <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                  {nextLessonTitle && advancingFrom === lesson.pointId ? (
+                    <span className="inline-flex max-w-full items-center gap-1.5 px-0.5 py-1 text-meta leading-none text-ink-dim" role="status">
+                      <span className="truncate">Starting {nextLessonTitle}…</span>
+                    </span>
+                  ) : nextLessonTitle && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onNextLesson?.(lesson.pointId)) setAdvancingFrom(lesson.pointId);
+                      }}
+                      title={`Start ${nextLessonTitle}`}
+                      className="inline-flex max-w-full items-center gap-1.5 border border-accent-line bg-accent-wash px-2.5 py-1 text-meta
+                                 text-ink leading-none transition-colors hover:border-line-active"
+                    >
+                      <span className="truncate">Next lesson: {nextLessonTitle}</span>
+                      <ArrowRight className="h-3 w-3 shrink-0" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={restartLesson}
+                    title="Reset progress and reload the starter code"
+                    className="inline-flex items-center gap-1.5 border border-line-strong bg-scrim px-2.5 py-1 text-meta
+                               text-ink-muted leading-none transition-colors hover:bg-surface-2 hover:text-ink"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Re-take lesson
+                  </button>
+                </div>
               )}
             </div>
           )}

@@ -6,6 +6,8 @@
 
 import { tutorSystem } from "./appContext";
 import { geminiText } from "./llm";
+import type { SyntaxItem } from "@/lib/syntax";
+import { withoutAnswer } from "./leak";
 
 export type ChatMsg = { role: "user" | "assistant"; content: string };
 
@@ -19,6 +21,9 @@ type ManagerInput = {
   moduleId?: string;
   hasRoadmap?: boolean;
   activeLesson?: string;
+  lessonSyntax?: SyntaxItem[];
+  /** The active exercise: what it asks, and its answer lines (normalized). */
+  exercise?: { objectives: string[]; answer: string[] };
   history?: ChatMsg[];
 };
 
@@ -30,11 +35,12 @@ function historyToText(history: ChatMsg[] = []): string {
 }
 
 export async function runChatManager(input: ManagerInput): Promise<ManagerResult> {
-  const { message, topic, level, goal, moduleId, hasRoadmap, activeLesson, history = [] } = input;
+  const { message, topic, level, goal, moduleId, hasRoadmap, activeLesson, lessonSyntax, exercise, history = [] } = input;
   const historyText = historyToText(history);
-  const reply = await geminiText(
-    `${historyText ? historyText + "\n" : ""}User: ${message}`,
-    tutorSystem({ topic, level, goal, moduleId, hasRoadmap, activeLesson })
-  );
+  const system = tutorSystem({ topic, level, goal, moduleId, hasRoadmap, activeLesson, lessonSyntax, exercise });
+  const userTurn = `${historyText ? historyText + "\n" : ""}User: ${message}`;
+  // Checked after generation: a code block that is the exercise's answer is
+  // regenerated once, then removed (src/lib/agents/leak.ts).
+  const reply = await withoutAnswer((fix) => geminiText(userTurn, system + fix), exercise?.answer ?? []);
   return { action: "tutor", response: reply };
 }

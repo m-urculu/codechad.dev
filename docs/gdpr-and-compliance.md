@@ -96,7 +96,7 @@ for analytics or marketing email — neither exists.
 | **Google / GitHub (OAuth)** | Independent controllers | Sign-in event | Their own policies |
 | **Microsoft** (Edge read-aloud) | Processor in effect | **Lesson text** on each press | Disclosed in the policy; no DPA |
 | **jsDelivr, unpkg, Hugging Face** | Recipients of an IP address | Visitor **IP + user-agent** | Disclosed in the policy; no DPA |
-| **DevDocs** (iframe) | Recipient of an IP address | Visitor IP when the docs pane opens | Disclosed in the policy; no DPA |
+| ~~DevDocs~~ (iframe) | — | — | **Removed 2026-11.** The docs are a copy in our own Supabase Storage (`docs` bucket), synced server-side daily; the browser no longer contacts DevDocs |
 
 ### Processor register
 
@@ -113,7 +113,7 @@ self-serve plans, and worth recording as such rather than leaving blank.
 | Google (Gemini API) | Processor | Paid-tier API terms + SCCs | Standard terms | Written confirmation of no-training-on-input |
 | Google / GitHub (OAuth) | Independent controllers | Their own policies | N/A | — |
 | Microsoft (speech) | Processor in effect | None — browser-initiated | **None** | Whether to make Read Aloud opt-in |
-| jsDelivr · unpkg · Hugging Face · DevDocs | Recipients of an IP | Legitimate interests 6(1)(f) | **None** | Whether to self-host (see below) |
+| jsDelivr · unpkg · Hugging Face | Recipients of an IP | Legitimate interests 6(1)(f) | **None** | Whether to self-host (see below) |
 
 The bottom two rows are the honest weak spot: there is no contract with any of them,
 because the browser contacts them directly and no commercial relationship exists to hang
@@ -124,7 +124,8 @@ closes by removing the third party, which is option (2) below.
 
 The runtimes are loaded from third-party CDNs at run time — **20 references to
 `cdn.jsdelivr.net`** alone, plus `unpkg.com`, plus Hugging Face model weights for the
-AI/ML module, plus a `devdocs.io` iframe. Every one of those is the visitor's browser
+AI/ML module (the `devdocs.io` iframe that used to be on this list is gone: the docs are
+now self-hosted, which is option (2) done for them). Every one of those is the visitor's browser
 connecting to a third party, which necessarily discloses their **IP address**, before any
 consent and without a contract.
 
@@ -234,7 +235,7 @@ there is no formal access log review; and there is no documented key-rotation sc
 |---|---|---|
 | Supabase auth session | Keeps you signed in | Strictly necessary |
 | `courses-sort` | Remembers a sort preference | Functional, first-party |
-| DevDocs index cache | Avoids re-fetching an index | Functional, first-party |
+| Docs index cache | Avoids re-fetching a doc set's entries (our copy) | Functional, first-party |
 | Trial counter | Free-lesson allowance | Functional, first-party |
 
 **No consent banner is required today.** ePrivacy Art. 5(3) demands consent for storage

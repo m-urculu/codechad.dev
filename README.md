@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/m-urculu/codechad.dev/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/m-urculu/codechad.dev/actions/workflows/ci.yml/badge.svg" /></a>
-  <img alt="version" src="https://img.shields.io/badge/version-0.2.0-34d399" />
+  <img alt="version" src="https://img.shields.io/badge/version-0.3.0-34d399" />
   <img alt="status" src="https://img.shields.io/badge/status-beta-38bdf8" />
   <img alt="license" src="https://img.shields.io/badge/license-MIT-white" />
 </p>
@@ -69,6 +69,7 @@ npm run dev                  # http://localhost:3000
 | `npm test` | Unit tests |
 | `npm run check:docs` | Checks that every documentation link the app ships is still live |
 | `npm run check:erasure` | Proves account deletion erases user data. **Writes to the real database**; run it knowingly |
+| `npm run sync:docs` | Downloads the documentation into the Supabase Storage `docs` bucket (the Docs tab reads only that copy). Needs `CRON_SECRET` and the app running; runs daily on Vercel by itself |
 
 ## Documentation
 

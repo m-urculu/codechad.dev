@@ -10,6 +10,18 @@ import { GEMINI_MODELS } from "./models";
 
 type GeminiOpts = { system?: string; json?: boolean };
 
+/**
+ * The whole text of a Gemini reply. A candidate's content arrives as a LIST of parts,
+ * and a long answer is often split across several; reading only parts[0] is what cut
+ * tutor replies off mid-sentence ("…or use `\n"). Parts flagged `thought` are the
+ * model's reasoning, not the answer, and are skipped.
+ */
+export function replyText(data: unknown): string {
+  const parts = (data as { candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] } }[] })
+    ?.candidates?.[0]?.content?.parts;
+  return Array.isArray(parts) ? parts.filter((p) => !p?.thought).map((p) => p?.text ?? "").join("") : "";
+}
+
 async function gemini(prompt: string, opts: GeminiOpts = {}): Promise<string> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -41,7 +53,7 @@ async function gemini(prompt: string, opts: GeminiOpts = {}): Promise<string> {
           return "";                            // other 4xx → give up
         }
         const data = await res.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+        const text = replyText(data);
         if (text) return text;
       } catch (e) {
         console.error(`Gemini fetch error on ${model} (attempt ${attempt + 1}):`, e);
